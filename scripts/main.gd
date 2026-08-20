@@ -11,6 +11,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
 const TILE_SIZE: float = 48.0
+const TILE_SCALE: float = TILE_SIZE / 256.0
 const GRID_W: int = 13
 const GRID_H: int = 13
 
@@ -244,7 +245,7 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 	if type == "trees":
 		var spr = Sprite2D.new()
 		spr.texture = tex
-		spr.scale = Vector2(0.38, 0.38)
+		spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
 		spr.position = pos
 		spr.z_index = 10
 		map_container.add_child(spr)
@@ -256,7 +257,7 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 	
 	var spr = Sprite2D.new()
 	spr.texture = tex
-	spr.scale = Vector2(0.38, 0.38)
+	spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
 	body.add_child(spr)
 
 	if type == "water":
@@ -296,7 +297,7 @@ func _spawn_base_and_walls(use_steel: bool = false) -> void:
 		body.add_to_group(group_name)
 		var spr = Sprite2D.new()
 		spr.texture = tex
-		spr.scale = Vector2(0.38, 0.38)
+		spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
 		body.add_child(spr)
 		var col = CollisionShape2D.new()
 		var shape = RectangleShape2D.new()
@@ -569,4 +570,5 @@ func _update_rpg_hud() -> void:
 			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
 			rpg_mgr.get_regen_rate()
 		]
+
 

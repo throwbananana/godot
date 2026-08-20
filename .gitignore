@@ -1,17 +1,11 @@
 # Godot 4+ specific ignores
 .godot/
-*.translation
 
-# Mono-specific ignores
-.mono/
-data_*/
-mono_crash.*.json
+# Blender backup files
+*.blend1
+*.blend2
 
-# System / OS ignores
-.DS_Store
-Thumbs.db
-
-# IDE ignores
-.vscode/
-.idea/
-*.swp
+# Scratch scripts & temporary test renders
+scratchpad/
+*.pyc
+__pycache__/

@@ -24,7 +24,7 @@ position = Vector2(48, 48)
 script = ExtResource("2_bld")
 
 [node name="PreviewSprite" type="Sprite2D" parent="GameArea/BuilderController"]
-scale = Vector2(0.38, 0.38)
+scale = Vector2(0.1875, 0.1875)
 z_index = 20
 
 [node name="HUD" type="CanvasLayer" parent="."]
@@ -158,3 +158,4 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 20
 text = "PLAY AGAIN"
+

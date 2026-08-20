@@ -1,17 +1,15 @@
-[gd_scene load_steps=3 format=3 uid="uid://bas101scene05"]
+[gd_scene load_steps=3 format=3 uid="uid://base101scene01"]
 
-[ext_resource type="Script" path="res://scripts/base_eagle.gd" id="1_bas"]
+[ext_resource type="Script" path="res://scripts/base_eagle.gd" id="1_base"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_bas"]
-size = Vector2(44, 44)
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_base"]
+size = Vector2(46, 46)
 
-[node name="BaseEagle" type="Area2D"]
-collision_layer = 16
-collision_mask = 4
-script = ExtResource("1_bas")
+[node name="BaseEagle" type="Area2D" groups=["base"]]
+script = ExtResource("1_base")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-scale = Vector2(0.38, 0.38)
+scale = Vector2(0.1875, 0.1875)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("RectangleShape2D_bas")
+shape = SubResource("RectangleShape2D_base")

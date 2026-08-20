@@ -2,9 +2,10 @@ class_name Bullet
 extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
-const SoundManager = preload("res://scripts/sound_manager.gd")
 
-@export var speed: float = 460.0
+signal hit_target(target: Node2D)
+
+@export var speed: float = 480.0
 @export var damage: int = 1
 @export var can_destroy_steel: bool = false
 
@@ -12,81 +13,80 @@ var direction: Vector2 = Vector2.UP
 var shooter: Node2D = null
 var shooter_type: String = "player"
 
-var explosion_scene: PackedScene
+@onready var sprite: Sprite2D = $Sprite2D
 
 func _ready() -> void:
-	explosion_scene = load("res://scenes/explosion.tscn")
-	var tex = TextureHelper.get_tex("res://assets/sprites/effects/bullet.png")
-	var spr = get_node_or_null("Sprite2D")
-	if spr and tex:
-		spr.texture = tex
-	rotation = direction.angle() + PI / 2.0
-	area_entered.connect(_on_area_entered)
 	body_entered.connect(_on_body_entered)
+	area_entered.connect(_on_area_entered)
+	rotation = direction.angle() + PI / 2.0
+	
+	var tex_path = "res://assets/sprites/effects/bullet_plasma.png" if can_destroy_steel else "res://assets/sprites/effects/bullet.png"
+	var tex = TextureHelper.get_tex(tex_path)
+	if not tex and can_destroy_steel:
+		tex = TextureHelper.get_tex("res://assets/sprites/effects/bullet.png")
+	if tex and sprite:
+		sprite.texture = tex
 
 func _physics_process(delta: float) -> void:
 	position += direction * speed * delta
 
-func _spawn_explosion(is_small: bool = false) -> void:
-	if explosion_scene:
-		var exp_inst = explosion_scene.instantiate()
-		exp_inst.global_position = global_position
-		if is_small:
-			exp_inst.scale = Vector2(0.5, 0.5)
-		get_parent().add_child(exp_inst)
-
-func _on_area_entered(area: Area2D) -> void:
-	if area is Bullet:
-		if area.shooter_type != shooter_type:
-			_spawn_explosion(true)
-			area.queue_free()
-			queue_free()
-			return
-	
-	if area.is_in_group("base_eagle"):
-		if area.has_method("destroy"):
-			area.destroy()
-		_spawn_explosion()
-		queue_free()
-		return
-
 func _on_body_entered(body: Node2D) -> void:
 	if body == shooter:
 		return
-	
-	if body.is_in_group("player") and shooter_type == "enemy":
-		if body.has_method("take_damage"):
-			body.take_damage(damage)
-		_spawn_explosion()
-		queue_free()
+
+	if shooter_type == "player" and (body.is_in_group("player") or body.is_in_group("p1") or body.is_in_group("p2")):
 		return
-	
-	if body.is_in_group("enemies") and shooter_type == "player":
-		if body.has_method("take_damage"):
-			body.take_damage(damage)
-		_spawn_explosion()
-		queue_free()
+
+	if shooter_type == "enemy" and body.is_in_group("enemy"):
 		return
-	
+
 	if body.is_in_group("brick"):
-		SoundManager.play_hit_brick(get_tree())
-		_spawn_explosion(true)
 		body.queue_free()
 		queue_free()
 		return
-	
-	if body.is_in_group("steel"):
-		if can_destroy_steel and not body.is_in_group("border"):
-			SoundManager.play_hit_steel(get_tree())
-			_spawn_explosion()
+	elif body.is_in_group("steel"):
+		if can_destroy_steel:
 			body.queue_free()
-		else:
-			SoundManager.play_hit_steel(get_tree())
-			_spawn_explosion(true)
 		queue_free()
 		return
-	
-	if body.is_in_group("border"):
-		_spawn_explosion(true)
+	elif body.is_in_group("border"):
+		queue_free()
+		return
+	elif body.is_in_group("building"):
+		if shooter_type == "enemy":
+			if body.has_method("take_damage"):
+				body.take_damage(damage)
+			queue_free()
+		return
+	elif body.is_in_group("enemy") and shooter_type == "player":
+		if body.has_method("take_damage"):
+			var pts = 100
+			if body.has_method("get_points"):
+				pts = body.get_points()
+			body.take_damage(damage)
+		queue_free()
+		return
+	elif (body.is_in_group("player") or body.is_in_group("p1") or body.is_in_group("p2")) and shooter_type == "enemy":
+		if body.has_method("take_damage"):
+			body.take_damage(damage)
+		queue_free()
+		return
+
+func _on_area_entered(area: Area2D) -> void:
+	if area == shooter:
+		return
+	if area.is_in_group("bullet"):
+		if area.shooter_type != shooter_type:
+			area.queue_free()
+			queue_free()
+		return
+	if area.is_in_group("base"):
+		if area.has_method("destroy"):
+			area.destroy()
+		queue_free()
+		return
+	if area.is_in_group("building") and shooter_type == "enemy":
+		if area.has_method("take_damage"):
+			area.take_damage(damage)
 		queue_free()
 		return

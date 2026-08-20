@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://exp101scene01"]
+[gd_scene load_steps=2 format=3 uid="uid://c6f3vh5g8w2e0"]
 
 [ext_resource type="Script" path="res://scripts/explosion.gd" id="1_exp"]
 
@@ -6,4 +6,4 @@
 script = ExtResource("1_exp")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-scale = Vector2(0.45, 0.45)
+scale = Vector2(0.1875, 0.1875)

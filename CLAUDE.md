@@ -29,7 +29,12 @@ Sprites are Blender Cycles renders. Each `tools/build_*.py` is a standalone scri
 & "C:\steam\steamapps\common\Blender\blender.exe" --background --python tools/build_no_sharp_edges_cute_assets.py
 ```
 
-`build_no_sharp_edges_cute_assets.py` + `build_no_sharp_edges_props.py` are the current/newest generation (bevel-modifier "no sharp edges" pass); the earlier `build_tank_assets*.py` and `build_cute_*.py` are superseded but kept. `tools/update_input_map.py` **rewrites `project.godot` wholesale** from a string literal — if you edit input actions in the editor, that script goes stale; prefer editing `project.godot` directly.
+There are **four stacked generations** of build scripts and running an old one silently reverts the art style. Newest first:
+
+1. `build_sokpop_claymation_assets.py` (tanks, tiles, eagle) + `build_sokpop_props.py` (buildings) + `build_sokpop_clay_ui.py` (banner, buttons, hearts, map nodes) — current.
+2. `build_no_sharp_edges_cute_assets.py` + `build_no_sharp_edges_props.py` — bevel "no sharp edges" pass.
+3. `build_cute_lowpoly_assets.py` + `build_cute_props.py` + `build_rpg_buildings.py` + `build_menu_assets.py`.
+4. `build_tank_assets*.py` — **still the only source of `explosion_*.png` and `spawn_star_*.png`**; `render_powerups.py`/`generate_powerups.py` are the only source of the power-up icons. Neither gen-1 output has ever been re-rendered in a later style. `tools/update_input_map.py` **rewrites `project.godot` wholesale** from a string literal — if you edit input actions in the editor, that script goes stale; prefer editing `project.godot` directly.
 
 ## Architecture
 
@@ -48,7 +53,7 @@ These two are **manually synced**, not shared: `main.gd::start_game()` copies `G
 
 Actors reach the battle controller via `get_tree().current_scene` and duck-type it (`main.rpg_mgr`, `main.has_method("trigger_bomb")`, `main.actors_container`). `player.gd`, `enemy.gd`, and `builder_controller.gd` all assume the current scene is `main.tscn`; running those scenes standalone degrades rather than crashes (null-guarded), but stats won't apply.
 
-`main.gd` builds the battlefield entirely in code — the 13×13 tile grid comes from the `layout` int array in `_build_map()` (0 empty, 1 brick, 2 steel, 3 water, 4 trees), tiles are `StaticBody2D`s created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`; sprites are 128px renders drawn at `scale 0.38`.
+`main.gd` builds the battlefield entirely in code — the 13×13 tile grid comes from the `layout` int array in `_build_map()` (0 empty, 1 brick, 2 steel, 3 water, 4 trees), tiles are `StaticBody2D`s created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`. Sprites are **256×256** renders. `main.gd` draws tiles at a hardcoded `scale 0.38`, which is left over from the 128px era — at 256px this makes tiles ~85px on a 48px grid (see "Known asset defects").
 
 ### Collision layers and groups
 

@@ -1,17 +1,15 @@
-[gd_scene load_steps=3 format=3 uid="uid://bul101scene02"]
+[gd_scene load_steps=3 format=3 uid="uid://c6f3vh5g8w2e9"]
 
-[ext_resource type="Script" path="res://scripts/bullet.gd" id="1_bul"]
+[ext_resource type="Script" path="res://scripts/bullet.gd" id="1_bullet"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_bul"]
-radius = 6.0
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bullet"]
+size = Vector2(10, 10)
 
-[node name="Bullet" type="Area2D"]
-collision_layer = 4
-collision_mask = 31
-script = ExtResource("1_bul")
+[node name="Bullet" type="Area2D" groups=["bullet"]]
+script = ExtResource("1_bullet")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-scale = Vector2(0.35, 0.35)
+scale = Vector2(0.1875, 0.1875)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("CircleShape2D_bul")
+shape = SubResource("RectangleShape2D_bullet")

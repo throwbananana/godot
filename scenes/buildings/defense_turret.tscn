@@ -1,20 +1,18 @@
-[gd_scene load_steps=3 format=3 uid="uid://tur101scene01"]
+[gd_scene load_steps=3 format=3 uid="uid://bld101turret01"]
 
-[ext_resource type="Script" path="res://scripts/buildings/defense_turret.gd" id="1_tur"]
+[ext_resource type="Script" path="res://scripts/buildings/defense_turret.gd" id="1_trt"]
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_tur"]
-radius = 22.0
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_trt"]
+size = Vector2(46, 46)
 
-[node name="DefenseTurret" type="StaticBody2D"]
-collision_layer = 16
-collision_mask = 7
-script = ExtResource("1_tur")
+[node name="DefenseTurret" type="StaticBody2D" groups=["building", "turret"]]
+script = ExtResource("1_trt")
 
 [node name="BaseSprite" type="Sprite2D" parent="."]
-scale = Vector2(0.38, 0.38)
+scale = Vector2(0.1875, 0.1875)
 
 [node name="GunSprite" type="Sprite2D" parent="."]
-scale = Vector2(0.38, 0.38)
+scale = Vector2(0.1875, 0.1875)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("CircleShape2D_tur")
+shape = SubResource("RectangleShape2D_trt")
