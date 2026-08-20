@@ -6,6 +6,7 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 
 @export var speed: float = 460.0
 @export var damage: int = 1
+@export var can_destroy_steel: bool = false
 
 var direction: Vector2 = Vector2.UP
 var shooter: Node2D = null
@@ -75,8 +76,13 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 	
 	if body.is_in_group("steel"):
-		SoundManager.play_hit_steel(get_tree())
-		_spawn_explosion(true)
+		if can_destroy_steel and not body.is_in_group("border"):
+			SoundManager.play_hit_steel(get_tree())
+			_spawn_explosion()
+			body.queue_free()
+		else:
+			SoundManager.play_hit_steel(get_tree())
+			_spawn_explosion(true)
 		queue_free()
 		return
 	

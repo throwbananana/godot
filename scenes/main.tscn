@@ -15,6 +15,8 @@ position = Vector2(48, 48)
 
 [node name="MapContainer" type="Node2D" parent="GameArea"]
 
+[node name="BaseWallContainer" type="Node2D" parent="GameArea"]
+
 [node name="ActorsContainer" type="Node2D" parent="GameArea"]
 
 [node name="HUD" type="CanvasLayer" parent="."]
@@ -27,7 +29,7 @@ offset_bottom = 720.0
 
 [node name="VBox" type="VBoxContainer" parent="HUD/SidePanel"]
 layout_mode = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 16
 
 [node name="TitleLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
@@ -51,7 +53,16 @@ text = "LIVES: 3"
 [node name="EnemiesLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
-text = "ENEMIES: 16"
+text = "ENEMIES: 20"
+
+[node name="ToastLabel" type="Label" parent="HUD/SidePanel/VBox"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_font_sizes/font_size = 15
+text = "POWER-UP!"
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="HSeparator2" type="HSeparator" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
@@ -64,13 +75,21 @@ text = "CONTROLS:"
 [node name="ControlsInfo" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
-theme_override_font_sizes/font_size = 14
+theme_override_font_sizes/font_size = 13
 text = "• W/A/S/D or Arrows:
   Move Tank
 • Space or J:
   Fire Cannon
 • R:
-  Restart Game"
+  Restart Game
+
+POWER-UPS:
+★ Star: Tier Up
+💣 Bomb: Screen Wipe
+⏰ Clock: Freeze Enemies
+🛡 Helmet: Shield 10s
+⛏ Shovel: Steel Base
+❤️ Life: +1 Life"
 
 [node name="CenterMessage" type="Label" parent="HUD"]
 visible = false
