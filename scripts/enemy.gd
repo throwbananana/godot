@@ -83,6 +83,27 @@ func _setup_tank_type() -> void:
 			gold_value = 50
 			fire_interval = 1.0
 
+	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
+	var floor_mult = 1.0 + float(GameState.current_floor) * 0.08
+	if GameState.battle_type == "elite":
+		max_health = int(ceil(max_health * 1.5))
+		speed = speed * 1.10
+		xp_value = int(xp_value * 1.6)
+		gold_value = int(gold_value * 1.5)
+		score_value = int(score_value * 1.5)
+		fire_interval = fire_interval * 0.85
+	elif GameState.battle_type == "boss":
+		max_health = int(ceil(max_health * 2.0))
+		speed = speed * 1.18
+		xp_value = int(xp_value * 2.2)
+		gold_value = int(gold_value * 2.0)
+		score_value = int(score_value * 2.0)
+		fire_interval = fire_interval * 0.75
+	else:
+		xp_value = int(xp_value * floor_mult)
+		gold_value = int(gold_value * floor_mult)
+		score_value = int(score_value * floor_mult)
+
 	health = max_health
 	tex_f0 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f0.png" % prefix)
 	tex_f1 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f1.png" % prefix)

@@ -1,8 +1,26 @@
 import bpy
 import math
 import os
+import sys
 
-PROJECT_DIR = r"G:\Users\123\Documents\GitHub\godot"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else os.getcwd()
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+# 渲染管线 (色彩空间/视图变换/灯光标定/黏土材质/倒角抖动) 统一在 sokpop_common,
+# 本文件只负责建模。改画风请改 sokpop_common, 不要在这里再复制一份。
+from sokpop_common import (  # noqa: E402
+    srgb_to_linear,
+    clear_scene,
+    setup_render_settings,
+    create_sokpop_lighting,
+    create_clay_mat,
+    apply_uniform_clay_bevel,
+    reset_jitter_seed,
+    render_and_clean,
+)
+
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR) if os.path.basename(SCRIPT_DIR) == 'tools' else SCRIPT_DIR
 SPRITES_TANKS = os.path.join(PROJECT_DIR, "assets", "sprites", "tanks")
 SPRITES_TILES = os.path.join(PROJECT_DIR, "assets", "sprites", "tiles")
 SPRITES_EFFECTS = os.path.join(PROJECT_DIR, "assets", "sprites", "effects")
@@ -15,102 +33,33 @@ BLENDER_SAVE = os.path.join(PROJECT_DIR, "assets", "blender", "tank_battle_asset
 for folder in [SPRITES_TANKS, SPRITES_TILES, SPRITES_EFFECTS, SPRITES_POWERUPS, SPRITES_BUILDINGS, SPRITES_MAP, SPRITES_UI]:
     os.makedirs(folder, exist_ok=True)
 
-def clear_scene():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+def create_3d_star(r_out=1.15, r_in=0.52, depth=0.30, z_pos=0.0):
+    mesh = bpy.data.meshes.new("StarMesh")
+    obj = bpy.data.objects.new("StarObj", mesh)
+    bpy.context.collection.objects.link(obj)
 
-def setup_render_settings(rx=256, ry=256):
-    scene = bpy.context.scene
-    scene.render.engine = 'CYCLES'
-    if hasattr(scene, 'cycles'):
-        scene.cycles.samples = 20
-        scene.cycles.adaptive_threshold = 0.04
-    scene.render.resolution_x = rx
-    scene.render.resolution_y = ry
-    scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = 'PNG'
-    scene.render.image_settings.color_mode = 'RGBA'
-    scene.render.film_transparent = True
-    
-    # AgX 或 Filmic 柔和高光滚降，彻底防止高光切白
-    try:
-        scene.view_settings.view_transform = 'AgX'
-    except Exception:
-        scene.view_settings.view_transform = 'Filmic'
+    verts = []
+    for z in [-depth/2.0 + z_pos, depth/2.0 + z_pos]:
+        for i in range(10):
+            ang = i * (math.pi / 5.0) - math.pi / 2.0
+            r = r_out if i % 2 == 0 else r_in
+            verts.append((math.cos(ang)*r, math.sin(ang)*r, z))
 
-def create_sokpop_balanced_lighting(ortho_scale=3.3):
-    cam_data = bpy.data.cameras.new(name='TopDownCam')
-    cam_data.type = 'ORTHO'
-    cam_data.ortho_scale = ortho_scale
-    cam_obj = bpy.data.objects.new('TopDownCam', cam_data)
-    bpy.context.collection.objects.link(cam_obj)
-    cam_obj.location = (0, 0, 10)
-    bpy.context.scene.camera = cam_obj
+    verts.append((0, 0, -depth/2.0 + z_pos))
+    verts.append((0, 0, depth/2.0 + z_pos))
 
-    # 1. 阳光主灯 (经过校准的暖阳，避免过曝)
-    sun_data = bpy.data.lights.new(name='SunKey', type='SUN')
-    sun_data.energy = 2.6
-    sun_data.color = (1.0, 0.94, 0.86)
-    sun_obj = bpy.data.objects.new('SunKey', sun_data)
-    bpy.context.collection.objects.link(sun_obj)
-    sun_obj.location = (3, -3, 8)
-    sun_obj.rotation_euler = (math.radians(38), math.radians(18), math.radians(-32))
+    faces = []
+    for i in range(10):
+        faces.append((20, (i+1)%10, i))
+    for i in range(10):
+        faces.append((21, 10 + i, 10 + (i+1)%10))
+    for i in range(10):
+        next_i = (i+1)%10
+        faces.append((i, next_i, 10 + next_i, 10 + i))
 
-    # 2. 柔和环境漫射补光 (从 180 降至 16.0，彻底消除白饼)
-    fill_data = bpy.data.lights.new(name='FillLight', type='POINT')
-    fill_data.energy = 16.0
-    fill_data.color = (0.92, 0.88, 0.98)
-    fill_obj = bpy.data.objects.new('FillLight', fill_data)
-    bpy.context.collection.objects.link(fill_obj)
-    fill_obj.location = (-4, 4, 6)
-
-    # 3. 柔和背光
-    rim_data = bpy.data.lights.new(name='RimLight', type='POINT')
-    rim_data.energy = 10.0
-    rim_data.color = (1.0, 0.96, 0.90)
-    rim_obj = bpy.data.objects.new('RimLight', rim_data)
-    bpy.context.collection.objects.link(rim_obj)
-    rim_obj.location = (0, 5, 4.5)
-
-def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08, emission=None, emission_str=0.0):
-    mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    nodes.clear()
-    bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
-    bsdf.inputs['Base Color'].default_value = col
-    bsdf.inputs['Roughness'].default_value = roughness
-    bsdf.inputs['Metallic'].default_value = 0.0
-
-    if 'Subsurface Weight' in bsdf.inputs:
-        bsdf.inputs['Subsurface Weight'].default_value = sss_weight
-    elif 'Subsurface' in bsdf.inputs:
-        bsdf.inputs['Subsurface'].default_value = sss_weight
-
-    if emission and emission_str > 0:
-        if 'Emission Color' in bsdf.inputs:
-            bsdf.inputs['Emission Color'].default_value = emission
-            bsdf.inputs['Emission Strength'].default_value = emission_str
-    out = nodes.new(type='ShaderNodeOutputMaterial')
-    mat.node_tree.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
-    return mat
-
-def apply_uniform_clay_bevel(obj, width=0.12, segments=4):
-    bpy.context.view_layer.objects.active = obj
-    # 应用缩放，确保 Bevel 在世界坐标各轴完全均匀
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    bpy.ops.object.shade_smooth()
-    mod = obj.modifiers.new(name="Bevel", type='BEVEL')
-    mod.width = width
-    mod.segments = segments
-    mod.limit_method = 'ANGLE'
-    mod.angle_limit = math.radians(22)
-
-def render_and_clean(objects, out_path):
-    bpy.context.scene.render.filepath = out_path
-    bpy.ops.render.render(write_still=True)
-    for obj in objects:
-        bpy.data.objects.remove(obj, do_unlink=True)
-    print(f"Rendered: {os.path.basename(out_path)}")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    return obj
 
 # ==================== 1. SOKPOP TANKS ====================
 
@@ -123,6 +72,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
     mat_track = create_clay_mat(f"{name_prefix}_tr", (0.32, 0.30, 0.36, 1.0), roughness=0.85)
     mat_trim = create_clay_mat(f"{name_prefix}_tm", col_trim)
     mat_eyes = create_clay_mat(f"{name_prefix}_ey", (0.15, 0.15, 0.2, 1.0), roughness=0.3)
+    mat_bore = create_clay_mat(f"{name_prefix}_bore", (0.10, 0.10, 0.14, 1.0), roughness=0.9)
     mat_glow = create_clay_mat(f"{name_prefix}_gl", (0.35, 0.9, 1.0, 1.0), emission=(0.35, 0.9, 1.0, 1.0), emission_str=3.0)
 
     w = 1.45 if is_heavy else 1.3
@@ -131,7 +81,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
     tx = w * 0.5 + tw * 0.5 - 0.04
     tl = l * 1.1
 
-    # Hull
+    # 1. Main Hull
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.05, 0))
     hull = bpy.context.active_object
     hull.scale = (w, l, 0.56)
@@ -139,7 +89,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
     apply_uniform_clay_bevel(hull, width=0.18, segments=4)
     objs.append(hull)
 
-    # Nose
+    # 2. Nose Wedge & Fender
     bpy.ops.mesh.primitive_cylinder_add(radius=w*0.42, depth=0.48, vertices=16, location=(0, l*0.42, 0.04))
     nose = bpy.context.active_object
     nose.rotation_euler = (0, math.radians(90), 0)
@@ -147,7 +97,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
     apply_uniform_clay_bevel(nose, width=0.1, segments=3)
     objs.append(nose)
 
-    # Headlights
+    # 3. Headlights
     for hx in [-w*0.28, w*0.28]:
         bpy.ops.mesh.primitive_uv_sphere_add(radius=0.11, location=(hx, l*0.5, 0.12))
         hl = bpy.context.active_object
@@ -155,7 +105,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
         bpy.ops.object.shade_smooth()
         objs.append(hl)
 
-    # Tracks
+    # 4. Tracks & Wheels
     for side, x_pos in [('L', -tx), ('R', tx)]:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x_pos, 0, 0.02))
         tr = bpy.context.active_object
@@ -164,6 +114,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
         apply_uniform_clay_bevel(tr, width=0.16, segments=4)
         objs.append(tr)
 
+        # 3 Hubcap Roadwheels
         for wy in [-0.45, 0.0, 0.45]:
             bpy.ops.mesh.primitive_cylinder_add(radius=0.24, depth=tw*1.08, vertices=16, location=(x_pos, wy, 0))
             wh = bpy.context.active_object
@@ -172,6 +123,13 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
             apply_uniform_clay_bevel(wh, width=0.08, segments=3)
             objs.append(wh)
 
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(x_pos + (0.08 if x_pos > 0 else -0.08), wy, 0))
+            hub = bpy.context.active_object
+            hub.data.materials.append(mat_body)
+            bpy.ops.object.shade_smooth()
+            objs.append(hub)
+
+        # Tread Teeth animation offset
         offset = 0.14 if frame == 1 else 0.0
         num_treads = 6
         for i in range(num_treads):
@@ -184,7 +142,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
             apply_uniform_clay_bevel(tread, width=0.04, segments=2)
             objs.append(tread)
 
-    # Turret
+    # 5. Turret Dome
     tsize = 0.92 if is_heavy else 0.82
     bpy.ops.mesh.primitive_uv_sphere_add(radius=tsize*0.58, location=(0, -0.06, 0.52))
     turret = bpy.context.active_object
@@ -193,14 +151,21 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
     bpy.ops.object.shade_smooth()
     objs.append(turret)
 
-    # Hatch
+    # 6. Hatch & Periscope
     bpy.ops.mesh.primitive_cylinder_add(radius=0.22, depth=0.15, vertices=16, location=(0, -0.16, 0.82))
     hatch = bpy.context.active_object
     hatch.data.materials.append(mat_trim)
     apply_uniform_clay_bevel(hatch, width=0.08, segments=3)
     objs.append(hatch)
 
-    # Cannons
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.22, 0.06, 0.80))
+    peri = bpy.context.active_object
+    peri.scale = (0.16, 0.14, 0.16)
+    peri.data.materials.append(mat_trim)
+    apply_uniform_clay_bevel(peri, width=0.04, segments=2)
+    objs.append(peri)
+
+    # 7. Cannons & Hollow Muzzle Bores
     if barrel_count == 1:
         bpy.ops.mesh.primitive_cylinder_add(radius=barrel_thick, depth=barrel_len, vertices=16, location=(0, 0.32 + barrel_len/2.0, 0.52))
         barrel = bpy.context.active_object
@@ -215,6 +180,12 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
         muzzle.data.materials.append(mat_trim)
         bpy.ops.object.shade_smooth()
         objs.append(muzzle)
+
+        bpy.ops.mesh.primitive_cylinder_add(radius=barrel_thick*0.65, depth=0.12, vertices=12, location=(0, 0.32 + barrel_len + 0.02, 0.52))
+        bore = bpy.context.active_object
+        bore.rotation_euler = (math.radians(90), 0, 0)
+        bore.data.materials.append(mat_bore)
+        objs.append(bore)
 
         if is_plasma:
             for py in [0.75, 1.15]:
@@ -241,6 +212,12 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
             bpy.ops.object.shade_smooth()
             objs.append(muzzle)
 
+            bpy.ops.mesh.primitive_cylinder_add(radius=barrel_thick*0.55, depth=0.10, vertices=12, location=(bx, 0.32 + barrel_len + 0.02, 0.52))
+            bore = bpy.context.active_object
+            bore.rotation_euler = (math.radians(90), 0, 0)
+            bore.data.materials.append(mat_bore)
+            objs.append(bore)
+
     return objs
 
 # ==================== 2. SOKPOP TILES ====================
@@ -257,15 +234,21 @@ def build_sokpop_brick():
     apply_uniform_clay_bevel(base, width=0.1, segments=3)
     objs.append(base)
 
-    for r in range(3):
-        for c in range(3):
-            x = -0.92 + c * 0.92
-            y = -0.92 + r * 0.92
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, 0.1))
+    row_configs = [
+        [(-0.72, 1.25), (0.72, 1.25)],
+        [(-1.18, 0.48), (0.0, 1.35), (1.18, 0.48)],
+        [(-0.72, 1.25), (0.72, 1.25)],
+        [(-1.18, 0.48), (0.0, 1.35), (1.18, 0.48)],
+    ]
+    y_coords = [-0.95, -0.32, 0.32, 0.95]
+    for r_idx, row in enumerate(row_configs):
+        y = y_coords[r_idx]
+        for (x, w_size) in row:
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, 0.12))
             b = bpy.context.active_object
-            b.scale = (0.76, 0.76, 0.28)
+            b.scale = (w_size, 0.52, 0.28)
             b.data.materials.append(mat_clay)
-            apply_uniform_clay_bevel(b, width=0.18, segments=4)
+            apply_uniform_clay_bevel(b, width=0.10, segments=3)
             objs.append(b)
     return objs
 
@@ -282,7 +265,15 @@ def build_sokpop_steel():
     apply_uniform_clay_bevel(plate, width=0.2, segments=4)
     objs.append(plate)
 
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.75, depth=0.15, vertices=16, location=(0, 0, 0.2))
+    for (sx, sy) in [(2.4, 0.4), (0.4, 2.4)]:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.18))
+        rib = bpy.context.active_object
+        rib.scale = (sx, sy, 0.12)
+        rib.data.materials.append(mat_plate)
+        apply_uniform_clay_bevel(rib, width=0.06, segments=2)
+        objs.append(rib)
+
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.65, depth=0.16, vertices=16, location=(0, 0, 0.22))
     inner = bpy.context.active_object
     inner.data.materials.append(mat_stripe)
     apply_uniform_clay_bevel(inner, width=0.08, segments=3)
@@ -290,7 +281,7 @@ def build_sokpop_steel():
 
     for rx in [-1.0, 1.0]:
         for ry in [-1.0, 1.0]:
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, location=(rx, ry, 0.2))
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.15, location=(rx, ry, 0.2))
             bolt = bpy.context.active_object
             bolt.data.materials.append(mat_gold)
             bpy.ops.object.shade_smooth()
@@ -299,25 +290,32 @@ def build_sokpop_steel():
 
 def build_sokpop_water(frame=0):
     objs = []
-    mat_water = create_clay_mat("m_uw_w", (0.28, 0.70, 0.88, 1.0), roughness=0.35)
+    mat_water = create_clay_mat("m_uw_w", (0.28, 0.70, 0.88, 1.0), roughness=0.28, sss_weight=0.15)
     mat_foam = create_clay_mat("m_uw_f", (0.95, 0.95, 0.98, 1.0))
 
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     water = bpy.context.active_object
-    water.scale = (2.85, 2.85, 0.3)
+    water.scale = (2.95, 2.95, 0.3)
     water.data.materials.append(mat_water)
-    apply_uniform_clay_bevel(water, width=0.15, segments=3)
+    apply_uniform_clay_bevel(water, width=0.12, segments=3)
     objs.append(water)
 
-    offset = 0.35 if frame == 1 else 0.0
-    for fx, fy in [(-0.8, -0.6 + offset), (0.6, 0.4 + offset), (-0.2, 0.7 - offset), (0.3, -0.7 + offset)]:
-        if fy > 1.2: fy -= 2.4
-        if fy < -1.2: fy += 2.4
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.25, depth=0.08, vertices=16, location=(fx, fy, 0.18))
-        f = bpy.context.active_object
-        f.data.materials.append(mat_foam)
-        apply_uniform_clay_bevel(f, width=0.04, segments=2)
-        objs.append(f)
+    offset = 0.40 if frame == 1 else 0.0
+    wave_data = [
+        (-0.7, -0.6 + offset, 0.95, 20),
+        (0.7, -0.2 - offset, 0.85, -15),
+        (-0.3, 0.5 + offset, 1.10, 10),
+        (0.6, 0.8 - offset, 0.75, -25)
+    ]
+    for (wx, wy, wl, rot) in wave_data:
+        if wy > 1.3: wy -= 2.6
+        if wy < -1.3: wy += 2.6
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=wl, vertices=16, location=(wx, wy, 0.16))
+        w = bpy.context.active_object
+        w.rotation_euler = (0, math.radians(90), math.radians(rot))
+        w.data.materials.append(mat_foam)
+        apply_uniform_clay_bevel(w, width=0.04, segments=2)
+        objs.append(w)
     return objs
 
 def build_sokpop_trees():
@@ -327,10 +325,12 @@ def build_sokpop_trees():
     mat_berry = create_clay_mat("m_ut_b", (0.92, 0.32, 0.42, 1.0))
 
     spheres = [
-        (-0.65, -0.65, 0.4, 0.75, mat_matcha), (0.65, -0.65, 0.4, 0.7, mat_matcha),
-        (-0.65, 0.65, 0.4, 0.72, mat_matcha), (0.65, 0.65, 0.4, 0.78, mat_matcha),
-        (0, 0, 0.65, 0.9, mat_lime),
-        (-0.25, 0.25, 0.95, 0.55, mat_lime)
+        (-0.85, -0.85, 0.35, 0.85, mat_matcha), (0.85, -0.85, 0.35, 0.85, mat_matcha),
+        (-0.85, 0.85, 0.35, 0.85, mat_matcha), (0.85, 0.85, 0.35, 0.85, mat_matcha),
+        (-0.75, 0.0, 0.45, 0.80, mat_lime), (0.75, 0.0, 0.45, 0.80, mat_lime),
+        (0.0, -0.75, 0.45, 0.80, mat_lime), (0.0, 0.75, 0.45, 0.80, mat_lime),
+        (0.0, 0.0, 0.75, 1.05, mat_lime),
+        (-0.25, 0.25, 1.05, 0.60, mat_matcha)
     ]
     for x, y, z, r, m in spheres:
         bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(x, y, z))
@@ -339,8 +339,8 @@ def build_sokpop_trees():
         bpy.ops.object.shade_smooth()
         objs.append(b)
 
-    for bx, by in [(-0.4, -0.3), (0.5, 0.3), (0.1, -0.6)]:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(bx, by, 1.1))
+    for bx, by, bz in [(-0.4, -0.3, 1.2), (0.5, 0.3, 1.15), (0.1, -0.6, 1.1), (-0.2, 0.6, 1.25)]:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.13, location=(bx, by, bz))
         berry = bpy.context.active_object
         berry.data.materials.append(mat_berry)
         bpy.ops.object.shade_smooth()
@@ -350,7 +350,7 @@ def build_sokpop_trees():
 
 def build_sokpop_ice():
     objs = []
-    mat_sugar = create_clay_mat("m_ui_s", (0.78, 0.90, 0.96, 1.0), roughness=0.35)
+    mat_sugar = create_clay_mat("m_ui_s", (0.78, 0.90, 0.96, 1.0), roughness=0.25)
     mat_sparkle = create_clay_mat("m_ui_sp", (0.95, 0.98, 1.0, 1.0))
 
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
@@ -360,7 +360,7 @@ def build_sokpop_ice():
     apply_uniform_clay_bevel(ice, width=0.22, segments=4)
     objs.append(ice)
 
-    for (px, py, l, angle) in [(-0.4, -0.3, 0.9, 30), (0.4, 0.4, 0.7, -40)]:
+    for (px, py, l, angle) in [(-0.4, -0.3, 0.9, 30), (0.4, 0.4, 0.7, -40), (-0.2, 0.6, 0.6, 60)]:
         bpy.ops.mesh.primitive_cylinder_add(radius=0.08, depth=l, vertices=12, location=(px, py, 0.18))
         s = bpy.context.active_object
         s.rotation_euler = (0, math.radians(90), math.radians(angle))
@@ -374,6 +374,8 @@ def build_sokpop_eagle(destroyed=False):
     mat_ped = create_clay_mat("m_ue_p", (0.85, 0.80, 0.74, 1.0) if not destroyed else (0.42, 0.40, 0.45, 1.0))
     mat_chick = create_clay_mat("m_ue_c", (0.98, 0.82, 0.22, 1.0))
     mat_beak = create_clay_mat("m_ue_b", (0.98, 0.52, 0.15, 1.0))
+    mat_crown = create_clay_mat("m_ue_cr", (0.98, 0.76, 0.15, 1.0))
+    mat_ruby = create_clay_mat("m_ue_rb", (0.92, 0.20, 0.30, 1.0))
     mat_blush = create_clay_mat("m_ue_bl", (0.98, 0.42, 0.52, 1.0))
     mat_eyes = create_clay_mat("m_ue_e", (0.15, 0.15, 0.2, 1.0), roughness=0.2)
     mat_sparkle = create_clay_mat("m_ue_sp", (1.0, 1.0, 1.0, 1.0), emission=(1.0, 1.0, 1.0, 1.0), emission_str=2.0)
@@ -407,6 +409,18 @@ def build_sokpop_eagle(destroyed=False):
         apply_uniform_clay_bevel(beak, width=0.06, segments=2)
         objs.append(beak)
 
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.32, depth=0.22, vertices=12, location=(0, 0.05, 1.42))
+        crown = bpy.context.active_object
+        crown.data.materials.append(mat_crown)
+        apply_uniform_clay_bevel(crown, width=0.04, segments=2)
+        objs.append(crown)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(0, 0.32, 1.45))
+        gem = bpy.context.active_object
+        gem.data.materials.append(mat_ruby)
+        bpy.ops.object.shade_smooth()
+        objs.append(gem)
+
         for sx in [-0.28, 0.28]:
             bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, location=(sx, 0.72, 0.82))
             eye = bpy.context.active_object
@@ -433,6 +447,13 @@ def build_sokpop_eagle(destroyed=False):
             bpy.ops.object.shade_smooth()
             objs.append(rub)
 
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.28, depth=0.20, vertices=12, location=(0.4, -0.4, 0.25))
+        fc = bpy.context.active_object
+        fc.rotation_euler = (math.radians(35), math.radians(20), math.radians(-45))
+        fc.data.materials.append(mat_crown)
+        apply_uniform_clay_bevel(fc, width=0.04, segments=2)
+        objs.append(fc)
+
     return objs
 
 # ==================== 3. SOKPOP BUILDINGS ====================
@@ -442,13 +463,13 @@ def build_sokpop_turret_base():
     mat_b = create_clay_mat("m_ubld_tb", (0.38, 0.42, 0.48, 1.0))
     mat_r = create_clay_mat("m_ubld_tr", (0.35, 0.85, 1.0, 1.0), emission=(0.35, 0.85, 1.0, 1.0), emission_str=2.0)
 
-    bpy.ops.mesh.primitive_cylinder_add(radius=1.1, depth=0.25, vertices=16, location=(0, 0, 0))
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.15, depth=0.25, vertices=16, location=(0, 0, 0))
     b = bpy.context.active_object
     b.data.materials.append(mat_b)
     apply_uniform_clay_bevel(b, width=0.08, segments=3)
     objs.append(b)
 
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.9, minor_radius=0.08, location=(0, 0, 0.12))
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.92, minor_radius=0.08, location=(0, 0, 0.12))
     r = bpy.context.active_object
     r.data.materials.append(mat_r)
     bpy.ops.object.shade_smooth()
@@ -459,8 +480,10 @@ def build_sokpop_turret_gun():
     objs = []
     mat_g = create_clay_mat("m_ubld_tg", (0.32, 0.62, 0.92, 1.0))
     mat_m = create_clay_mat("m_ubld_tm", (0.98, 0.80, 0.22, 1.0))
+    mat_bore = create_clay_mat("m_ubld_tbore", (0.10, 0.10, 0.14, 1.0))
 
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.68, location=(0, -0.08, 0.2))
+    # EXACT CENTERED PIVOT AT (0, 0, 0.2)
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.68, location=(0, 0, 0.2))
     d = bpy.context.active_object
     d.scale = (1.0, 1.0, 0.85)
     d.data.materials.append(mat_g)
@@ -468,19 +491,26 @@ def build_sokpop_turret_gun():
     objs.append(d)
 
     for bx in [-0.22, 0.22]:
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.1, depth=1.2, vertices=16, location=(bx, 0.5, 0.2))
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.10, depth=1.1, vertices=16, location=(bx, 0.55, 0.2))
         barrel = bpy.context.active_object
         barrel.rotation_euler = (math.radians(90), 0, 0)
         barrel.data.materials.append(mat_g)
         apply_uniform_clay_bevel(barrel, width=0.04, segments=2)
         objs.append(barrel)
 
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.12, minor_radius=0.06, location=(bx, 1.1, 0.2))
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.13, minor_radius=0.06, location=(bx, 1.1, 0.2))
         muzzle = bpy.context.active_object
         muzzle.rotation_euler = (math.radians(90), 0, 0)
         muzzle.data.materials.append(mat_m)
         bpy.ops.object.shade_smooth()
         objs.append(muzzle)
+
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.07, depth=0.10, vertices=12, location=(bx, 1.12, 0.2))
+        bore = bpy.context.active_object
+        bore.rotation_euler = (math.radians(90), 0, 0)
+        bore.data.materials.append(mat_bore)
+        objs.append(bore)
+
     return objs
 
 def build_sokpop_fortified_wall():
@@ -506,7 +536,7 @@ def build_sokpop_landmine():
     objs = []
     mat_m = create_clay_mat("m_ubld_m", (0.32, 0.35, 0.40, 1.0))
     mat_core = create_clay_mat("m_ubld_mc", (0.95, 0.32, 0.38, 1.0), emission=(0.95, 0.32, 0.38, 1.0), emission_str=2.5)
-    mat_eyes = create_clay_mat("m_ubld_mey", (0.15, 0.15, 0.2, 1.0))
+    mat_rim = create_clay_mat("m_ubld_mr", (0.98, 0.78, 0.22, 1.0))
 
     bpy.ops.mesh.primitive_cylinder_add(radius=0.95, depth=0.2, vertices=16, location=(0, 0, 0))
     m = bpy.context.active_object
@@ -514,18 +544,17 @@ def build_sokpop_landmine():
     apply_uniform_clay_bevel(m, width=0.08, segments=3)
     objs.append(m)
 
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.75, minor_radius=0.06, location=(0, 0, 0.12))
+    hr = bpy.context.active_object
+    hr.data.materials.append(mat_rim)
+    bpy.ops.object.shade_smooth()
+    objs.append(hr)
+
     bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45, location=(0, 0, 0.15))
     c = bpy.context.active_object
     c.data.materials.append(mat_core)
     bpy.ops.object.shade_smooth()
     objs.append(c)
-
-    for ex in [-0.25, 0.25]:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.06, location=(ex, 0.15, 0.52))
-        eye = bpy.context.active_object
-        eye.data.materials.append(mat_eyes)
-        bpy.ops.object.shade_smooth()
-        objs.append(eye)
 
     return objs
 
@@ -549,11 +578,10 @@ def build_sokpop_repair_station():
         objs.append(c)
     return objs
 
-# ==================== 4. SOKPOP MAP TOKENS (HIGH CONTRAST) ====================
+# ==================== 4. SOKPOP MAP TOKENS ====================
 
 def build_sokpop_map_node(type_name):
     objs = []
-    # Token Base (Cream Almond Clay)
     mat_base = create_clay_mat("m_um_base", (0.86, 0.80, 0.72, 1.0))
     bpy.ops.mesh.primitive_cylinder_add(radius=1.2, depth=0.35, vertices=16, location=(0, 0, 0))
     disc = bpy.context.active_object
@@ -562,7 +590,6 @@ def build_sokpop_map_node(type_name):
     objs.append(disc)
 
     if type_name == "battle":
-        # Terracotta Orange Swords
         mat_sw = create_clay_mat("m_um_sw", (0.92, 0.38, 0.18, 1.0))
         for ang in [-35, 35]:
             bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=1.6, vertices=12, location=(0, 0, 0.25))
@@ -572,7 +599,6 @@ def build_sokpop_map_node(type_name):
             apply_uniform_clay_bevel(sw, width=0.04, segments=2)
             objs.append(sw)
     elif type_name == "elite":
-        # Berry Red Skull
         mat_sk = create_clay_mat("m_um_sk", (0.85, 0.18, 0.25, 1.0))
         bpy.ops.mesh.primitive_uv_sphere_add(radius=0.55, location=(0, 0.15, 0.25))
         sk = bpy.context.active_object
@@ -586,7 +612,6 @@ def build_sokpop_map_node(type_name):
             horn.data.materials.append(mat_sk)
             objs.append(horn)
     elif type_name == "rest":
-        # Amber Campfire
         mat_f = create_clay_mat("m_um_f", (0.98, 0.55, 0.12, 1.0))
         bpy.ops.mesh.primitive_cone_add(radius1=0.45, depth=0.8, location=(0, 0.1, 0.28))
         fl = bpy.context.active_object
@@ -594,7 +619,6 @@ def build_sokpop_map_node(type_name):
         bpy.ops.object.shade_smooth()
         objs.append(fl)
     elif type_name == "shop":
-        # Honey Gold Chest
         mat_g = create_clay_mat("m_um_g", (0.92, 0.72, 0.15, 1.0))
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.25))
         box = bpy.context.active_object
@@ -603,7 +627,6 @@ def build_sokpop_map_node(type_name):
         apply_uniform_clay_bevel(box, width=0.1, segments=3)
         objs.append(box)
     elif type_name == "event":
-        # Royal Lavender Question Mark
         mat_q = create_clay_mat("m_um_q", (0.58, 0.28, 0.85, 1.0))
         bpy.ops.mesh.primitive_torus_add(major_radius=0.38, minor_radius=0.12, location=(0, 0.22, 0.25))
         tor = bpy.context.active_object
@@ -616,9 +639,7 @@ def build_sokpop_map_node(type_name):
         bpy.ops.object.shade_smooth()
         objs.append(dot)
     elif type_name == "boss":
-        # Royal Gold Crown & Ruby Gem
         mat_cr = create_clay_mat("m_um_cr", (0.98, 0.76, 0.12, 1.0))
-        mat_rb = create_clay_mat("m_um_rb", (0.90, 0.15, 0.25, 1.0))
         bpy.ops.mesh.primitive_cylinder_add(radius=0.68, depth=0.45, vertices=16, location=(0, 0, 0.25))
         cr = bpy.context.active_object
         cr.data.materials.append(mat_cr)
@@ -643,7 +664,7 @@ def build_sokpop_active_ring():
     objs.append(ring)
     return objs
 
-# ==================== 5. SOKPOP POWERUPS & VFX ====================
+# ==================== 5. SOKPOP POWERUPS ====================
 
 def build_sokpop_powerup(p_type):
     objs = []
@@ -652,100 +673,177 @@ def build_sokpop_powerup(p_type):
     mat_cyan = create_clay_mat("m_upw_c", (0.28, 0.72, 0.92, 1.0))
     mat_white = create_clay_mat("m_upw_w", (0.95, 0.95, 0.98, 1.0))
     mat_dark = create_clay_mat("m_upw_d", (0.28, 0.30, 0.35, 1.0))
+    mat_metal = create_clay_mat("m_upw_m", (0.75, 0.78, 0.84, 1.0))
 
     if p_type == "star":
-        bpy.ops.mesh.primitive_cylinder_add(radius=1.1, depth=0.3, vertices=16, location=(0, 0, 0))
-        d = bpy.context.active_object
-        d.data.materials.append(mat_gold)
-        apply_uniform_clay_bevel(d, width=0.1, segments=3)
-        objs.append(d)
-        for i in range(5):
-            angle = i * (2.0 * math.pi / 5.0)
-            bpy.ops.mesh.primitive_cylinder_add(radius=0.15, depth=0.55, vertices=8, location=(math.cos(angle)*0.38, math.sin(angle)*0.38, 0.16))
-            pt = bpy.context.active_object
-            pt.rotation_euler = (math.radians(90), 0, angle)
-            pt.data.materials.append(mat_white)
-            objs.append(pt)
+        star_outer = create_3d_star(r_out=1.15, r_in=0.52, depth=0.32, z_pos=0.0)
+        star_outer.data.materials.append(mat_gold)
+        apply_uniform_clay_bevel(star_outer, width=0.05, segments=3)
+        objs.append(star_outer)
+
+        star_inner = create_3d_star(r_out=0.75, r_in=0.34, depth=0.14, z_pos=0.18)
+        star_inner.data.materials.append(mat_white)
+        apply_uniform_clay_bevel(star_inner, width=0.03, segments=2)
+        objs.append(star_inner)
+
+    elif p_type == "gold_coin":
+        bpy.ops.mesh.primitive_cylinder_add(radius=1.05, depth=0.3, vertices=20, location=(0, 0, 0))
+        coin = bpy.context.active_object
+        coin.data.materials.append(mat_gold)
+        apply_uniform_clay_bevel(coin, width=0.08, segments=3)
+        objs.append(coin)
+
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.92, minor_radius=0.08, location=(0, 0, 0.16))
+        rim = bpy.context.active_object
+        rim.data.materials.append(mat_gold)
+        bpy.ops.object.shade_smooth()
+        objs.append(rim)
+
+        coin_star = create_3d_star(r_out=0.62, r_in=0.28, depth=0.12, z_pos=0.16)
+        coin_star.data.materials.append(mat_white)
+        apply_uniform_clay_bevel(coin_star, width=0.03, segments=2)
+        objs.append(coin_star)
+
+    elif p_type == "helmet":
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.90, location=(0, -0.05, 0.15))
+        h = bpy.context.active_object
+        h.scale = (1.05, 1.15, 0.85)
+        h.data.materials.append(mat_gold)
+        bpy.ops.object.shade_smooth()
+        objs.append(h)
+
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.92, depth=0.15, vertices=16, location=(0, 0.42, 0.08))
+        brim = bpy.context.active_object
+        brim.scale = (1.05, 0.45, 1.0)
+        brim.data.materials.append(mat_dark)
+        apply_uniform_clay_bevel(brim, width=0.06, segments=2)
+        objs.append(brim)
+
+        for sx in [-0.98, 0.98]:
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.26, depth=0.20, vertices=16, location=(sx, -0.08, 0.15))
+            ear = bpy.context.active_object
+            ear.rotation_euler = (0, math.radians(90), 0)
+            ear.data.materials.append(mat_red)
+            apply_uniform_clay_bevel(ear, width=0.05, segments=2)
+            objs.append(ear)
+
+        top_badge = create_3d_star(r_out=0.35, r_in=0.16, depth=0.08, z_pos=0.88)
+        top_badge.data.materials.append(mat_white)
+        apply_uniform_clay_bevel(top_badge, width=0.02, segments=2)
+        objs.append(top_badge)
+
     elif p_type == "bomb":
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.9, location=(0, -0.08, 0))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.92, location=(0, -0.1, 0))
         b = bpy.context.active_object
         b.data.materials.append(mat_dark)
         bpy.ops.object.shade_smooth()
         objs.append(b)
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.18, depth=0.35, location=(0, 0.82, 0))
+
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.22, depth=0.25, vertices=16, location=(0, 0.80, 0))
         c = bpy.context.active_object
         c.data.materials.append(mat_gold)
+        apply_uniform_clay_bevel(c, width=0.04, segments=2)
         objs.append(c)
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.15, location=(0, 1.05, 0))
-        sp = bpy.context.active_object
-        sp.data.materials.append(mat_red)
-        objs.append(sp)
+
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.08, depth=0.45, vertices=12, location=(0.08, 1.05, 0))
+        fuse = bpy.context.active_object
+        fuse.rotation_euler = (0, 0, math.radians(-25))
+        fuse.data.materials.append(mat_white)
+        apply_uniform_clay_bevel(fuse, width=0.02, segments=2)
+        objs.append(fuse)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.18, location=(0.18, 1.28, 0))
+        flame = bpy.context.active_object
+        flame.data.materials.append(mat_red)
+        bpy.ops.object.shade_smooth()
+        objs.append(flame)
+
     elif p_type == "clock":
-        bpy.ops.mesh.primitive_cylinder_add(radius=1.0, depth=0.3, vertices=16, location=(0, 0, 0))
+        bpy.ops.mesh.primitive_cylinder_add(radius=1.05, depth=0.3, vertices=20, location=(0, -0.08, 0))
         clk = bpy.context.active_object
         clk.data.materials.append(mat_cyan)
         apply_uniform_clay_bevel(clk, width=0.1, segments=3)
         objs.append(clk)
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.75, depth=0.08, vertices=16, location=(0, 0, 0.16))
+
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.26, minor_radius=0.08, location=(0, 1.08, 0))
+        btn = bpy.context.active_object
+        btn.data.materials.append(mat_gold)
+        bpy.ops.object.shade_smooth()
+        objs.append(btn)
+
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.78, depth=0.08, vertices=20, location=(0, -0.08, 0.16))
         face = bpy.context.active_object
         face.data.materials.append(mat_white)
         objs.append(face)
-        for (hx, hy, hl, ang) in [(0, 0.2, 0.45, 0), (0.18, 0, 0.35, 90)]:
-            bpy.ops.mesh.primitive_cylinder_add(radius=0.06, depth=hl, vertices=8, location=(hx, hy, 0.22))
+
+        for (hx, hy, hl, ang) in [(-0.14, 0.12, 0.40, -40), (0.16, 0.12, 0.46, 45)]:
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.05, depth=hl, vertices=8, location=(hx, hy - 0.08, 0.22))
             h = bpy.context.active_object
             h.rotation_euler = (0, 0, math.radians(ang))
             h.data.materials.append(mat_dark)
             objs.append(h)
-    elif p_type == "helmet":
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.92, location=(0, 0, 0))
-        h = bpy.context.active_object
-        h.scale = (1.0, 1.1, 0.8)
-        h.data.materials.append(mat_gold)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(0, -0.08, 0.24))
+        pin = bpy.context.active_object
+        pin.data.materials.append(mat_red)
         bpy.ops.object.shade_smooth()
-        objs.append(h)
+        objs.append(pin)
+
     elif p_type == "shovel":
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.2, 0))
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.32, 0))
         b = bpy.context.active_object
-        b.scale = (1.0, 1.1, 0.25)
-        b.data.materials.append(mat_cyan)
-        apply_uniform_clay_bevel(b, width=0.1, segments=3)
+        b.scale = (1.05, 0.95, 0.24)
+        b.data.materials.append(mat_metal)
+        apply_uniform_clay_bevel(b, width=0.12, segments=3)
         objs.append(b)
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.12, depth=1.2, vertices=12, location=(0, 0.65, 0))
+
+        bpy.ops.mesh.primitive_cone_add(radius1=0.52, depth=0.45, location=(0, -0.85, 0))
+        cone = bpy.context.active_object
+        cone.rotation_euler = (0, 0, math.radians(180))
+        cone.scale = (1.0, 0.5, 0.5)
+        cone.data.materials.append(mat_metal)
+        apply_uniform_clay_bevel(cone, width=0.05, segments=2)
+        objs.append(cone)
+
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.11, depth=1.1, vertices=12, location=(0, 0.50, 0))
         handle = bpy.context.active_object
         handle.data.materials.append(mat_gold)
         apply_uniform_clay_bevel(handle, width=0.04, segments=2)
         objs.append(handle)
+
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.25, minor_radius=0.07, location=(0, 1.15, 0))
+        d_grip = bpy.context.active_object
+        d_grip.data.materials.append(mat_red)
+        bpy.ops.object.shade_smooth()
+        objs.append(d_grip)
+
     elif p_type == "life":
         for sx in [-0.38, 0.38]:
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.52, location=(sx, 0.25, 0))
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.54, location=(sx, 0.25, 0))
             sph = bpy.context.active_object
             sph.data.materials.append(mat_red)
             bpy.ops.object.shade_smooth()
             objs.append(sph)
-        bpy.ops.mesh.primitive_cone_add(radius1=0.74, depth=1.1, location=(0, -0.32, 0))
+
+        bpy.ops.mesh.primitive_cone_add(radius1=0.76, depth=1.15, location=(0, -0.32, 0))
         cone = bpy.context.active_object
         cone.rotation_euler = (0, 0, math.radians(180))
         cone.data.materials.append(mat_red)
         apply_uniform_clay_bevel(cone, width=0.15, segments=3)
         objs.append(cone)
-    elif p_type == "gold_coin":
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.9, depth=0.25, vertices=16, location=(0, 0, 0))
-        coin = bpy.context.active_object
-        coin.data.materials.append(mat_gold)
-        apply_uniform_clay_bevel(coin, width=0.08, segments=3)
-        objs.append(coin)
-        for i in range(5):
-            angle = i * (2.0 * math.pi / 5.0)
-            bpy.ops.mesh.primitive_cylinder_add(radius=0.12, depth=0.5, vertices=8, location=(math.cos(angle)*0.32, math.sin(angle)*0.32, 0.15))
-            pt = bpy.context.active_object
-            pt.rotation_euler = (math.radians(90), 0, angle)
-            pt.data.materials.append(mat_white)
-            objs.append(pt)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, location=(-0.35, 0.45, 0.42))
+        hl = bpy.context.active_object
+        hl.data.materials.append(mat_white)
+        bpy.ops.object.shade_smooth()
+        objs.append(hl)
+
     return objs
+
+# ==================== 6. SOKPOP VFX ====================
 
 def build_sokpop_explosion(frame_idx):
     objs = []
-    # 6 stages of puffy clay smoke puffs
     mat_fire = create_clay_mat("m_uexp_f", (0.98, 0.45, 0.15, 1.0))
     mat_smoke = create_clay_mat("m_uexp_s", (0.88, 0.85, 0.82, 1.0))
     mat_outer = create_clay_mat("m_uexp_o", (0.42, 0.40, 0.45, 1.0))
@@ -796,7 +894,8 @@ def build_sokpop_bullet(is_plasma=False):
 def main():
     clear_scene()
     setup_render_settings(rx=256, ry=256)
-    create_sokpop_balanced_lighting(ortho_scale=3.3)
+    create_sokpop_lighting(ortho_scale=3.3)
+    reset_jitter_seed(1000)
 
     print(">>> 1. Rendering Unified Sokpop Tanks...")
     player_palettes = {
@@ -869,7 +968,6 @@ def main():
     render_and_clean(build_sokpop_active_ring(), os.path.join(SPRITES_MAP, "node_active_ring.png"))
 
     # Master .blend clean and save
-    # 清理所有孤儿材质
     for mat in list(bpy.data.materials):
         if mat.users == 0:
             bpy.data.materials.remove(mat)

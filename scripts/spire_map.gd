@@ -88,7 +88,7 @@ func _build_spire_ui() -> void:
 			if r_tex: ring.texture = r_tex
 			ring.position = Vector2(32, 32)
 			ring.scale = Vector2(0.35, 0.35)
-			ring.modulate = Color(0.3, 1.0, 0.55, 0.9)
+			ring.modulate = Color(0.58, 0.88, 0.62, 0.9)
 			btn.add_child(ring)
 		else:
 			btn.modulate = Color(0.45, 0.48, 0.55, 0.45)
@@ -112,7 +112,7 @@ func _on_draw_lines() -> void:
 			var p2 = Vector2(n_to["pos_ratio"].x * map_size.x, n_to["pos_ratio"].y * map_size.y)
 			
 			var is_active_path = (GameState.current_node_id == conn["from"] and GameState.is_node_available(conn["to"]))
-			var col = Color(0.2, 0.85, 1.0, 0.85) if is_active_path else Color(0.3, 0.35, 0.42, 0.5)
+			var col = Color(0.6, 0.8, 0.93, 0.85) if is_active_path else Color(0.42, 0.36, 0.40, 0.5)
 			var width = 3.5 if is_active_path else 1.8
 			lines_draw.draw_line(p1, p2, col, width, true)
 

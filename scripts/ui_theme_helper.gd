@@ -6,6 +6,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 static var style_btn_normal: StyleBoxTexture
 static var style_btn_hover: StyleBoxTexture
 static var style_btn_pressed: StyleBoxTexture
+static var style_btn_disabled: StyleBoxTexture
 
 static func _init_styles() -> void:
 	if style_btn_normal != null:
@@ -14,6 +15,7 @@ static func _init_styles() -> void:
 	var tex_n = TextureHelper.get_tex("res://assets/sprites/ui/btn_clay_normal.png")
 	var tex_h = TextureHelper.get_tex("res://assets/sprites/ui/btn_clay_hover.png")
 	var tex_p = TextureHelper.get_tex("res://assets/sprites/ui/btn_clay_pressed.png")
+	var tex_d = TextureHelper.get_tex("res://assets/sprites/ui/btn_clay_disabled.png")
 
 	if tex_n:
 		style_btn_normal = StyleBoxTexture.new()
@@ -51,11 +53,26 @@ static func _init_styles() -> void:
 		style_btn_pressed.content_margin_top = 10
 		style_btn_pressed.content_margin_bottom = 6
 
+	if tex_d:
+		style_btn_disabled = StyleBoxTexture.new()
+		style_btn_disabled.texture = tex_d
+		style_btn_disabled.texture_margin_left = 18
+		style_btn_disabled.texture_margin_right = 18
+		style_btn_disabled.texture_margin_top = 14
+		style_btn_disabled.texture_margin_bottom = 14
+		style_btn_disabled.content_margin_left = 12
+		style_btn_disabled.content_margin_right = 12
+		style_btn_disabled.content_margin_top = 8
+		style_btn_disabled.content_margin_bottom = 8
+
 static func apply_clay_button(btn: Button, dark_text: bool = true) -> void:
 	_init_styles()
 	if not btn: return
 	if style_btn_normal:
 		btn.add_theme_stylebox_override("normal", style_btn_normal)
+	if style_btn_disabled:
+		btn.add_theme_stylebox_override("disabled", style_btn_disabled)
+	elif style_btn_normal:
 		btn.add_theme_stylebox_override("disabled", style_btn_normal)
 	if style_btn_hover:
 		btn.add_theme_stylebox_override("hover", style_btn_hover)

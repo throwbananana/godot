@@ -41,7 +41,14 @@ func _on_body_entered(body: Node2D) -> void:
 	if shooter_type == "enemy" and body.is_in_group("enemy"):
 		return
 
-	if body.is_in_group("brick"):
+	if body.is_in_group("building"):
+		if shooter_type == "enemy":
+			if body.has_method("take_damage"):
+				body.take_damage(damage)
+			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+			queue_free()
+		return
+	elif body.is_in_group("brick"):
 		VFXAnimator.spawn_dust_puff(get_parent(), body.global_position)
 		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		body.queue_free()
@@ -57,13 +64,6 @@ func _on_body_entered(body: Node2D) -> void:
 	elif body.is_in_group("border"):
 		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		queue_free()
-		return
-	elif body.is_in_group("building"):
-		if shooter_type == "enemy":
-			if body.has_method("take_damage"):
-				body.take_damage(damage)
-			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
-			queue_free()
 		return
 	elif body.is_in_group("enemy") and shooter_type == "player":
 		if body.has_method("take_damage"):

@@ -22,6 +22,9 @@ var explosion_scene: PackedScene
 func _ready() -> void:
 	add_to_group("buildings")
 	add_to_group("steel")
+	var main = get_tree().current_scene
+	if main and main.rpg_mgr:
+		max_health = int(max_health * main.rpg_mgr.get_building_hp_mult())
 	current_health = max_health
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")

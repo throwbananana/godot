@@ -14,11 +14,17 @@ static var visited_node_ids: Array[String] = []
 static var gold: int = 150
 static var player_level: int = 1
 static var player_xp: int = 0
+static var xp_to_next: int = 100
 static var player_tier: int = 0
 static var player_lives: int = 3
 static var max_hp: int = 1
+static var max_hp_lvl: int = 0
 static var atk_bonus: int = 0
 static var speed_bonus: int = 0
+static var speed_lvl: int = 0
+static var fire_rate_lvl: int = 0
+static var regen_lvl: int = 0
+static var builder_lvl: int = 0
 
 # P2 Stats (For 2-Player Co-op)
 static var p2_tier: int = 0
@@ -42,13 +48,19 @@ static func reset_campaign(p_count: int = 1) -> void:
 	gold = 150
 	player_level = 1
 	player_xp = 0
+	xp_to_next = 100
 	player_tier = 0
 	player_lives = 3
 	p2_tier = 0
 	p2_lives = 3
 	max_hp = 1
+	max_hp_lvl = 0
 	atk_bonus = 0
 	speed_bonus = 0
+	speed_lvl = 0
+	fire_rate_lvl = 0
+	regen_lvl = 0
+	builder_lvl = 0
 	battle_type = "battle"
 	_generate_spire_map()
 
@@ -56,12 +68,22 @@ static func _generate_spire_map() -> void:
 	spire_nodes.clear()
 	spire_connections.clear()
 
+	var pool_f1 = [["battle", "event", "battle"], ["event", "battle", "event"], ["battle", "shop", "battle"]]
+	var pool_f2 = [["elite", "rest", "shop"], ["battle", "elite", "rest"], ["shop", "elite", "event"]]
+	var pool_f3 = [["battle", "elite", "event"], ["elite", "shop", "battle"], ["event", "elite", "rest"]]
+	var pool_f4 = [["rest", "shop"], ["shop", "rest"], ["rest", "event"]]
+
+	pool_f1.shuffle()
+	pool_f2.shuffle()
+	pool_f3.shuffle()
+	pool_f4.shuffle()
+
 	var floor_types = [
 		["battle", "battle", "battle"],             # Floor 0
-		["event", "battle", "event"],               # Floor 1
-		["elite", "rest", "shop"],                  # Floor 2
-		["battle", "elite", "event"],               # Floor 3
-		["rest", "shop"],                           # Floor 4
+		pool_f1[0],                                 # Floor 1
+		pool_f2[0],                                 # Floor 2
+		pool_f3[0],                                 # Floor 3
+		pool_f4[0],                                 # Floor 4
 		["boss"]                                    # Floor 5
 	]
 

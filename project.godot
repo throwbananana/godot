@@ -14,6 +14,16 @@ window/size/viewport_height=768
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
 
+[rendering]
+
+; sprite 是 256px 的 Blender 渲染稿, 在 48px 网格上要缩 5.33 倍。
+; Linear Mipmap (3) 配合 texture_helper.gd 里的 generate_mipmaps() 才能缩干净;
+; 用 Nearest 在这个倍率下只会得到锯齿, 不会得到像素风的"块感"。
+textures/canvas_textures/default_texture_filter=3
+; 黏土造型边缘是圆的, 2D MSAA 让轮廓不至于出现阶梯。
+anti_aliasing/quality/msaa_2d=2
+environment/defaults/default_clear_color=Color(0.2, 0.17, 0.2, 1)
+
 [input]
 
 move_up={

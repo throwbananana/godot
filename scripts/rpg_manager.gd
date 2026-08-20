@@ -32,6 +32,42 @@ func reset() -> void:
 	stats_changed.emit()
 	gold_changed.emit(gold)
 
+func sync_from_game_state() -> void:
+	level = GameState.player_level
+	current_xp = GameState.player_xp
+	xp_to_next = GameState.xp_to_next if GameState.xp_to_next > 0 else int(100.0 * pow(1.22, level - 1))
+	gold = GameState.gold
+	atk_bonus = GameState.atk_bonus
+	fire_rate_lvl = GameState.fire_rate_lvl
+	speed_lvl = GameState.speed_lvl
+	max_hp_lvl = GameState.max_hp_lvl
+	regen_lvl = GameState.regen_lvl
+	builder_lvl = GameState.builder_lvl
+	
+	# 处理事件或商店增加的 XP 跨场景升级
+	while current_xp >= xp_to_next:
+		current_xp -= xp_to_next
+		level += 1
+		xp_to_next = int(100.0 * pow(1.22, level - 1))
+		_auto_level_bonus()
+	
+	stats_changed.emit()
+	gold_changed.emit(gold)
+
+func sync_to_game_state() -> void:
+	GameState.player_level = level
+	GameState.player_xp = current_xp
+	GameState.xp_to_next = xp_to_next
+	GameState.gold = gold
+	GameState.atk_bonus = atk_bonus
+	GameState.fire_rate_lvl = fire_rate_lvl
+	GameState.speed_lvl = speed_lvl
+	GameState.max_hp_lvl = max_hp_lvl
+	GameState.max_hp = get_player_max_hp()
+	GameState.speed_bonus = speed_lvl
+	GameState.regen_lvl = regen_lvl
+	GameState.builder_lvl = builder_lvl
+
 func add_gold(amount: int) -> void:
 	gold += amount
 	gold_changed.emit(gold)
@@ -48,7 +84,7 @@ func add_xp(amount: int) -> void:
 	while current_xp >= xp_to_next:
 		current_xp -= xp_to_next
 		level += 1
-		xp_to_next = int(100.0 * pow(1.4, level - 1))
+		xp_to_next = int(100.0 * pow(1.22, level - 1))
 		_auto_level_bonus()
 		leveled_up.emit(level)
 	stats_changed.emit()
@@ -71,10 +107,10 @@ func get_player_max_hp() -> int:
 	return 1 + max_hp_lvl
 
 func get_speed_multiplier() -> float:
-	return 1.0 + float(speed_lvl) * 0.08
+	return 1.0 + float(speed_lvl) * 0.06
 
 func get_fire_cooldown_mult() -> float:
-	return maxf(0.4, 1.0 - float(fire_rate_lvl) * 0.08)
+	return 1.0 / (1.0 + float(fire_rate_lvl) * 0.10)
 
 func get_regen_rate() -> float:
 	return float(regen_lvl) * 0.25 # 每秒回血

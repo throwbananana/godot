@@ -36,8 +36,10 @@ func _process(delta: float) -> void:
 				return
 		sprite.texture = frame_textures[current_frame]
 
-static func create_anim(tree_parent: Node, pos: Vector2, paths: Array[String], scale_factor: float = 0.1875, fps_val: float = 16.0, rot: float = 0.0) -> VFXAnimator:
-	var node = VFXAnimator.new()
+const SelfScript = preload("res://scripts/vfx_animator.gd")
+
+static func create_anim(tree_parent: Node, pos: Vector2, paths: Array[String], scale_factor: float = 0.1875, fps_val: float = 16.0, rot: float = 0.0) -> Node2D:
+	var node = SelfScript.new()
 	node.position = pos
 	node.rotation = rot
 	node.fps = fps_val

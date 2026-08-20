@@ -125,11 +125,7 @@ func start_game() -> void:
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		p1_lives = GameState.player_lives
 		p2_lives = GameState.p2_lives
-		rpg_mgr.gold = GameState.gold
-		rpg_mgr.level = GameState.player_level
-		rpg_mgr.atk_bonus = GameState.atk_bonus
-		rpg_mgr.max_hp_lvl = max(0, GameState.max_hp - 1)
-		rpg_mgr.speed_lvl = GameState.speed_bonus
+		rpg_mgr.sync_from_game_state()
 		
 		if GameState.battle_type == "elite":
 			total_enemies = 18
@@ -166,15 +162,14 @@ func start_game() -> void:
 func add_gold(amount: int) -> void:
 	rpg_mgr.add_gold(amount)
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		GameState.gold = rpg_mgr.gold
+		rpg_mgr.sync_to_game_state()
 	show_toast("+%d GOLD!" % amount)
 
 func _on_rpg_level_up(new_lvl: int) -> void:
 	SoundManager.play_hit_steel(get_tree())
 	show_toast("★ LEVEL UP! LV.%d REACHED! ★" % new_lvl)
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		GameState.player_level = new_lvl
-		GameState.atk_bonus = rpg_mgr.atk_bonus
+		rpg_mgr.sync_to_game_state()
 	if p1_instance and is_instance_valid(p1_instance):
 		p1_instance._apply_rpg_stats()
 	if p2_instance and is_instance_valid(p2_instance):
@@ -502,7 +497,7 @@ func _game_over(victory: bool) -> void:
 		return
 	
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		GameState.gold = rpg_mgr.gold
+		rpg_mgr.sync_to_game_state()
 		GameState.player_lives = p1_lives
 		GameState.p2_lives = p2_lives
 		if p1_instance and is_instance_valid(p1_instance):
@@ -515,20 +510,20 @@ func _game_over(victory: bool) -> void:
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
 			if GameState.battle_type == "boss":
 				hud_status.text = "👑 VICTORY! 👑\nSPIRE CONQUERED!"
-				hud_status.modulate = Color(1.0, 0.85, 0.2)
+				hud_status.modulate = Color(0.98, 0.82, 0.35)
 				btn_restart.text = "RETURN TO TITLE"
 			else:
 				hud_status.text = "VICTORY!\nSECTOR SECURED"
-				hud_status.modulate = Color(0.2, 1.0, 0.4)
+				hud_status.modulate = Color(0.58, 0.86, 0.6)
 				btn_restart.text = "CONTINUE CLIMBING"
 		else:
 			hud_status.text = "VICTORY!\nSTAGE CLEARED"
-			hud_status.modulate = Color(0.2, 1.0, 0.4)
+			hud_status.modulate = Color(0.58, 0.86, 0.6)
 			btn_restart.text = "PLAY AGAIN"
 	else:
 		is_game_over = true
 		hud_status.text = "GAME OVER\nBASE DESTROYED"
-		hud_status.modulate = Color(1.0, 0.2, 0.2)
+		hud_status.modulate = Color(0.88, 0.42, 0.4)
 		btn_restart.text = "RETURN TO MENU"
 	
 	hud_status.visible = true

@@ -23,18 +23,37 @@ There is **no test suite and no linter** in this repo — verification is `--che
 
 ### Regenerating art
 
-Sprites are Blender Cycles renders. Each `tools/build_*.py` is a standalone script run headlessly; it writes PNGs straight into `assets/sprites/**` (absolute paths hardcoded to `G:\Users\123\Documents\GitHub\godot` at the top of each file) and saves `assets/blender/tank_battle_assets.blend`.
+Sprites are Blender Cycles renders (Blender 5.2 LTS at `C:\steam\steamapps\common\Blender\blender.exe`). Paths are derived from each script's own location — no hardcoded absolute paths.
+
+The earlier "four stacked generations" of build scripts are **gone**, consolidated into three:
+
+| script | renders |
+|---|---|
+| `build_all_sokpop_assets_unified.py` | tanks, tiles, eagle, buildings, power-ups, map nodes, explosions, spawn stars, bullets — and saves `assets/blender/tank_battle_assets.blend` |
+| `build_sokpop_animations.py` | muzzle flash, clay debris, shield bubble, shockwave, dust puff, damaged base |
+| `build_sokpop_clay_ui.py` | title banner, clay buttons, HP hearts |
 
 ```powershell
-& "C:\steam\steamapps\common\Blender\blender.exe" --background --python tools/build_no_sharp_edges_cute_assets.py
+$blender = "C:\steam\steamapps\common\Blender\blender.exe"
+& $blender --background --python tools/build_all_sokpop_assets_unified.py
+& $blender --background --python tools/build_sokpop_animations.py
+& $blender --background --python tools/build_sokpop_clay_ui.py
+python tools/analyze_render_and_colors.py    # QA: per-asset clipping / luminance / saturation
 ```
 
-There are **four stacked generations** of build scripts and running an old one silently reverts the art style. Newest first:
+#### `tools/sokpop_common.py` owns the look — change it there, not in the build scripts
 
-1. `build_sokpop_claymation_assets.py` (tanks, tiles, eagle) + `build_sokpop_props.py` (buildings) + `build_sokpop_clay_ui.py` (banner, buttons, hearts, map nodes) — current.
-2. `build_no_sharp_edges_cute_assets.py` + `build_no_sharp_edges_props.py` — bevel "no sharp edges" pass.
-3. `build_cute_lowpoly_assets.py` + `build_cute_props.py` + `build_rpg_buildings.py` + `build_menu_assets.py`.
-4. `build_tank_assets*.py` — **still the only source of `explosion_*.png` and `spawn_star_*.png`**; `render_powerups.py`/`generate_powerups.py` are the only source of the power-up icons. Neither gen-1 output has ever been re-rendered in a later style. `tools/update_input_map.py` **rewrites `project.godot` wholesale** from a string literal — if you edit input actions in the editor, that script goes stale; prefer editing `project.godot` directly.
+The three build scripts contain **only modelling code**; the entire render pipeline lives in `sokpop_common.py` and is imported (each script does a `sys.path.insert` on its own dir). They used to carry three copies of these helpers, which is how the art style drifted and how one bug needed fixing three times. Do not re-inline them.
+
+Things that module deliberately enforces, each of which was a real defect:
+
+- **`srgb_to_linear()` on every colour.** Blender node sockets are scene-linear; the palettes throughout the build scripts are written as sRGB. Feeding sRGB straight into `Base Color` brightens and desaturates everything (a `0.22` blue channel lands at `0.04`). Pass colours as sRGB and let `create_clay_mat()` convert.
+- **`Standard` view transform, not AgX/Filmic.** AgX is a photographic tonemapper that collapses saturated highlights toward white — it costs roughly half the chroma on this palette. Over-exposure is controlled by the light budget instead.
+- **A calibrated light budget.** Point lights fall off with the square of distance; the old 16 W fill at 6 units contributed ~0.03 W/m², i.e. nothing, leaving one sun to do everything. Sun ≈1.9 W/m² + a World ambient + two properly-scaled point lights.
+- **`create_sokpop_lighting()` is idempotent** (it purges existing cameras/lights first). `build_sokpop_clay_ui.py::main()` calls it three times to switch resolutions; without the purge the hearts rendered under nine lights.
+- **Surface irregularity.** `create_clay_mat()` adds noise→bump and colour mottle; `apply_uniform_clay_bevel()` applies seeded vertex jitter. Perfect primitives with uniform bevels read as injection-moulded plastic, not clay. `reset_jitter_seed()` at the top of `main()` keeps batches reproducible.
+
+`tools/update_input_map.py` is also gone; edit `project.godot` directly for input actions.
 
 ## Architecture
 
@@ -53,7 +72,9 @@ These two are **manually synced**, not shared: `main.gd::start_game()` copies `G
 
 Actors reach the battle controller via `get_tree().current_scene` and duck-type it (`main.rpg_mgr`, `main.has_method("trigger_bomb")`, `main.actors_container`). `player.gd`, `enemy.gd`, and `builder_controller.gd` all assume the current scene is `main.tscn`; running those scenes standalone degrades rather than crashes (null-guarded), but stats won't apply.
 
-`main.gd` builds the battlefield entirely in code — the 13×13 tile grid comes from the `layout` int array in `_build_map()` (0 empty, 1 brick, 2 steel, 3 water, 4 trees), tiles are `StaticBody2D`s created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`. Sprites are **256×256** renders. `main.gd` draws tiles at a hardcoded `scale 0.38`, which is left over from the 128px era — at 256px this makes tiles ~85px on a 48px grid (see "Known asset defects").
+`main.gd` builds the battlefield entirely in code — the 13×13 tile grid comes from the `layout` int array in `_build_map()` (0 empty, 1 brick, 2 steel, 3 water, 4 trees), tiles are `StaticBody2D`s created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`. World sprites are **256×256** renders drawn at `TILE_SCALE = TILE_SIZE / 256.0` (0.1875); the same 0.1875 is hardcoded in most `scenes/*.tscn` sprite nodes, so changing the render resolution means updating every one of them.
+
+That 5.33× minification needs mipmaps to stay clean. Assets have no `.import` files — `TextureHelper` builds them via `Image.load_from_file()` and calls `generate_mipmaps()`, paired with `textures/canvas_textures/default_texture_filter=3` (Linear Mipmap) in `project.godot`. Nearest filtering at this ratio produces aliasing, not pixel-art chunkiness; getting a genuinely chunky look would mean rendering world sprites at native size instead.
 
 ### Collision layers and groups
 

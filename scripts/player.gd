@@ -38,6 +38,7 @@ var shield_frame: int = 0
 var bullet_scene: PackedScene
 var explosion_scene: PackedScene
 
+var base_color: Color = Color(1.0, 1.0, 1.0)
 var hit_tween: Tween
 var recoil_tween: Tween
 
@@ -45,13 +46,15 @@ func _ready() -> void:
 	add_to_group("player")
 	if player_id == 1:
 		add_to_group("p1")
+		base_color = Color(1.0, 1.0, 1.0)
 	else:
 		add_to_group("p2")
+		base_color = Color(0.40, 1.35, 0.70)
 
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
 	
-	for i in range(4):
+	for i in range(8):
 		var s_tex = TextureHelper.get_tex("res://assets/sprites/effects/shield_bubble_%d.png" % i)
 		if s_tex:
 			shield_textures.append(s_tex)
@@ -76,17 +79,15 @@ func heal(amount: int) -> void:
 	health_changed.emit(player_id, current_health, max_health)
 	var tween = create_tween()
 	tween.tween_property(sprite, "modulate", Color(0.3, 2.2, 0.6), 0.1)
-	tween.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.1)
+	tween.tween_property(sprite, "modulate", base_color, 0.1)
 
 func _update_tier_appearance() -> void:
-	var tier_idx = upgrade_tier
-	if player_id == 2 and upgrade_tier == 0:
-		tier_idx = 2
-	var prefix = "player_tier%d" % tier_idx
+	var prefix = "player_tier%d" % upgrade_tier
 	tex_f0 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f0.png" % prefix)
 	tex_f1 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f1.png" % prefix)
 	if tex_f0 and sprite:
 		sprite.texture = tex_f0
+		sprite.modulate = base_color
 
 func apply_powerup(type: PowerUp.Type) -> void:
 	var main = get_tree().current_scene
@@ -256,7 +257,7 @@ func take_damage(amount: int) -> void:
 	hit_tween.tween_property(sprite, "scale", Vector2(0.15, 0.22), 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	hit_tween.tween_property(sprite, "scale", Vector2(0.18, 0.18), 0.08).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	hit_tween.parallel().tween_property(sprite, "modulate", Color(2.8, 0.6, 0.6), 0.05)
-	hit_tween.chain().tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.08)
+	hit_tween.chain().tween_property(sprite, "modulate", base_color, 0.08)
 
 	if current_health <= 0:
 		_die()

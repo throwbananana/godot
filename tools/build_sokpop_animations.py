@@ -1,105 +1,38 @@
 import bpy
 import math
 import os
+import sys
 
-PROJECT_DIR = r"G:\Users\123\Documents\GitHub\godot"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) if '__file__' in locals() else os.getcwd()
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+PROJECT_DIR = os.path.dirname(SCRIPT_DIR) if os.path.basename(SCRIPT_DIR) == 'tools' else SCRIPT_DIR
 SPRITES_EFFECTS = os.path.join(PROJECT_DIR, "assets", "sprites", "effects")
 SPRITES_TILES = os.path.join(PROJECT_DIR, "assets", "sprites", "tiles")
 
 for folder in [SPRITES_EFFECTS, SPRITES_TILES]:
     os.makedirs(folder, exist_ok=True)
 
-def clear_scene():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+# 渲染管线统一在 sokpop_common —— 见该文件顶部说明。
+from sokpop_common import (  # noqa: E402
+    srgb_to_linear,
+    clear_scene,
+    setup_render_settings,
+    create_sokpop_lighting,
+    create_clay_mat,
+    apply_uniform_clay_bevel as apply_bevel,
+    reset_jitter_seed,
+    render_and_clean as _render_and_clean,
+)
 
-def setup_render_settings(rx=256, ry=256):
-    scene = bpy.context.scene
-    scene.render.engine = 'CYCLES'
-    if hasattr(scene, 'cycles'):
-        scene.cycles.samples = 20
-        scene.cycles.adaptive_threshold = 0.04
-    scene.render.resolution_x = rx
-    scene.render.resolution_y = ry
-    scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = 'PNG'
-    scene.render.image_settings.color_mode = 'RGBA'
-    scene.render.film_transparent = True
-    
-    try:
-        scene.view_settings.view_transform = 'AgX'
-    except Exception:
-        scene.view_settings.view_transform = 'Filmic'
 
 def create_lighting(ortho_scale=3.3):
-    cam_data = bpy.data.cameras.new(name='TopDownCam')
-    cam_data.type = 'ORTHO'
-    cam_data.ortho_scale = ortho_scale
-    cam_obj = bpy.data.objects.new('TopDownCam', cam_data)
-    bpy.context.collection.objects.link(cam_obj)
-    cam_obj.location = (0, 0, 10)
-    bpy.context.scene.camera = cam_obj
+    create_sokpop_lighting(ortho_scale=ortho_scale)
 
-    sun_data = bpy.data.lights.new(name='SunKey', type='SUN')
-    sun_data.energy = 2.6
-    sun_data.color = (1.0, 0.94, 0.86)
-    sun_obj = bpy.data.objects.new('SunKey', sun_data)
-    bpy.context.collection.objects.link(sun_obj)
-    sun_obj.location = (3, -3, 8)
-    sun_obj.rotation_euler = (math.radians(38), math.radians(18), math.radians(-32))
-
-    fill_data = bpy.data.lights.new(name='FillLight', type='POINT')
-    fill_data.energy = 16.0
-    fill_data.color = (0.92, 0.88, 0.98)
-    fill_obj = bpy.data.objects.new('FillLight', fill_data)
-    bpy.context.collection.objects.link(fill_obj)
-    fill_obj.location = (-4, 4, 6)
-
-    rim_data = bpy.data.lights.new(name='RimLight', type='POINT')
-    rim_data.energy = 10.0
-    rim_data.color = (1.0, 0.96, 0.90)
-    rim_obj = bpy.data.objects.new('RimLight', rim_data)
-    bpy.context.collection.objects.link(rim_obj)
-    rim_obj.location = (0, 5, 4.5)
-
-def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08, emission=None, emission_str=0.0):
-    mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    nodes.clear()
-    bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
-    bsdf.inputs['Base Color'].default_value = col
-    bsdf.inputs['Roughness'].default_value = roughness
-    bsdf.inputs['Metallic'].default_value = 0.0
-
-    if 'Subsurface Weight' in bsdf.inputs:
-        bsdf.inputs['Subsurface Weight'].default_value = sss_weight
-    elif 'Subsurface' in bsdf.inputs:
-        bsdf.inputs['Subsurface'].default_value = sss_weight
-
-    if emission and emission_str > 0:
-        if 'Emission Color' in bsdf.inputs:
-            bsdf.inputs['Emission Color'].default_value = emission
-            bsdf.inputs['Emission Strength'].default_value = emission_str
-    out = nodes.new(type='ShaderNodeOutputMaterial')
-    mat.node_tree.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
-    return mat
-
-def apply_bevel(obj, width=0.12, segments=4):
-    bpy.context.view_layer.objects.active = obj
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    bpy.ops.object.shade_smooth()
-    mod = obj.modifiers.new(name="Bevel", type='BEVEL')
-    mod.width = width
-    mod.segments = segments
-    mod.limit_method = 'ANGLE'
-    mod.angle_limit = math.radians(22)
 
 def render_and_clean(objects, out_path):
-    bpy.context.scene.render.filepath = out_path
-    bpy.ops.render.render(write_still=True)
-    for obj in objects:
-        bpy.data.objects.remove(obj, do_unlink=True)
-    print(f"Rendered Animation Asset: {os.path.basename(out_path)}")
+    _render_and_clean(objects, out_path, label="Rendered Animation Asset")
 
 # ==================== 1. 开火枪口火花 (MUZZLE FLASH 3 FRAMES) ====================
 
@@ -153,24 +86,27 @@ def build_clay_debris(frame_idx):
 
     return objs
 
-# ==================== 3. 护盾力场泡泡 (SHIELD BUBBLE 4 FRAMES) ====================
+# ==================== 3. 护盾力场泡泡 (SHIELD BUBBLE 8 SMOOTH FRAMES) ====================
 
 def build_shield_bubble(frame_idx):
     objs = []
     mat_ring = create_clay_mat(f"m_sh_{frame_idx}", (0.28, 0.88, 0.78, 1.0), emission=(0.28, 0.88, 0.78, 1.0), emission_str=2.5)
-    mat_spark = create_clay_mat(f"m_sh_sp_{frame_idx}", (0.95, 0.98, 1.0, 1.0), emission=(0.95, 0.98, 1.0, 1.0), emission_str=3.0)
+    # 珠子原本是近白色 (0.95,0.98,1.0), 三通道一起撞顶 → 12% 像素退化成纯白。
+    # 染成和护盾同调的青白, 红通道留出余量, 既不过曝也更统一。
+    mat_spark = create_clay_mat(f"m_sh_sp_{frame_idx}", (0.72, 0.98, 0.95, 1.0), emission=(0.72, 0.98, 0.95, 1.0), emission_str=3.0)
 
-    pulse_scale = 1.25 + math.sin(frame_idx * (math.pi / 2.0)) * 0.12
+    # 8-Frame Ultra-Smooth Rotational Pulse (45 degrees per step)
+    pulse_scale = 1.25 + math.sin(frame_idx * (math.pi / 4.0)) * 0.08
     rot = frame_idx * (math.pi / 4.0)
 
-    # Outer Shield Ring
+    # Outer Torus Ring
     bpy.ops.mesh.primitive_torus_add(major_radius=pulse_scale, minor_radius=0.12, location=(0, 0, 0))
     ring = bpy.context.active_object
     ring.data.materials.append(mat_ring)
     bpy.ops.object.shade_smooth()
     objs.append(ring)
 
-    # Orbiting Beads
+    # 4 Orbiting Energy Beads
     for i in range(4):
         ang = rot + i * (math.pi / 2.0)
         bpy.ops.mesh.primitive_uv_sphere_add(radius=0.16, location=(math.cos(ang)*pulse_scale, math.sin(ang)*pulse_scale, 0))
@@ -223,21 +159,26 @@ def build_base_damaged():
     mat_beak = create_clay_mat("m_bd_b", (0.98, 0.52, 0.15, 1.0))
     mat_blush = create_clay_mat("m_bd_bl", (0.98, 0.42, 0.52, 1.0))
     mat_spiral = create_clay_mat("m_bd_sp", (0.2, 0.2, 0.25, 1.0))
+    mat_patch = create_clay_mat("m_bd_pch", (0.95, 0.88, 0.75, 1.0))
+    mat_patch_cross = create_clay_mat("m_bd_pchr", (0.90, 0.35, 0.35, 1.0))
 
+    # Marble Pedestal
     bpy.ops.mesh.primitive_cylinder_add(radius=1.35, depth=0.35, vertices=16, location=(0, 0, 0))
     ped = bpy.context.active_object
     ped.data.materials.append(mat_ped)
     apply_bevel(ped, width=0.12, segments=3)
     objs.append(ped)
 
+    # Dizzy Chick Body
     bpy.ops.mesh.primitive_uv_sphere_add(radius=0.85, location=(0, 0.05, 0.65))
     body = bpy.context.active_object
     body.data.materials.append(mat_chick)
     bpy.ops.object.shade_smooth()
     objs.append(body)
 
+    # Drooped Wings (Shocked)
     for sign in [-1, 1]:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45, location=(sign * 0.75, 0.05, 0.75))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45, location=(sign * 0.75, 0.05, 0.55))
         w = bpy.context.active_object
         w.scale = (0.5, 1.0, 0.7)
         w.rotation_euler = (0, 0, math.radians(sign * -55))
@@ -245,13 +186,23 @@ def build_base_damaged():
         bpy.ops.object.shade_smooth()
         objs.append(w)
 
-    # Beak Open (Shocked)
+    # Beak Open
     bpy.ops.mesh.primitive_cylinder_add(radius=0.22, depth=0.35, vertices=16, location=(0, 0.85, 0.65))
     beak = bpy.context.active_object
     beak.rotation_euler = (math.radians(90), 0, 0)
     beak.data.materials.append(mat_beak)
     apply_bevel(beak, width=0.06, segments=2)
     objs.append(beak)
+
+    # Cute Forehead Bandage (Cross Patch)
+    for (px, py, sx, sy) in [(0.22, 0.45, 0.32, 0.12), (0.22, 0.45, 0.12, 0.32)]:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(px, py, 1.35))
+        pch = bpy.context.active_object
+        pch.scale = (sx, sy, 0.06)
+        pch.rotation_euler = (math.radians(25), math.radians(20), math.radians(15))
+        pch.data.materials.append(mat_patch)
+        apply_bevel(pch, width=0.02, segments=2)
+        objs.append(pch)
 
     # Cartoon Dizzy Spiral Eyes
     for sx in [-0.28, 0.28]:
@@ -279,28 +230,34 @@ def main():
     print(">>> Rendering Sokpop Animations & VFX...")
     # 1. Muzzle Flash
     for i in range(3):
-        render_and_clean(build_muzzle_flash(i), os.path.join(SPRITES_EFFECTS, f"muzzle_flash_{i}.png"))
+        objs = build_muzzle_flash(i)
+        render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"muzzle_flash_{i}.png"))
 
     # 2. Clay Debris
     for i in range(4):
-        render_and_clean(build_clay_debris(i), os.path.join(SPRITES_EFFECTS, f"clay_debris_{i}.png"))
+        objs = build_clay_debris(i)
+        render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"clay_debris_{i}.png"))
 
-    # 3. Shield Bubble
-    for i in range(4):
-        render_and_clean(build_shield_bubble(i), os.path.join(SPRITES_EFFECTS, f"shield_bubble_{i}.png"))
+    # 3. Shield Bubble (8 frames)
+    for i in range(8):
+        objs = build_shield_bubble(i)
+        render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"shield_bubble_{i}.png"))
 
     # 4. Shockwave
     for i in range(4):
-        render_and_clean(build_shockwave(i), os.path.join(SPRITES_EFFECTS, f"shockwave_{i}.png"))
+        objs = build_shockwave(i)
+        render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"shockwave_{i}.png"))
 
     # 5. Dust Puff
     for i in range(4):
-        render_and_clean(build_dust_puff(i), os.path.join(SPRITES_EFFECTS, f"dust_puff_{i}.png"))
+        objs = build_dust_puff(i)
+        render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"dust_puff_{i}.png"))
 
-    # 6. Base Damaged
-    render_and_clean(build_base_damaged(), os.path.join(SPRITES_TILES, "base_damaged.png"))
+    # 6. Damaged Base Eagle
+    objs = build_base_damaged()
+    render_and_clean(objs, os.path.join(SPRITES_TILES, "base_damaged.png"))
 
-    print("All Sokpop Clay Animations Successfully Rendered!")
+    print("All Sokpop Clay Animations Rendered Successfully!")
 
 if __name__ == "__main__":
     main()

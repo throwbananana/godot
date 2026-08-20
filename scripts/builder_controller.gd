@@ -21,7 +21,7 @@ var wall_scene: PackedScene
 var mine_scene: PackedScene
 var repair_scene: PackedScene
 
-var player_ref: CharacterBody2D = null
+var active_builder_pid: int = 1
 
 func _ready() -> void:
 	turret_scene = load("res://scenes/buildings/defense_turret.tscn")
@@ -30,8 +30,9 @@ func _ready() -> void:
 	repair_scene = load("res://scenes/buildings/repair_station.tscn")
 	preview_sprite.visible = false
 
-func select_structure(type: StructureType) -> void:
+func select_structure(type: StructureType, pid: int = 1) -> void:
 	current_selection = type
+	active_builder_pid = pid
 	if current_selection == StructureType.NONE:
 		preview_sprite.visible = false
 		return
@@ -50,17 +51,29 @@ func select_structure(type: StructureType) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
+		# P1 Controls
 		if event.keycode == KEY_1:
-			select_structure(StructureType.TURRET)
+			select_structure(StructureType.TURRET, 1)
 		elif event.keycode == KEY_2:
-			select_structure(StructureType.FORTIFIED_WALL)
+			select_structure(StructureType.FORTIFIED_WALL, 1)
 		elif event.keycode == KEY_3:
-			select_structure(StructureType.LANDMINE)
+			select_structure(StructureType.LANDMINE, 1)
 		elif event.keycode == KEY_4:
-			select_structure(StructureType.REPAIR_STATION)
+			select_structure(StructureType.REPAIR_STATION, 1)
 		elif event.keycode == KEY_Q or event.keycode == KEY_ESCAPE:
-			select_structure(StructureType.NONE)
+			select_structure(StructureType.NONE, 1)
 		elif event.keycode == KEY_E or event.keycode == KEY_F:
+			_try_place_current()
+		# P2 / Alternative Controls
+		elif event.keycode == KEY_7:
+			select_structure(StructureType.TURRET, 2)
+		elif event.keycode == KEY_8:
+			select_structure(StructureType.FORTIFIED_WALL, 2)
+		elif event.keycode == KEY_9:
+			select_structure(StructureType.LANDMINE, 2)
+		elif event.keycode == KEY_0:
+			select_structure(StructureType.REPAIR_STATION, 2)
+		elif event.keycode == KEY_U or event.keycode == KEY_O:
 			_try_place_current()
 
 func _process(_delta: float) -> void:
@@ -71,31 +84,56 @@ func _process(_delta: float) -> void:
 	var place_pos = _get_target_placement_pos()
 	preview_sprite.global_position = place_pos
 
-	# 检查金币与放置合法性
+	var is_valid = _is_placement_valid(place_pos)
 	var main = get_tree().current_scene
 	var cost = costs.get(current_selection, 999)
 	var can_afford = (main.rpg_mgr.gold >= cost) if (main and main.rpg_mgr) else false
 
-	if can_afford:
-		preview_sprite.modulate = Color(0.3, 1.5, 0.4, 0.65)
+	if can_afford and is_valid:
+		preview_sprite.modulate = Color(0.3, 1.8, 0.4, 0.70)
 	else:
-		preview_sprite.modulate = Color(2.5, 0.3, 0.3, 0.65)
+		preview_sprite.modulate = Color(2.5, 0.2, 0.2, 0.70)
 
 func _get_target_placement_pos() -> Vector2:
-	var players = get_tree().get_nodes_in_group("player")
+	var target_group = "p%d" % active_builder_pid
+	var players = get_tree().get_nodes_in_group(target_group)
+	if players.is_empty():
+		players = get_tree().get_nodes_in_group("player")
+	
 	if players.size() > 0 and is_instance_valid(players[0]):
 		var p = players[0]
 		var front_pos = p.global_position + p.facing_direction * 48.0
-		# 对齐到 48px 网格
 		var gx = round((front_pos.x - 24.0) / 48.0) * 48.0 + 24.0
 		var gy = round((front_pos.y - 24.0) / 48.0) * 48.0 + 24.0
 		return Vector2(gx, gy)
 	return get_global_mouse_position()
 
+func _is_placement_valid(pos: Vector2) -> bool:
+	var min_bound = 24.0
+	var max_bound = 13.0 * 48.0 - 24.0
+	if pos.x < min_bound or pos.x > max_bound or pos.y < min_bound or pos.y > max_bound:
+		return false
+
+	var space_state = get_world_2d().direct_space_state
+	var query = PhysicsPointQueryParameters2D.new()
+	query.position = pos
+	query.collision_mask = 1 | 16 # Walls, terrain, border, buildings, base eagle
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	var hits = space_state.intersect_point(query, 4)
+	return hits.is_empty()
+
 func _try_place_current() -> void:
 	if current_selection == StructureType.NONE:
 		return
 	
+	var place_pos = _get_target_placement_pos()
+	if not _is_placement_valid(place_pos):
+		var main_scene = get_tree().current_scene
+		if main_scene and main_scene.has_method("show_toast"):
+			main_scene.show_toast("CANNOT PLACE HERE (BLOCKED)!")
+		return
+
 	var main = get_tree().current_scene
 	var cost = costs.get(current_selection, 999)
 	if not main or not main.rpg_mgr or not main.rpg_mgr.spend_gold(cost):
@@ -103,7 +141,6 @@ func _try_place_current() -> void:
 			main.show_toast("NOT ENOUGH GOLD! NEED %dG" % cost)
 		return
 
-	var place_pos = _get_target_placement_pos()
 	var new_struct: Node2D = null
 	var name_str = ""
 
