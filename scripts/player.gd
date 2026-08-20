@@ -5,11 +5,12 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const PowerUp = preload("res://scripts/power_up.gd")
 
-signal destroyed
+signal destroyed(pid: int)
 signal fired_bullet
 signal powerup_collected(type_name: String)
-signal health_changed(curr: int, max_hp: int)
+signal health_changed(pid: int, curr: int, max_hp: int)
 
+@export var player_id: int = 1 # 1=P1 (Yellow/Gold), 2=P2 (Green/Mint)
 @export var base_speed: float = 180.0
 @export var fire_cooldown: float = 0.28
 
@@ -35,6 +36,11 @@ var explosion_scene: PackedScene
 
 func _ready() -> void:
 	add_to_group("player")
+	if player_id == 1:
+		add_to_group("p1")
+	else:
+		add_to_group("p2")
+
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
 	_apply_rpg_stats()
@@ -46,17 +52,20 @@ func _apply_rpg_stats() -> void:
 	if main and main.rpg_mgr:
 		max_health = main.rpg_mgr.get_player_max_hp()
 		current_health = max_health
-		health_changed.emit(current_health, max_health)
+		health_changed.emit(player_id, current_health, max_health)
 
 func heal(amount: int) -> void:
 	current_health = mini(current_health + amount, max_health)
-	health_changed.emit(current_health, max_health)
+	health_changed.emit(player_id, current_health, max_health)
 	var tween = create_tween()
 	tween.tween_property(sprite, "modulate", Color(0.3, 2.2, 0.6), 0.1)
 	tween.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.1)
 
 func _update_tier_appearance() -> void:
-	var prefix = "player_tier%d" % upgrade_tier
+	var tier_idx = upgrade_tier
+	if player_id == 2 and upgrade_tier == 0:
+		tier_idx = 2 # P2 初始为专属抹茶薄荷绿车体
+	var prefix = "player_tier%d" % tier_idx
 	tex_f0 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f0.png" % prefix)
 	tex_f1 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f1.png" % prefix)
 	if tex_f0 and sprite:
@@ -64,31 +73,32 @@ func _update_tier_appearance() -> void:
 
 func apply_powerup(type: PowerUp.Type) -> void:
 	var main = get_tree().current_scene
+	var p_name = "P1" if player_id == 1 else "P2"
 	match type:
 		PowerUp.Type.STAR:
 			upgrade_tier = mini(upgrade_tier + 1, 3)
 			_update_tier_appearance()
 			var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
-			powerup_collected.emit("STAR UPGRADE: %s!" % rank_name)
+			powerup_collected.emit("[%s] STAR UPGRADE: %s!" % [p_name, rank_name])
 		PowerUp.Type.HELMET:
 			set_invulnerable(10.0)
-			powerup_collected.emit("HELMET SHIELD (10s)")
+			powerup_collected.emit("[%s] HELMET SHIELD (10s)" % p_name)
 		PowerUp.Type.BOMB:
 			if main and main.has_method("trigger_bomb"):
 				main.trigger_bomb()
-			powerup_collected.emit("SCREEN BOMB TRIGGERED!")
+			powerup_collected.emit("[%s] SCREEN BOMB TRIGGERED!" % p_name)
 		PowerUp.Type.CLOCK:
 			if main and main.has_method("trigger_freeze"):
 				main.trigger_freeze(7.5)
-			powerup_collected.emit("TIME FROZEN (7.5s)")
+			powerup_collected.emit("[%s] TIME FROZEN (7.5s)" % p_name)
 		PowerUp.Type.SHOVEL:
 			if main and main.has_method("trigger_shovel"):
 				main.trigger_shovel(15.0)
-			powerup_collected.emit("STEEL BASE FORTIFIED!")
+			powerup_collected.emit("[%s] STEEL BASE FORTIFIED!" % p_name)
 		PowerUp.Type.LIFE:
 			if main and main.has_method("add_life"):
 				main.add_life(1)
-			powerup_collected.emit("+1 EXTRA LIFE!")
+			powerup_collected.emit("[%s] +1 EXTRA LIFE!" % p_name)
 
 func set_invulnerable(duration: float) -> void:
 	is_invulnerable = true
@@ -97,7 +107,6 @@ func set_invulnerable(duration: float) -> void:
 		shield_sprite.visible = true
 
 func _physics_process(delta: float) -> void:
-	# 纳米自动回血
 	var main = get_tree().current_scene
 	if main and main.rpg_mgr:
 		var regen = main.rpg_mgr.get_regen_rate()
@@ -122,14 +131,20 @@ func _physics_process(delta: float) -> void:
 		if fire_timer <= 0.0:
 			can_fire = true
 
+	var act_up = "p1_move_up" if player_id == 1 else "p2_move_up"
+	var act_down = "p1_move_down" if player_id == 1 else "p2_move_down"
+	var act_left = "p1_move_left" if player_id == 1 else "p2_move_left"
+	var act_right = "p1_move_right" if player_id == 1 else "p2_move_right"
+	var act_fire = "p1_fire" if player_id == 1 else "p2_fire"
+
 	var input_vec = Vector2.ZERO
-	if Input.is_action_pressed("move_up"):
+	if Input.is_action_pressed(act_up):
 		input_vec = Vector2.UP
-	elif Input.is_action_pressed("move_down"):
+	elif Input.is_action_pressed(act_down):
 		input_vec = Vector2.DOWN
-	elif Input.is_action_pressed("move_left"):
+	elif Input.is_action_pressed(act_left):
 		input_vec = Vector2.LEFT
-	elif Input.is_action_pressed("move_right"):
+	elif Input.is_action_pressed(act_right):
 		input_vec = Vector2.RIGHT
 	
 	var speed_mult = (1.0 + float(upgrade_tier) * 0.12)
@@ -151,7 +166,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	if Input.is_action_pressed("fire") and can_fire:
+	if Input.is_action_pressed(act_fire) and can_fire:
 		_shoot()
 
 func _shoot() -> void:
@@ -199,7 +214,7 @@ func take_damage(amount: int) -> void:
 	if is_invulnerable:
 		return
 	current_health -= amount
-	health_changed.emit(current_health, max_health)
+	health_changed.emit(player_id, current_health, max_health)
 	var tween = create_tween()
 	tween.tween_property(sprite, "modulate", Color(3.0, 0.5, 0.5), 0.08)
 	tween.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.08)
@@ -211,5 +226,5 @@ func _die() -> void:
 		var exp_inst = explosion_scene.instantiate()
 		exp_inst.global_position = global_position
 		get_parent().add_child(exp_inst)
-	destroyed.emit()
+	destroyed.emit(player_id)
 	queue_free()

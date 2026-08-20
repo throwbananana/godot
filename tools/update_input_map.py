@@ -1,4 +1,9 @@
-config_version=5
+import os
+
+PROJECT_DIR = r"G:\Users\123\Documents\GitHub\godot"
+PROJ_FILE = os.path.join(PROJECT_DIR, "project.godot")
+
+content = """config_version=5
 
 [application]
 
@@ -133,3 +138,9 @@ restart={
 , Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":0,"button_index":6,"pressure":0.0,"pressed":false,"script":null)
 ]
 }
+"""
+
+with open(PROJ_FILE, "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("project.godot successfully updated with 2-Player & Gamepad mappings.")

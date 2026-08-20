@@ -4,6 +4,7 @@ extends RefCounted
 enum GameMode { CAMPAIGN, ARCADE }
 
 static var mode: GameMode = GameMode.CAMPAIGN
+static var player_count: int = 1 # 1=单人, 2=本地双人
 static var current_floor: int = 0
 static var max_floors: int = 6
 static var current_node_id: String = ""
@@ -19,8 +20,12 @@ static var max_hp: int = 1
 static var atk_bonus: int = 0
 static var speed_bonus: int = 0
 
+# P2 Stats (For 2-Player Co-op)
+static var p2_tier: int = 0
+static var p2_lives: int = 3
+
 # Battle Configuration
-static var battle_type: String = "battle" # "battle", "elite", "boss"
+static var battle_type: String = "battle"
 static var total_enemies_override: int = 15
 static var boss_enabled: bool = false
 
@@ -28,8 +33,9 @@ static var boss_enabled: bool = false
 static var spire_nodes: Dictionary = {}
 static var spire_connections: Array = []
 
-static func reset_campaign() -> void:
+static func reset_campaign(p_count: int = 1) -> void:
 	mode = GameMode.CAMPAIGN
+	player_count = p_count
 	current_floor = 0
 	current_node_id = ""
 	visited_node_ids.clear()
@@ -38,6 +44,8 @@ static func reset_campaign() -> void:
 	player_xp = 0
 	player_tier = 0
 	player_lives = 3
+	p2_tier = 0
+	p2_lives = 3
 	max_hp = 1
 	atk_bonus = 0
 	speed_bonus = 0
@@ -48,7 +56,6 @@ static func _generate_spire_map() -> void:
 	spire_nodes.clear()
 	spire_connections.clear()
 
-	# 6 Floors: 0 (Start), 1, 2, 3, 4, 5 (Boss)
 	var floor_types = [
 		["battle", "battle", "battle"],             # Floor 0
 		["event", "battle", "event"],               # Floor 1
@@ -72,17 +79,16 @@ static func _generate_spire_map() -> void:
 				"col": c_idx,
 				"type": types[c_idx],
 				"pos_ratio": Vector2(x_ratio, y_ratio),
-				"status": "locked" # locked, available, visited
+				"status": "locked"
 			}
 
-	# Generate forward connections
 	for f_idx in range(floor_types.size() - 1):
 		var curr_count = floor_types[f_idx].size()
 		var next_count = floor_types[f_idx + 1].size()
 		
 		for c_idx in range(curr_count):
 			var from_id = "f%d_n%d" % [f_idx, c_idx]
-			if next_count == 1: # Boss
+			if next_count == 1:
 				spire_connections.append({"from": from_id, "to": "f%d_n0" % (f_idx + 1)})
 			elif curr_count == next_count:
 				spire_connections.append({"from": from_id, "to": "f%d_n%d" % [f_idx + 1, c_idx]})
@@ -100,7 +106,6 @@ static func _generate_spire_map() -> void:
 				if c_idx + 1 < next_count:
 					spire_connections.append({"from": from_id, "to": "f%d_n%d" % [f_idx + 1, c_idx + 1]})
 
-	# Floor 0 nodes are initially available
 	for c_idx in range(floor_types[0].size()):
 		var n_id = "f0_n%d" % c_idx
 		if spire_nodes.has(n_id):
@@ -114,7 +119,6 @@ static func is_node_available(node_id: String) -> bool:
 	if current_node_id == "":
 		return spire_nodes[node_id]["floor"] == 0
 	
-	# Check if connected to current node
 	for conn in spire_connections:
 		if conn["from"] == current_node_id and conn["to"] == node_id:
 			return true

@@ -31,18 +31,18 @@ z_index = 20
 
 [node name="SidePanel" type="PanelContainer" parent="HUD"]
 offset_left = 736.0
-offset_top = 32.0
+offset_top = 24.0
 offset_right = 992.0
-offset_bottom = 736.0
+offset_bottom = 744.0
 
 [node name="VBox" type="VBoxContainer" parent="HUD/SidePanel"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
 
 [node name="TitleLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "TANK BATTLE RPG"
+theme_override_font_sizes/font_size = 19
+text = "TANK BATTLE 2D"
 horizontal_alignment = 1
 
 [node name="HSeparator" type="HSeparator" parent="HUD/SidePanel/VBox"]
@@ -50,17 +50,17 @@ layout_mode = 2
 
 [node name="ScoreLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "SCORE: 000000"
 
 [node name="LivesLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "LIVES: 3"
 
 [node name="EnemiesLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "ENEMIES: 20"
 
 [node name="HSeparator_RPG" type="HSeparator" parent="HUD/SidePanel/VBox"]
@@ -69,37 +69,44 @@ layout_mode = 2
 [node name="RPGLevelLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.2, 0.9, 1, 1)
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "LEVEL: LV.1"
 
 [node name="XPBar" type="ProgressBar" parent="HUD/SidePanel/VBox"]
-custom_minimum_size = Vector2(0, 12)
+custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 show_percentage = false
 
 [node name="GoldLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "GOLD: 100 G"
 
-[node name="HPLabel" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="P1HPLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.3, 1, 0.4, 1)
-theme_override_font_sizes/font_size = 14
-text = "TANK HP: 1 / 1"
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_font_sizes/font_size = 13
+text = "P1 [YEL] HP: 1 / 1"
+
+[node name="P2HPLabel" type="Label" parent="HUD/SidePanel/VBox"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.4, 1, 0.5, 1)
+theme_override_font_sizes/font_size = 13
+text = "P2 [GRN] HP: 1 / 1"
 
 [node name="StatsLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.8, 0.85, 0.9, 1)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 11
 text = "ATK: +0 | SPD: +0%\nREGEN: +0.0/s"
 
 [node name="ToastLabel" type="Label" parent="HUD/SidePanel/VBox"]
 visible = false
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 text = "POWER-UP!"
 horizontal_alignment = 1
 autowrap_mode = 2
@@ -107,27 +114,13 @@ autowrap_mode = 2
 [node name="HSeparator2" type="HSeparator" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 
-[node name="BuildTitle" type="Label" parent="HUD/SidePanel/VBox"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.4, 0.8, 1, 1)
-theme_override_font_sizes/font_size = 14
-text = "BUILD HOTBAR:"
-
-[node name="BuildInfo" type="Label" parent="HUD/SidePanel/VBox"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.75, 0.8, 0.85, 1)
-theme_override_font_sizes/font_size = 12
-text = "[1] 🛡 Turret (80G)
-[2] 🧱 Fort Wall (25G)
-[3] 💥 Landmine (40G)
-[4] ➕ Repair (120G)
-[E] Place | [Q] Cancel"
-
 [node name="ControlsInfo" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.65, 0.7, 1)
-theme_override_font_sizes/font_size = 11
-text = "W/A/S/D: Move | Space: Fire"
+theme_override_colors/font_color = Color(0.75, 0.8, 0.85, 1)
+theme_override_font_sizes/font_size = 10
+text = "• P1 / Pad 1: W/A/S/D + Space
+• P2 / Pad 2: Arrows/IJKL + Enter
+• Build: [1,2,3,4] + [E] Place"
 
 [node name="CenterMessage" type="Label" parent="HUD"]
 visible = false

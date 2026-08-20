@@ -40,27 +40,31 @@ var tex_ice: Texture2D
 @onready var hud_rpg_level: Label = $HUD/SidePanel/VBox/RPGLevelLabel
 @onready var hud_rpg_xp: ProgressBar = $HUD/SidePanel/VBox/XPBar
 @onready var hud_gold: Label = $HUD/SidePanel/VBox/GoldLabel
-@onready var hud_hp: Label = $HUD/SidePanel/VBox/HPLabel
+@onready var hud_p1_hp: Label = $HUD/SidePanel/VBox/P1HPLabel
+@onready var hud_p2_hp: Label = $HUD/SidePanel/VBox/P2HPLabel
 @onready var hud_stats: Label = $HUD/SidePanel/VBox/StatsLabel
 @onready var hud_status: Label = $HUD/CenterMessage
 @onready var hud_toast: Label = $HUD/SidePanel/VBox/ToastLabel
 @onready var btn_restart: Button = $HUD/RestartButton
 
 var score: int = 0
-var player_lives: int = 3
+var p1_lives: int = 3
+var p2_lives: int = 3
 var total_enemies: int = 15
 var enemies_spawned: int = 0
 var enemies_alive: int = 0
 var is_game_over: bool = false
 var is_victory: bool = false
 
-var player_instance: CharacterBody2D = null
+var p1_instance: CharacterBody2D = null
+var p2_instance: CharacterBody2D = null
 var base_instance: Area2D = null
 var spawn_timer: float = 0.0
 var spawn_interval: float = 2.6
 
 var enemy_spawn_points: Array[Vector2] = []
-var player_spawn_point: Vector2 = Vector2.ZERO
+var p1_spawn_point: Vector2 = Vector2.ZERO
+var p2_spawn_point: Vector2 = Vector2.ZERO
 
 var shovel_timer: float = 0.0
 var is_shovel_active: bool = false
@@ -99,7 +103,8 @@ func _ready() -> void:
 		Vector2(6.5 * TILE_SIZE, 1.0 * TILE_SIZE),
 		Vector2(12.0 * TILE_SIZE, 1.0 * TILE_SIZE)
 	]
-	player_spawn_point = Vector2(4.5 * TILE_SIZE, 12.0 * TILE_SIZE)
+	p1_spawn_point = Vector2(4.5 * TILE_SIZE, 12.0 * TILE_SIZE)
+	p2_spawn_point = Vector2(8.5 * TILE_SIZE, 12.0 * TILE_SIZE)
 
 	start_game()
 
@@ -114,9 +119,9 @@ func start_game() -> void:
 	hud_status.visible = false
 	btn_restart.visible = false
 
-	# 根据爬塔或街机模式配置敌人与属性
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		player_lives = GameState.player_lives
+		p1_lives = GameState.player_lives
+		p2_lives = GameState.p2_lives
 		rpg_mgr.gold = GameState.gold
 		rpg_mgr.level = GameState.player_level
 		rpg_mgr.atk_bonus = GameState.atk_bonus
@@ -136,15 +141,22 @@ func start_game() -> void:
 			spawn_interval = 2.5
 			show_toast("FLOOR %d: TACTICAL ENGAGEMENT" % (GameState.current_floor + 1))
 	else:
-		player_lives = 3
+		p1_lives = 3
+		p2_lives = 3
 		total_enemies = 20
 		rpg_mgr.reset()
-		show_toast("ENDLESS ARCADE - STAGE 1 READY!")
+		show_toast("2-PLAYER CO-OP ARCADE READY!")
 
 	_clear_all()
 	_build_map()
 	_spawn_base_and_walls(false)
-	_spawn_player()
+	_spawn_player(1)
+	if GameState.player_count == 2:
+		_spawn_player(2)
+		hud_p2_hp.visible = true
+	else:
+		hud_p2_hp.visible = false
+
 	_update_hud()
 	_update_rpg_hud()
 
@@ -160,8 +172,10 @@ func _on_rpg_level_up(new_lvl: int) -> void:
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		GameState.player_level = new_lvl
 		GameState.atk_bonus = rpg_mgr.atk_bonus
-	if player_instance and is_instance_valid(player_instance):
-		player_instance._apply_rpg_stats()
+	if p1_instance and is_instance_valid(p1_instance):
+		p1_instance._apply_rpg_stats()
+	if p2_instance and is_instance_valid(p2_instance):
+		p2_instance._apply_rpg_stats()
 
 func _clear_all() -> void:
 	water_sprites.clear()
@@ -310,9 +324,12 @@ func trigger_bomb() -> void:
 	show_toast("BOMB TRIGGERED! %d DESTROYED" % count)
 
 func add_life(amount: int = 1) -> void:
-	player_lives += amount
+	p1_lives += amount
+	if GameState.player_count == 2:
+		p2_lives += amount
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		GameState.player_lives = player_lives
+		GameState.player_lives = p1_lives
+		GameState.p2_lives = p2_lives
 	_update_hud()
 	show_toast("+1 EXTRA LIFE!")
 
@@ -325,24 +342,37 @@ func show_toast(msg: String) -> void:
 		tween.tween_interval(2.0)
 		tween.tween_property(hud_toast, "modulate:a", 0.0, 0.5)
 
-func _spawn_player() -> void:
-	if player_lives <= 0 or not player_scene:
-		_game_over(false)
+func _spawn_player(pid: int) -> void:
+	var lives = p1_lives if pid == 1 else p2_lives
+	if lives <= 0 or not player_scene:
+		_check_defeat_condition()
 		return
-	player_instance = player_scene.instantiate()
-	player_instance.position = player_spawn_point
-	player_instance.destroyed.connect(_on_player_destroyed)
-	player_instance.powerup_collected.connect(func(type_name): show_toast("GOT %s!" % type_name))
-	player_instance.health_changed.connect(_on_player_hp_changed)
-	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		player_instance.upgrade_tier = GameState.player_tier
-	actors_container.add_child(player_instance)
+
+	var p_inst = player_scene.instantiate()
+	p_inst.player_id = pid
+	p_inst.position = p1_spawn_point if pid == 1 else p2_spawn_point
+	p_inst.destroyed.connect(_on_player_destroyed)
+	p_inst.powerup_collected.connect(func(type_name): show_toast(type_name))
+	p_inst.health_changed.connect(_on_player_hp_changed)
+
+	if pid == 1:
+		p1_instance = p_inst
+		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			p1_instance.upgrade_tier = GameState.player_tier
+	else:
+		p2_instance = p_inst
+		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			p2_instance.upgrade_tier = GameState.p2_tier
+
+	actors_container.add_child(p_inst)
 	_update_hud()
 	_update_rpg_hud()
 
-func _on_player_hp_changed(curr: int, max_hp: int) -> void:
-	if hud_hp:
-		hud_hp.text = "TANK HP: %d / %d" % [curr, max_hp]
+func _on_player_hp_changed(pid: int, curr: int, max_hp: int) -> void:
+	if pid == 1 and hud_p1_hp:
+		hud_p1_hp.text = "P1 [YEL] HP: %d / %d" % [curr, max_hp]
+	elif pid == 2 and hud_p2_hp:
+		hud_p2_hp.text = "P2 [GRN] HP: %d / %d" % [curr, max_hp]
 
 func _process(delta: float) -> void:
 	water_anim_timer += delta
@@ -433,16 +463,33 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 	if enemies_spawned >= total_enemies and enemies_alive <= 0:
 		_game_over(true)
 
-func _on_player_destroyed() -> void:
-	player_lives -= 1
-	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		GameState.player_lives = player_lives
+func _on_player_destroyed(pid: int) -> void:
 	SoundManager.play_explosion(get_tree())
-	_update_hud()
-	if player_lives > 0:
-		get_tree().create_timer(1.5).timeout.connect(_spawn_player)
+	if pid == 1:
+		p1_lives -= 1
+		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			GameState.player_lives = p1_lives
+		if p1_lives > 0:
+			get_tree().create_timer(1.5).timeout.connect(func(): _spawn_player(1))
 	else:
-		_game_over(false)
+		p2_lives -= 1
+		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			GameState.p2_lives = p2_lives
+		if p2_lives > 0:
+			get_tree().create_timer(1.5).timeout.connect(func(): _spawn_player(2))
+	
+	_update_hud()
+	_check_defeat_condition()
+
+func _check_defeat_condition() -> void:
+	if GameState.player_count == 1:
+		if p1_lives <= 0 and (p1_instance == null or not is_instance_valid(p1_instance)):
+			_game_over(false)
+	else:
+		var p1_dead = (p1_lives <= 0 and (p1_instance == null or not is_instance_valid(p1_instance)))
+		var p2_dead = (p2_lives <= 0 and (p2_instance == null or not is_instance_valid(p2_instance)))
+		if p1_dead and p2_dead:
+			_game_over(false)
 
 func _on_base_destroyed() -> void:
 	_game_over(false)
@@ -451,12 +498,14 @@ func _game_over(victory: bool) -> void:
 	if is_game_over or is_victory:
 		return
 	
-	# 保存爬塔全局状态
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		GameState.gold = rpg_mgr.gold
-		GameState.player_lives = player_lives
-		if player_instance:
-			GameState.player_tier = player_instance.upgrade_tier
+		GameState.player_lives = p1_lives
+		GameState.p2_lives = p2_lives
+		if p1_instance and is_instance_valid(p1_instance):
+			GameState.player_tier = p1_instance.upgrade_tier
+		if p2_instance and is_instance_valid(p2_instance):
+			GameState.p2_tier = p2_instance.upgrade_tier
 
 	if victory:
 		is_victory = true
@@ -493,7 +542,10 @@ func _on_button_action() -> void:
 
 func _update_hud() -> void:
 	hud_score.text = "SCORE: %06d" % score
-	hud_lives.text = "LIVES: %d" % player_lives
+	if GameState.player_count == 1:
+		hud_lives.text = "LIVES: %d" % p1_lives
+	else:
+		hud_lives.text = "LIVES: P1:%d | P2:%d" % [p1_lives, p2_lives]
 	var remaining = total_enemies - enemies_spawned + enemies_alive
 	hud_enemies.text = "ENEMIES: %d" % remaining
 
@@ -505,8 +557,10 @@ func _update_rpg_hud() -> void:
 		hud_rpg_xp.value = rpg_mgr.current_xp
 	if hud_gold:
 		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
-	if hud_hp and player_instance and is_instance_valid(player_instance):
-		hud_hp.text = "TANK HP: %d / %d" % [player_instance.current_health, player_instance.max_health]
+	if hud_p1_hp and p1_instance and is_instance_valid(p1_instance):
+		hud_p1_hp.text = "P1 [YEL] HP: %d / %d" % [p1_instance.current_health, p1_instance.max_health]
+	if hud_p2_hp and p2_instance and is_instance_valid(p2_instance):
+		hud_p2_hp.text = "P2 [GRN] HP: %d / %d" % [p2_instance.current_health, p2_instance.max_health]
 	if hud_stats:
 		hud_stats.text = "ATK: +%d | SPD: +%d%%\nREGEN: +%.1f/s" % [
 			rpg_mgr.atk_bonus,
