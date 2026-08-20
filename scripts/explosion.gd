@@ -9,10 +9,10 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 var textures: Array[Texture2D] = []
 var current_frame: int = 0
 var frame_timer: float = 0.0
-var frame_duration: float = 0.06
+var frame_duration: float = 0.055
 
 func _ready() -> void:
-	for i in range(4):
+	for i in range(6):
 		var tex = TextureHelper.get_tex("res://assets/sprites/effects/explosion_%d.png" % i)
 		if tex:
 			textures.append(tex)

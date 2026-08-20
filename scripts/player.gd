@@ -13,7 +13,7 @@ signal powerup_collected(type_name: String)
 @export var fire_cooldown: float = 0.28
 @export var max_health: int = 1
 
-var upgrade_tier: int = 0 # 0=基础, 1=提速+速射, 2=连发, 3=超武破钢
+var upgrade_tier: int = 0 # 0=基础黄, 1=强化黄, 2=突击双管绿, 3=终极等离子蓝金战列舰
 var current_health: int = 1
 var can_fire: bool = true
 var fire_timer: float = 0.0
@@ -33,14 +33,14 @@ var explosion_scene: PackedScene
 
 func _ready() -> void:
 	add_to_group("player")
-	_update_tier_appearance()
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
+	_update_tier_appearance()
 	current_health = max_health
 	set_invulnerable(3.5)
 
 func _update_tier_appearance() -> void:
-	var prefix = "player_tank_yellow" if upgrade_tier < 2 else "player_tank_green"
+	var prefix = "player_tier%d" % upgrade_tier
 	tex_f0 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f0.png" % prefix)
 	tex_f1 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f1.png" % prefix)
 	if tex_f0 and sprite:
@@ -52,26 +52,27 @@ func apply_powerup(type: PowerUp.Type) -> void:
 		PowerUp.Type.STAR:
 			upgrade_tier = mini(upgrade_tier + 1, 3)
 			_update_tier_appearance()
-			powerup_collected.emit("STAR (TIER %d)" % (upgrade_tier + 1))
+			var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
+			powerup_collected.emit("STAR UPGRADE: %s!" % rank_name)
 		PowerUp.Type.HELMET:
 			set_invulnerable(10.0)
-			powerup_collected.emit("HELMET SHIELD")
+			powerup_collected.emit("HELMET SHIELD (10s)")
 		PowerUp.Type.BOMB:
 			if main and main.has_method("trigger_bomb"):
 				main.trigger_bomb()
-			powerup_collected.emit("SCREEN BOMB")
+			powerup_collected.emit("SCREEN BOMB TRIGGERED!")
 		PowerUp.Type.CLOCK:
 			if main and main.has_method("trigger_freeze"):
 				main.trigger_freeze(7.5)
-			powerup_collected.emit("TIME FREEZE")
+			powerup_collected.emit("TIME FROZEN (7.5s)")
 		PowerUp.Type.SHOVEL:
 			if main and main.has_method("trigger_shovel"):
 				main.trigger_shovel(15.0)
-			powerup_collected.emit("STEEL BASE")
+			powerup_collected.emit("STEEL BASE FORTIFIED!")
 		PowerUp.Type.LIFE:
 			if main and main.has_method("add_life"):
 				main.add_life(1)
-			powerup_collected.emit("EXTRA LIFE")
+			powerup_collected.emit("+1 EXTRA LIFE!")
 
 func set_invulnerable(duration: float) -> void:
 	is_invulnerable = true
@@ -105,7 +106,8 @@ func _physics_process(delta: float) -> void:
 	elif Input.is_action_pressed("move_right"):
 		input_vec = Vector2.RIGHT
 	
-	var current_speed = base_speed * (1.2 if upgrade_tier >= 1 else 1.0)
+	var speed_mult = 1.0 + float(upgrade_tier) * 0.12
+	var current_speed = base_speed * speed_mult
 
 	if input_vec != Vector2.ZERO:
 		facing_direction = input_vec
@@ -113,7 +115,7 @@ func _physics_process(delta: float) -> void:
 		rotation = facing_direction.angle() + PI / 2.0
 		
 		# 履带动画
-		if int(Time.get_ticks_msec() / 70) % 2 != current_frame:
+		if int(Time.get_ticks_msec() / 65) % 2 != current_frame:
 			current_frame = 1 - current_frame
 			if tex_f0 and tex_f1:
 				sprite.texture = tex_f1 if current_frame == 1 else tex_f0
@@ -128,21 +130,35 @@ func _physics_process(delta: float) -> void:
 func _shoot() -> void:
 	if not bullet_scene:
 		return
-	var cd = fire_cooldown * (0.75 if upgrade_tier >= 1 else 1.0)
+	var cd = fire_cooldown * (0.65 if upgrade_tier >= 1 else 1.0)
 	can_fire = false
 	fire_timer = cd
 	
-	var b_speed = 480.0 if upgrade_tier == 0 else 620.0
-	var can_break_steel = (upgrade_tier >= 3)
+	var is_plasma = (upgrade_tier >= 3)
+	var can_break_steel = is_plasma
+	var b_speed = 520.0 if upgrade_tier == 0 else 660.0
 	
-	var bullet = bullet_scene.instantiate()
-	bullet.direction = facing_direction
-	bullet.speed = b_speed
-	bullet.can_destroy_steel = can_break_steel
-	bullet.global_position = global_position + facing_direction * 28.0
-	bullet.shooter = self
-	bullet.shooter_type = "player"
-	get_parent().add_child(bullet)
+	if upgrade_tier == 2:
+		# 双联装双管开火
+		for offset_x in [-10.0, 10.0]:
+			var right_vec = facing_direction.rotated(PI / 2.0)
+			var bullet = bullet_scene.instantiate()
+			bullet.direction = facing_direction
+			bullet.speed = b_speed
+			bullet.can_destroy_steel = can_break_steel
+			bullet.global_position = global_position + facing_direction * 28.0 + right_vec * offset_x
+			bullet.shooter = self
+			bullet.shooter_type = "player"
+			get_parent().add_child(bullet)
+	else:
+		var bullet = bullet_scene.instantiate()
+		bullet.direction = facing_direction
+		bullet.speed = b_speed
+		bullet.can_destroy_steel = can_break_steel
+		bullet.global_position = global_position + facing_direction * 28.0
+		bullet.shooter = self
+		bullet.shooter_type = "player"
+		get_parent().add_child(bullet)
 	
 	SoundManager.play_shot(get_tree())
 	fired_bullet.emit()

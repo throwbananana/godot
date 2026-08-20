@@ -18,7 +18,8 @@ var spawnstar_scene: PackedScene
 
 var tex_brick: Texture2D
 var tex_steel: Texture2D
-var tex_water: Texture2D
+var tex_water_f0: Texture2D
+var tex_water_f1: Texture2D
 var tex_trees: Texture2D
 var tex_ice: Texture2D
 
@@ -51,6 +52,9 @@ var player_spawn_point: Vector2 = Vector2.ZERO
 
 var shovel_timer: float = 0.0
 var is_shovel_active: bool = false
+var water_sprites: Array[Sprite2D] = []
+var water_anim_timer: float = 0.0
+var water_frame: int = 0
 
 func _ready() -> void:
 	player_scene = load("res://scenes/player.tscn")
@@ -61,7 +65,8 @@ func _ready() -> void:
 
 	tex_brick = TextureHelper.get_tex("res://assets/sprites/tiles/tile_brick.png")
 	tex_steel = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png")
-	tex_water = TextureHelper.get_tex("res://assets/sprites/tiles/tile_water.png")
+	tex_water_f0 = TextureHelper.get_tex("res://assets/sprites/tiles/tile_water_f0.png")
+	tex_water_f1 = TextureHelper.get_tex("res://assets/sprites/tiles/tile_water_f1.png")
 	tex_trees = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
 	tex_ice = TextureHelper.get_tex("res://assets/sprites/tiles/tile_ice.png")
 
@@ -100,9 +105,10 @@ func start_game() -> void:
 	_spawn_base_and_walls(false)
 	_spawn_player()
 	_update_hud()
-	show_toast("STAGE 1 - START!")
+	show_toast("STAGE 1 - BATTLE READY!")
 
 func _clear_all() -> void:
+	water_sprites.clear()
 	for child in map_container.get_children():
 		child.queue_free()
 	for child in base_wall_container.get_children():
@@ -144,7 +150,7 @@ func _build_map() -> void:
 			elif tile_type == 2:
 				_spawn_tile("steel", pos, tex_steel)
 			elif tile_type == 3:
-				_spawn_tile("water", pos, tex_water)
+				_spawn_tile("water", pos, tex_water_f0)
 			elif tile_type == 4:
 				_spawn_tile("trees", pos, tex_trees)
 
@@ -181,6 +187,9 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 	spr.scale = Vector2(0.38, 0.38)
 	body.add_child(spr)
 
+	if type == "water":
+		water_sprites.append(spr)
+
 	var col = CollisionShape2D.new()
 	var shape = RectangleShape2D.new()
 	shape.size = Vector2(TILE_SIZE - 2, TILE_SIZE - 2)
@@ -193,13 +202,11 @@ func _spawn_base_and_walls(use_steel: bool = false) -> void:
 	for child in base_wall_container.get_children():
 		child.queue_free()
 
-	# 基地自身
 	base_instance = base_scene.instantiate()
 	base_instance.position = Vector2(6.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 	base_instance.destroyed.connect(_on_base_destroyed)
 	base_wall_container.add_child(base_instance)
 
-	# 环绕基地的保护墙
 	var wall_positions = [
 		Vector2(5.5 * TILE_SIZE, 12.5 * TILE_SIZE),
 		Vector2(5.5 * TILE_SIZE, 11.5 * TILE_SIZE),
@@ -230,7 +237,7 @@ func trigger_shovel(duration: float = 15.0) -> void:
 	is_shovel_active = true
 	shovel_timer = duration
 	_spawn_base_and_walls(true)
-	show_toast("BASE REINFORCED WITH STEEL!")
+	show_toast("BASE FORTIFIED WITH STEEL!")
 
 func trigger_freeze(duration: float = 7.5) -> void:
 	for node in actors_container.get_children():
@@ -244,7 +251,7 @@ func trigger_bomb() -> void:
 		if node is EnemyTank:
 			node.take_damage(99)
 			count += 1
-	show_toast("BOMB TRIGGERED! %d ENEMIES DESTROYED" % count)
+	show_toast("BOMB TRIGGERED! %d DESTROYED" % count)
 
 func add_life(amount: int = 1) -> void:
 	player_lives += amount
@@ -272,10 +279,20 @@ func _spawn_player() -> void:
 	_update_hud()
 
 func _process(delta: float) -> void:
+	# 水面波纹动画循环
+	water_anim_timer += delta
+	if water_anim_timer >= 0.35:
+		water_anim_timer = 0.0
+		water_frame = 1 - water_frame
+		var w_tex = tex_water_f1 if water_frame == 1 else tex_water_f0
+		if w_tex:
+			for spr in water_sprites:
+				if is_instance_valid(spr):
+					spr.texture = w_tex
+
 	if is_shovel_active:
 		shovel_timer -= delta
 		if shovel_timer <= 3.0:
-			# 快结束时闪烁
 			base_wall_container.modulate.a = 0.4 if int(shovel_timer * 6.0) % 2 == 0 else 1.0
 		if shovel_timer <= 0.0:
 			is_shovel_active = false
@@ -288,7 +305,6 @@ func _process(delta: float) -> void:
 			restart_game()
 		return
 
-	# 刷怪调度
 	if enemies_spawned < total_enemies and enemies_alive < 4:
 		spawn_timer += delta
 		if spawn_timer >= spawn_interval:
@@ -301,11 +317,8 @@ func _request_spawn_enemy() -> void:
 	
 	var spawn_idx = enemies_spawned % enemy_spawn_points.size()
 	var spawn_pos = enemy_spawn_points[spawn_idx]
-	
-	# 判断是否为携带道具的闪烁坦克 (第 4, 11, 18 辆)
 	var is_bonus = (enemies_spawned in [3, 10, 17])
 	
-	# 敌军类型权重
 	var type = EnemyTank.EnemyType.BASIC
 	var r = randf()
 	if r < 0.40:
@@ -317,7 +330,6 @@ func _request_spawn_enemy() -> void:
 	else:
 		type = EnemyTank.EnemyType.ARMOR
 
-	# 播放闪烁星生成指示器
 	var star = spawnstar_scene.instantiate()
 	star.position = spawn_pos
 	star.finished.connect(func(): _instantiate_enemy(spawn_pos, type, is_bonus))
@@ -343,13 +355,11 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 	SoundManager.play_explosion(get_tree())
 	_update_hud()
 
-	# 爆出道具
 	if is_bonus and powerup_scene:
 		var p_inst = powerup_scene.instantiate()
 		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE]
 		types.shuffle()
 		p_inst.setup(types[0])
-		# 随机选择一个合适的位置（或在敌军死亡位置）
 		p_inst.position = drop_pos
 		actors_container.add_child(p_inst)
 		show_toast("BONUS ITEM DROPPED!")
