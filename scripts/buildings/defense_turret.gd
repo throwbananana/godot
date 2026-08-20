@@ -3,6 +3,7 @@ extends StaticBody2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 @export var max_health: int = 8
 @export var attack_range: float = 220.0
@@ -66,11 +67,18 @@ func _shoot(dir: Vector2) -> void:
 	var bullet = bullet_scene.instantiate()
 	bullet.direction = dir
 	bullet.speed = 520.0
-	bullet.global_position = global_position + dir * 24.0
+	var muzzle_pos = global_position + dir * 26.0
+	bullet.global_position = muzzle_pos
 	bullet.shooter = self
 	bullet.shooter_type = "player"
 	get_parent().add_child(bullet)
 	SoundManager.play_shot(get_tree())
+
+	# 枪口后坐力与火花
+	var tw = create_tween()
+	tw.tween_property(gun_sprite, "position", -dir * 3.0, 0.04)
+	tw.tween_property(gun_sprite, "position", Vector2.ZERO, 0.08)
+	VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, gun_sprite.rotation)
 
 func heal(amount: int) -> void:
 	current_health = mini(current_health + amount, max_health)

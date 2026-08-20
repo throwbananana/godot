@@ -2,6 +2,7 @@ class_name RepairStation
 extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
+const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 @onready var sprite: Sprite2D = $Sprite2D
 var heal_timer: float = 0.0
@@ -27,6 +28,7 @@ func _pulse_heal() -> void:
 		if is_instance_valid(p) and global_position.distance_to(p.global_position) < heal_radius:
 			if p.has_method("heal"):
 				p.heal(1)
+				VFXAnimator.spawn_dust_puff(get_parent(), p.global_position)
 
 	var blds = get_tree().get_nodes_in_group("buildings")
 	for b in blds:

@@ -290,47 +290,73 @@ def build_sokpop_steel():
 
 def build_sokpop_water(frame=0):
     objs = []
-    mat_water = create_clay_mat("m_uw_w", (0.28, 0.70, 0.88, 1.0), roughness=0.28, sss_weight=0.15)
-    mat_foam = create_clay_mat("m_uw_f", (0.95, 0.95, 0.98, 1.0))
+    mat_water = create_clay_mat("m_uw_w", (0.26, 0.68, 0.88, 1.0), roughness=0.25, sss_weight=0.15)
+    mat_foam = create_clay_mat("m_uw_f", (0.95, 0.96, 0.98, 1.0))
+    mat_bubble = create_clay_mat("m_uw_b", (0.85, 0.95, 1.0, 1.0), roughness=0.1)
 
+    # 1. Main Water Basin Block
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     water = bpy.context.active_object
-    water.scale = (2.95, 2.95, 0.3)
+    water.scale = (2.95, 2.95, 0.32)
     water.data.materials.append(mat_water)
-    apply_uniform_clay_bevel(water, width=0.12, segments=3)
+    apply_uniform_clay_bevel(water, width=0.14, segments=3)
     objs.append(water)
 
-    offset = 0.40 if frame == 1 else 0.0
-    wave_data = [
-        (-0.7, -0.6 + offset, 0.95, 20),
-        (0.7, -0.2 - offset, 0.85, -15),
-        (-0.3, 0.5 + offset, 1.10, 10),
-        (0.6, 0.8 - offset, 0.75, -25)
+    # 2. Fluid Curved Wave Ridges (Multi-lobe wavy crests)
+    offset = 0.45 if frame == 1 else 0.0
+    wave_configs = [
+        (-0.75, -0.65 + offset, 1.10, 15),
+        (0.65, -0.25 - offset, 0.95, -12),
+        (-0.35, 0.45 + offset, 1.25, 8),
+        (0.70, 0.75 - offset, 0.85, -20)
     ]
-    for (wx, wy, wl, rot) in wave_data:
+    for (wx, wy, wl, rot) in wave_configs:
         if wy > 1.3: wy -= 2.6
         if wy < -1.3: wy += 2.6
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=wl, vertices=16, location=(wx, wy, 0.16))
+        # Wavy ribbon
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.12, depth=wl, vertices=16, location=(wx, wy, 0.16))
         w = bpy.context.active_object
         w.rotation_euler = (0, math.radians(90), math.radians(rot))
+        w.scale = (0.8, 1.2, 1.0)
         w.data.materials.append(mat_foam)
         apply_uniform_clay_bevel(w, width=0.04, segments=2)
         objs.append(w)
+
+        # Adjacent foam bead
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(wx + 0.35, wy + 0.1, 0.17))
+        bub = bpy.context.active_object
+        bub.data.materials.append(mat_bubble)
+        bpy.ops.object.shade_smooth()
+        objs.append(bub)
+
     return objs
 
 def build_sokpop_trees():
     objs = []
-    mat_matcha = create_clay_mat("m_ut_m", (0.36, 0.74, 0.32, 1.0))
-    mat_lime = create_clay_mat("m_ut_l", (0.52, 0.82, 0.35, 1.0))
-    mat_berry = create_clay_mat("m_ut_b", (0.92, 0.32, 0.42, 1.0))
+    mat_matcha = create_clay_mat("m_ut_m", (0.34, 0.72, 0.30, 1.0))
+    mat_lime = create_clay_mat("m_ut_l", (0.50, 0.82, 0.34, 1.0))
+    mat_trunk = create_clay_mat("m_ut_tr", (0.45, 0.28, 0.18, 1.0))
+    mat_berry = create_clay_mat("m_ut_b", (0.92, 0.30, 0.40, 1.0))
 
+    # 1. Exposed Wooden Trunk/Stump Base
+    for (tx, ty) in [(-0.55, -0.55), (0.55, 0.55)]:
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.28, depth=0.45, vertices=12, location=(tx, ty, 0.08))
+        trunk = bpy.context.active_object
+        trunk.data.materials.append(mat_trunk)
+        apply_uniform_clay_bevel(trunk, width=0.06, segments=2)
+        objs.append(trunk)
+
+    # 2. Rich Layered Canopy Volumes
     spheres = [
-        (-0.85, -0.85, 0.35, 0.85, mat_matcha), (0.85, -0.85, 0.35, 0.85, mat_matcha),
-        (-0.85, 0.85, 0.35, 0.85, mat_matcha), (0.85, 0.85, 0.35, 0.85, mat_matcha),
-        (-0.75, 0.0, 0.45, 0.80, mat_lime), (0.75, 0.0, 0.45, 0.80, mat_lime),
-        (0.0, -0.75, 0.45, 0.80, mat_lime), (0.0, 0.75, 0.45, 0.80, mat_lime),
-        (0.0, 0.0, 0.75, 1.05, mat_lime),
-        (-0.25, 0.25, 1.05, 0.60, mat_matcha)
+        # Base canopy layer (dark matcha)
+        (-0.85, -0.85, 0.38, 0.82, mat_matcha), (0.85, -0.85, 0.38, 0.82, mat_matcha),
+        (-0.85, 0.85, 0.38, 0.82, mat_matcha), (0.85, 0.85, 0.38, 0.82, mat_matcha),
+        # Mid-tier lush foliage (vibrant lime)
+        (-0.75, 0.0, 0.50, 0.80, mat_lime), (0.75, 0.0, 0.50, 0.80, mat_lime),
+        (0.0, -0.75, 0.50, 0.80, mat_lime), (0.0, 0.75, 0.50, 0.80, mat_lime),
+        # Crown summit dome
+        (0.0, 0.0, 0.82, 1.08, mat_lime),
+        (-0.25, 0.25, 1.12, 0.65, mat_matcha)
     ]
     for x, y, z, r, m in spheres:
         bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(x, y, z))
@@ -339,8 +365,15 @@ def build_sokpop_trees():
         bpy.ops.object.shade_smooth()
         objs.append(b)
 
-    for bx, by, bz in [(-0.4, -0.3, 1.2), (0.5, 0.3, 1.15), (0.1, -0.6, 1.1), (-0.2, 0.6, 1.25)]:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.13, location=(bx, by, bz))
+    # 3. Clustered Berry Bunches
+    berry_clusters = [
+        (-0.42, -0.32, 1.25), (-0.32, -0.42, 1.22),
+        (0.52, 0.32, 1.18), (0.42, 0.45, 1.20),
+        (0.12, -0.65, 1.12),
+        (-0.22, 0.62, 1.28)
+    ]
+    for bx, by, bz in berry_clusters:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(bx, by, bz))
         berry = bpy.context.active_object
         berry.data.materials.append(mat_berry)
         bpy.ops.object.shade_smooth()
@@ -350,23 +383,42 @@ def build_sokpop_trees():
 
 def build_sokpop_ice():
     objs = []
-    mat_sugar = create_clay_mat("m_ui_s", (0.78, 0.90, 0.96, 1.0), roughness=0.25)
+    mat_sugar = create_clay_mat("m_ui_s", (0.76, 0.90, 0.96, 1.0), roughness=0.22, sss_weight=0.12)
+    mat_fracture = create_clay_mat("m_ui_fr", (0.60, 0.78, 0.88, 1.0))
     mat_sparkle = create_clay_mat("m_ui_sp", (0.95, 0.98, 1.0, 1.0))
 
+    # 1. Main Ice Block
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     ice = bpy.context.active_object
-    ice.scale = (2.85, 2.85, 0.3)
+    ice.scale = (2.85, 2.85, 0.30)
     ice.data.materials.append(mat_sugar)
     apply_uniform_clay_bevel(ice, width=0.22, segments=4)
     objs.append(ice)
 
-    for (px, py, l, angle) in [(-0.4, -0.3, 0.9, 30), (0.4, 0.4, 0.7, -40), (-0.2, 0.6, 0.6, 60)]:
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.08, depth=l, vertices=12, location=(px, py, 0.18))
+    # 2. Crystalline Fracture Veins
+    fractures = [
+        (-0.55, -0.45, 0.85, 28),
+        (0.45, 0.52, 0.72, -35),
+        (-0.25, 0.68, 0.60, 55),
+        (0.60, -0.55, 0.50, -65)
+    ]
+    for (px, py, l, angle) in fractures:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(px, py, 0.16))
         s = bpy.context.active_object
-        s.rotation_euler = (0, math.radians(90), math.radians(angle))
-        s.data.materials.append(mat_sparkle)
-        apply_uniform_clay_bevel(s, width=0.04, segments=2)
+        s.scale = (l, 0.08, 0.04)
+        s.rotation_euler = (0, 0, math.radians(angle))
+        s.data.materials.append(mat_fracture)
+        apply_uniform_clay_bevel(s, width=0.02, segments=2)
         objs.append(s)
+
+    # 3. Four-pointed Glint Sparkles
+    for (gx, gy) in [(-0.35, 0.25), (0.50, -0.20)]:
+        star = create_3d_star(r_out=0.32, r_in=0.12, depth=0.08, z_pos=0.18)
+        star.location = (gx, gy, 0)
+        star.data.materials.append(mat_sparkle)
+        apply_uniform_clay_bevel(star, width=0.02, segments=2)
+        objs.append(star)
+
     return objs
 
 def build_sokpop_eagle(destroyed=False):
@@ -460,29 +512,57 @@ def build_sokpop_eagle(destroyed=False):
 
 def build_sokpop_turret_base():
     objs = []
-    mat_b = create_clay_mat("m_ubld_tb", (0.38, 0.42, 0.48, 1.0))
+    mat_b = create_clay_mat("m_ubld_tb", (0.35, 0.38, 0.45, 1.0))
+    mat_plate = create_clay_mat("m_ubld_tp", (0.50, 0.55, 0.62, 1.0))
     mat_r = create_clay_mat("m_ubld_tr", (0.35, 0.85, 1.0, 1.0), emission=(0.35, 0.85, 1.0, 1.0), emission_str=2.0)
+    mat_gold = create_clay_mat("m_ubld_tg_bolt", (0.95, 0.78, 0.22, 1.0))
 
-    bpy.ops.mesh.primitive_cylinder_add(radius=1.15, depth=0.25, vertices=16, location=(0, 0, 0))
+    # 1. Octagonal Anchor Base Plate
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.22, depth=0.18, vertices=8, location=(0, 0, -0.04))
     b = bpy.context.active_object
     b.data.materials.append(mat_b)
     apply_uniform_clay_bevel(b, width=0.08, segments=3)
     objs.append(b)
 
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.92, minor_radius=0.08, location=(0, 0, 0.12))
+    # 4 Corner Anchor Feet with Bolts
+    for (fx, fy) in [(-0.95, -0.95), (0.95, -0.95), (-0.95, 0.95), (0.95, 0.95)]:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(fx, fy, 0.04))
+        foot = bpy.context.active_object
+        foot.scale = (0.36, 0.36, 0.14)
+        foot.data.materials.append(mat_plate)
+        apply_uniform_clay_bevel(foot, width=0.04, segments=2)
+        objs.append(foot)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.07, location=(fx, fy, 0.12))
+        bolt = bpy.context.active_object
+        bolt.data.materials.append(mat_gold)
+        bpy.ops.object.shade_smooth()
+        objs.append(bolt)
+
+    # 2. Turntable Ring & Glowing Track
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.98, depth=0.18, vertices=20, location=(0, 0, 0.08))
+    ring_mount = bpy.context.active_object
+    ring_mount.data.materials.append(mat_plate)
+    apply_uniform_clay_bevel(ring_mount, width=0.06, segments=3)
+    objs.append(ring_mount)
+
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.88, minor_radius=0.07, location=(0, 0, 0.18))
     r = bpy.context.active_object
     r.data.materials.append(mat_r)
     bpy.ops.object.shade_smooth()
     objs.append(r)
+
     return objs
 
 def build_sokpop_turret_gun():
     objs = []
     mat_g = create_clay_mat("m_ubld_tg", (0.32, 0.62, 0.92, 1.0))
+    mat_mantlet = create_clay_mat("m_ubld_tmantlet", (0.26, 0.48, 0.75, 1.0))
     mat_m = create_clay_mat("m_ubld_tm", (0.98, 0.80, 0.22, 1.0))
     mat_bore = create_clay_mat("m_ubld_tbore", (0.10, 0.10, 0.14, 1.0))
+    mat_optic = create_clay_mat("m_ubld_toptic", (0.98, 0.35, 0.45, 1.0), emission=(0.98, 0.35, 0.45, 1.0), emission_str=2.0)
 
-    # EXACT CENTERED PIVOT AT (0, 0, 0.2)
+    # 1. Main Dome (EXACT CENTERED PIVOT AT (0, 0, 0.2))
     bpy.ops.mesh.primitive_uv_sphere_add(radius=0.68, location=(0, 0, 0.2))
     d = bpy.context.active_object
     d.scale = (1.0, 1.0, 0.85)
@@ -490,22 +570,56 @@ def build_sokpop_turret_gun():
     bpy.ops.object.shade_smooth()
     objs.append(d)
 
+    # 2. Top Hatch
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.28, depth=0.12, vertices=16, location=(0, -0.10, 0.74))
+    hatch = bpy.context.active_object
+    hatch.data.materials.append(mat_m)
+    apply_uniform_clay_bevel(hatch, width=0.04, segments=2)
+    objs.append(hatch)
+
+    # 3. Optical Targeting Sensor / Eye
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(0, 0.50, 0.55))
+    eye = bpy.context.active_object
+    eye.data.materials.append(mat_optic)
+    bpy.ops.object.shade_smooth()
+    objs.append(eye)
+
+    # 4. Gun Mantlet (Protective recoil collar block spanning the front)
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.45, 0.20))
+    mantlet = bpy.context.active_object
+    mantlet.scale = (0.72, 0.32, 0.36)
+    mantlet.data.materials.append(mat_mantlet)
+    apply_uniform_clay_bevel(mantlet, width=0.06, segments=3)
+    objs.append(mantlet)
+
+    # 5. Dual Cannons emerging cleanly from Mantlet
     for bx in [-0.22, 0.22]:
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.10, depth=1.1, vertices=16, location=(bx, 0.55, 0.2))
+        # Barrel
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.10, depth=1.05, vertices=16, location=(bx, 0.60, 0.20))
         barrel = bpy.context.active_object
         barrel.rotation_euler = (math.radians(90), 0, 0)
         barrel.data.materials.append(mat_g)
         apply_uniform_clay_bevel(barrel, width=0.04, segments=2)
         objs.append(barrel)
 
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.13, minor_radius=0.06, location=(bx, 1.1, 0.2))
+        # Recoil Collar Ring at the base of the barrel
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.13, minor_radius=0.04, location=(bx, 0.52, 0.20))
+        rc = bpy.context.active_object
+        rc.rotation_euler = (math.radians(90), 0, 0)
+        rc.data.materials.append(mat_m)
+        bpy.ops.object.shade_smooth()
+        objs.append(rc)
+
+        # Muzzle Brake
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.14, minor_radius=0.06, location=(bx, 1.12, 0.20))
         muzzle = bpy.context.active_object
         muzzle.rotation_euler = (math.radians(90), 0, 0)
         muzzle.data.materials.append(mat_m)
         bpy.ops.object.shade_smooth()
         objs.append(muzzle)
 
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.07, depth=0.10, vertices=12, location=(bx, 1.12, 0.2))
+        # Bore Hole
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.07, depth=0.10, vertices=12, location=(bx, 1.14, 0.20))
         bore = bpy.context.active_object
         bore.rotation_euler = (math.radians(90), 0, 0)
         bore.data.materials.append(mat_bore)
@@ -515,43 +629,112 @@ def build_sokpop_turret_gun():
 
 def build_sokpop_fortified_wall():
     objs = []
-    mat_w = create_clay_mat("m_ubld_w", (0.38, 0.46, 0.55, 1.0))
-    mat_heart = create_clay_mat("m_ubld_wh", (0.95, 0.38, 0.50, 1.0), emission=(0.95, 0.38, 0.50, 1.0), emission_str=2.0)
+    mat_wall = create_clay_mat("m_ubld_w", (0.36, 0.42, 0.50, 1.0))
+    mat_steel = create_clay_mat("m_ubld_ws", (0.75, 0.80, 0.88, 1.0))
+    mat_gold = create_clay_mat("m_ubld_wg", (0.95, 0.78, 0.22, 1.0))
+    mat_core = create_clay_mat("m_ubld_wc", (0.98, 0.35, 0.48, 1.0), emission=(0.98, 0.35, 0.48, 1.0), emission_str=2.5)
 
+    # 1. Main Base Block
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     w = bpy.context.active_object
-    w.scale = (2.8, 2.8, 0.38)
-    w.data.materials.append(mat_w)
-    apply_uniform_clay_bevel(w, width=0.22, segments=4)
+    w.scale = (2.85, 2.85, 0.38)
+    w.data.materials.append(mat_wall)
+    apply_uniform_clay_bevel(w, width=0.20, segments=4)
     objs.append(w)
 
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.8, depth=0.12, vertices=16, location=(0, 0, 0.22))
-    c = bpy.context.active_object
-    c.data.materials.append(mat_heart)
-    apply_uniform_clay_bevel(c, width=0.06, segments=2)
-    objs.append(c)
+    # 2. Heavy Corner Steel Brackets (4 corners)
+    bracket_pos = [(-1.15, -1.15), (1.15, -1.15), (-1.15, 1.15), (1.15, 1.15)]
+    for (bx, by) in bracket_pos:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(bx, by, 0.16))
+        brk = bpy.context.active_object
+        brk.scale = (0.65, 0.65, 0.14)
+        brk.data.materials.append(mat_steel)
+        apply_uniform_clay_bevel(brk, width=0.08, segments=3)
+        objs.append(brk)
+
+        # Rivet on each bracket
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.10, location=(bx, by, 0.24))
+        bolt = bpy.context.active_object
+        bolt.data.materials.append(mat_gold)
+        bpy.ops.object.shade_smooth()
+        objs.append(bolt)
+
+    # 3. Cross-brace Ribs (Diagonal steel plates)
+    for (sx, sy) in [(2.2, 0.32), (0.32, 2.2)]:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.14))
+        rib = bpy.context.active_object
+        rib.scale = (sx, sy, 0.12)
+        rib.data.materials.append(mat_steel)
+        apply_uniform_clay_bevel(rib, width=0.05, segments=2)
+        objs.append(rib)
+
+    # 4. Central Shield Medallion Bezel
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.85, depth=0.18, vertices=16, location=(0, 0, 0.18))
+    bezel = bpy.context.active_object
+    bezel.data.materials.append(mat_steel)
+    apply_uniform_clay_bevel(bezel, width=0.06, segments=3)
+    objs.append(bezel)
+
+    # 5. Glowing Power Crystal Core (Octagonal / Shield core)
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.60, depth=0.14, vertices=8, location=(0, 0, 0.24))
+    core = bpy.context.active_object
+    core.data.materials.append(mat_core)
+    apply_uniform_clay_bevel(core, width=0.05, segments=2)
+    objs.append(core)
+
     return objs
 
 def build_sokpop_landmine():
     objs = []
-    mat_m = create_clay_mat("m_ubld_m", (0.32, 0.35, 0.40, 1.0))
-    mat_core = create_clay_mat("m_ubld_mc", (0.95, 0.32, 0.38, 1.0), emission=(0.95, 0.32, 0.38, 1.0), emission_str=2.5)
-    mat_rim = create_clay_mat("m_ubld_mr", (0.98, 0.78, 0.22, 1.0))
+    mat_base = create_clay_mat("m_ubld_mb", (0.30, 0.34, 0.40, 1.0))
+    mat_metal = create_clay_mat("m_ubld_mm", (0.55, 0.60, 0.66, 1.0))
+    mat_hazard = create_clay_mat("m_ubld_mh", (0.98, 0.78, 0.18, 1.0))
+    mat_core = create_clay_mat("m_ubld_mc", (0.95, 0.28, 0.35, 1.0), emission=(0.95, 0.28, 0.35, 1.0), emission_str=2.5)
 
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.95, depth=0.2, vertices=16, location=(0, 0, 0))
-    m = bpy.context.active_object
-    m.data.materials.append(mat_m)
-    apply_uniform_clay_bevel(m, width=0.08, segments=3)
-    objs.append(m)
+    # 1. Stepped Base Disc
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.15, depth=0.18, vertices=20, location=(0, 0, 0))
+    base = bpy.context.active_object
+    base.data.materials.append(mat_base)
+    apply_uniform_clay_bevel(base, width=0.08, segments=3)
+    objs.append(base)
 
-    bpy.ops.mesh.primitive_torus_add(major_radius=0.75, minor_radius=0.06, location=(0, 0, 0.12))
+    # 2. Upper Armored Hull Disc
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.90, depth=0.16, vertices=16, location=(0, 0, 0.10))
+    hull = bpy.context.active_object
+    hull.data.materials.append(mat_metal)
+    apply_uniform_clay_bevel(hull, width=0.06, segments=3)
+    objs.append(hull)
+
+    # 3. Hazard Warning Ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=0.76, minor_radius=0.06, location=(0, 0, 0.18))
     hr = bpy.context.active_object
-    hr.data.materials.append(mat_rim)
+    hr.data.materials.append(mat_hazard)
     bpy.ops.object.shade_smooth()
     objs.append(hr)
 
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45, location=(0, 0, 0.15))
+    # 4. 4 Radial Pressure Trigger Prongs / Studs
+    for i in range(4):
+        ang = i * (math.pi / 2.0) + math.pi / 4.0
+        bx = math.cos(ang) * 0.76
+        by = math.sin(ang) * 0.76
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(bx, by, 0.19))
+        stud = bpy.context.active_object
+        stud.scale = (0.22, 0.22, 0.10)
+        stud.rotation_euler = (0, 0, ang)
+        stud.data.materials.append(mat_hazard)
+        apply_uniform_clay_bevel(stud, width=0.03, segments=2)
+        objs.append(stud)
+
+    # 5. Core Collar & Glowing Detonator Core
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.45, depth=0.14, vertices=16, location=(0, 0, 0.19))
+    col = bpy.context.active_object
+    col.data.materials.append(mat_base)
+    apply_uniform_clay_bevel(col, width=0.04, segments=2)
+    objs.append(col)
+
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.34, location=(0, 0, 0.22))
     c = bpy.context.active_object
+    c.scale = (1.0, 1.0, 0.7)
     c.data.materials.append(mat_core)
     bpy.ops.object.shade_smooth()
     objs.append(c)
@@ -560,22 +743,59 @@ def build_sokpop_landmine():
 
 def build_sokpop_repair_station():
     objs = []
-    mat_p = create_clay_mat("m_ubld_rp", (0.88, 0.90, 0.92, 1.0))
-    mat_cross = create_clay_mat("m_ubld_rc", (0.30, 0.82, 0.42, 1.0), emission=(0.30, 0.82, 0.42, 1.0), emission_str=2.0)
+    mat_pad = create_clay_mat("m_ubld_rp", (0.88, 0.90, 0.94, 1.0))
+    mat_steel = create_clay_mat("m_ubld_rs", (0.35, 0.40, 0.48, 1.0))
+    mat_cross_rim = create_clay_mat("m_ubld_rcr", (0.25, 0.65, 0.40, 1.0))
+    mat_cross = create_clay_mat("m_ubld_rc", (0.28, 0.88, 0.50, 1.0), emission=(0.28, 0.88, 0.50, 1.0), emission_str=2.5)
+    mat_ring = create_clay_mat("m_ubld_rr", (0.30, 0.82, 0.95, 1.0), emission=(0.30, 0.82, 0.95, 1.0), emission_str=2.0)
+    mat_gold = create_clay_mat("m_ubld_rg", (0.98, 0.80, 0.22, 1.0))
 
-    bpy.ops.mesh.primitive_cylinder_add(radius=1.1, depth=0.2, vertices=16, location=(0, 0, 0))
+    # 1. Main Octagonal/Circular Pad Base
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.25, depth=0.22, vertices=24, location=(0, 0, 0))
     p = bpy.context.active_object
-    p.data.materials.append(mat_p)
+    p.data.materials.append(mat_pad)
     apply_uniform_clay_bevel(p, width=0.08, segments=3)
     objs.append(p)
 
-    for (sx, sy) in [(1.3, 0.4), (0.4, 1.3)]:
+    # 2. Outer Concentric Energy Runway Ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=1.05, minor_radius=0.06, location=(0, 0, 0.10))
+    r = bpy.context.active_object
+    r.data.materials.append(mat_ring)
+    bpy.ops.object.shade_smooth()
+    objs.append(r)
+
+    # 3. Medical Cross Recessed Bezel
+    for (sx, sy) in [(1.35, 0.52), (0.52, 1.35)]:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.10))
+        c_rim = bpy.context.active_object
+        c_rim.scale = (sx, sy, 0.12)
+        c_rim.data.materials.append(mat_cross_rim)
+        apply_uniform_clay_bevel(c_rim, width=0.04, segments=2)
+        objs.append(c_rim)
+
+    # 4. Glowing Medical Cross Center
+    for (sx, sy) in [(1.15, 0.38), (0.38, 1.15)]:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.14))
         c = bpy.context.active_object
         c.scale = (sx, sy, 0.12)
         c.data.materials.append(mat_cross)
-        apply_uniform_clay_bevel(c, width=0.06, segments=2)
+        apply_uniform_clay_bevel(c, width=0.04, segments=2)
         objs.append(c)
+
+    # 5. 4 Corner Nanite Emitter Pylons
+    for (px, py) in [(-0.85, -0.85), (0.85, -0.85), (-0.85, 0.85), (0.85, 0.85)]:
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.12, depth=0.30, vertices=12, location=(px, py, 0.15))
+        pyl = bpy.context.active_object
+        pyl.data.materials.append(mat_steel)
+        apply_uniform_clay_bevel(pyl, width=0.03, segments=2)
+        objs.append(pyl)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.09, location=(px, py, 0.32))
+        tip = bpy.context.active_object
+        tip.data.materials.append(mat_cross)
+        bpy.ops.object.shade_smooth()
+        objs.append(tip)
+
     return objs
 
 # ==================== 4. SOKPOP MAP TOKENS ====================
@@ -583,85 +803,364 @@ def build_sokpop_repair_station():
 def build_sokpop_map_node(type_name):
     objs = []
     mat_base = create_clay_mat("m_um_base", (0.86, 0.80, 0.72, 1.0))
-    bpy.ops.mesh.primitive_cylinder_add(radius=1.2, depth=0.35, vertices=16, location=(0, 0, 0))
+    mat_rim = create_clay_mat("m_um_rim", (0.75, 0.68, 0.58, 1.0))
+
+    # Base Disc Pedestal with Beveled Rim
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.25, depth=0.28, vertices=24, location=(0, 0, 0))
     disc = bpy.context.active_object
     disc.data.materials.append(mat_base)
-    apply_uniform_clay_bevel(disc, width=0.12, segments=3)
+    apply_uniform_clay_bevel(disc, width=0.10, segments=3)
     objs.append(disc)
 
+    bpy.ops.mesh.primitive_torus_add(major_radius=1.12, minor_radius=0.06, location=(0, 0, 0.12))
+    rim = bpy.context.active_object
+    rim.data.materials.append(mat_rim)
+    bpy.ops.object.shade_smooth()
+    objs.append(rim)
+
     if type_name == "battle":
-        mat_sw = create_clay_mat("m_um_sw", (0.92, 0.38, 0.18, 1.0))
-        for ang in [-35, 35]:
-            bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=1.6, vertices=12, location=(0, 0, 0.25))
-            sw = bpy.context.active_object
-            sw.rotation_euler = (0, 0, math.radians(ang))
-            sw.data.materials.append(mat_sw)
-            apply_uniform_clay_bevel(sw, width=0.04, segments=2)
-            objs.append(sw)
+        mat_blade = create_clay_mat("m_um_blade", (0.85, 0.88, 0.94, 1.0))
+        mat_guard = create_clay_mat("m_um_guard", (0.95, 0.75, 0.20, 1.0))
+        mat_grip = create_clay_mat("m_um_grip", (0.65, 0.25, 0.22, 1.0))
+        mat_pommel = create_clay_mat("m_um_pommel", (0.95, 0.75, 0.20, 1.0))
+
+        # Crossed Dual Broadswords
+        for ang in [-38, 38]:
+            rad = math.radians(ang)
+            # Blade
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.28, 0.26))
+            blade = bpy.context.active_object
+            blade.scale = (0.22, 1.15, 0.10)
+            blade.rotation_euler = (0, 0, rad)
+            blade.data.materials.append(mat_blade)
+            apply_uniform_clay_bevel(blade, width=0.04, segments=2)
+            objs.append(blade)
+
+            # Blade Point Tip
+            tip_y = 0.28 + math.cos(rad) * 0.65
+            tip_x = -math.sin(rad) * 0.65
+            bpy.ops.mesh.primitive_cone_add(radius1=0.15, depth=0.32, location=(tip_x, tip_y, 0.26))
+            tip = bpy.context.active_object
+            tip.rotation_euler = (0, 0, rad)
+            tip.scale = (1.0, 0.6, 0.6)
+            tip.data.materials.append(mat_blade)
+            apply_uniform_clay_bevel(tip, width=0.03, segments=2)
+            objs.append(tip)
+
+            # Crossguard
+            guard_y = 0.28 - math.cos(rad) * 0.35
+            guard_x = math.sin(rad) * 0.35
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(guard_x, guard_y, 0.28))
+            guard = bpy.context.active_object
+            guard.scale = (0.46, 0.12, 0.14)
+            guard.rotation_euler = (0, 0, rad)
+            guard.data.materials.append(mat_guard)
+            apply_uniform_clay_bevel(guard, width=0.03, segments=2)
+            objs.append(guard)
+
+            # Grip Handle
+            grip_y = 0.28 - math.cos(rad) * 0.58
+            grip_x = math.sin(rad) * 0.58
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.06, depth=0.35, vertices=12, location=(grip_x, grip_y, 0.28))
+            grip = bpy.context.active_object
+            grip.rotation_euler = (math.radians(90) * math.cos(rad), -math.radians(90) * math.sin(rad), rad)
+            grip.data.materials.append(mat_grip)
+            apply_uniform_clay_bevel(grip, width=0.02, segments=2)
+            objs.append(grip)
+
+            # Pommel
+            pommel_y = 0.28 - math.cos(rad) * 0.78
+            pommel_x = math.sin(rad) * 0.78
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.09, location=(pommel_x, pommel_y, 0.28))
+            pommel = bpy.context.active_object
+            pommel.data.materials.append(mat_pommel)
+            bpy.ops.object.shade_smooth()
+            objs.append(pommel)
+
     elif type_name == "elite":
-        mat_sk = create_clay_mat("m_um_sk", (0.85, 0.18, 0.25, 1.0))
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.55, location=(0, 0.15, 0.25))
-        sk = bpy.context.active_object
-        sk.data.materials.append(mat_sk)
+        mat_skull = create_clay_mat("m_um_sk", (0.92, 0.88, 0.82, 1.0))
+        mat_dark = create_clay_mat("m_um_skd", (0.16, 0.16, 0.22, 1.0))
+        mat_horn = create_clay_mat("m_um_skh", (0.85, 0.22, 0.28, 1.0))
+        mat_horn_tip = create_clay_mat("m_um_skht", (0.98, 0.80, 0.22, 1.0))
+
+        # Skull Cranium Dome
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.62, location=(0, 0.12, 0.32))
+        skull = bpy.context.active_object
+        skull.scale = (1.05, 0.95, 0.85)
+        skull.data.materials.append(mat_skull)
         bpy.ops.object.shade_smooth()
-        objs.append(sk)
-        for hx in [-0.45, 0.45]:
-            bpy.ops.mesh.primitive_cone_add(radius1=0.15, depth=0.45, location=(hx, 0.55, 0.25))
-            horn = bpy.context.active_object
-            horn.rotation_euler = (0, 0, math.radians(hx * -40))
-            horn.data.materials.append(mat_sk)
-            objs.append(horn)
+        objs.append(skull)
+
+        # Upper Jaw / Teeth Block
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.32, 0.26))
+        jaw = bpy.context.active_object
+        jaw.scale = (0.50, 0.35, 0.32)
+        jaw.data.materials.append(mat_skull)
+        apply_uniform_clay_bevel(jaw, width=0.06, segments=2)
+        objs.append(jaw)
+
+        # Deep Eye Sockets (Left & Right)
+        for sx in [-0.26, 0.26]:
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.16, depth=0.18, vertices=16, location=(sx, -0.06, 0.40))
+            eye = bpy.context.active_object
+            eye.data.materials.append(mat_dark)
+            apply_uniform_clay_bevel(eye, width=0.03, segments=2)
+            objs.append(eye)
+
+        # Nasal Cavity
+        bpy.ops.mesh.primitive_cone_add(radius1=0.08, depth=0.15, location=(0, -0.22, 0.35))
+        nose = bpy.context.active_object
+        nose.rotation_euler = (0, 0, math.radians(180))
+        nose.data.materials.append(mat_dark)
+        apply_uniform_clay_bevel(nose, width=0.02, segments=2)
+        objs.append(nose)
+
+        # Menacing Curved Horns (Left & Right)
+        for hx in [-1, 1]:
+            # Horn Base Segment
+            bpy.ops.mesh.primitive_cone_add(radius1=0.20, depth=0.55, location=(hx * 0.52, 0.45, 0.38))
+            h1 = bpy.context.active_object
+            h1.rotation_euler = (math.radians(-15), math.radians(hx * 45), math.radians(hx * -35))
+            h1.data.materials.append(mat_horn)
+            apply_uniform_clay_bevel(h1, width=0.04, segments=2)
+            objs.append(h1)
+
+            # Horn Gold Tip
+            bpy.ops.mesh.primitive_cone_add(radius1=0.12, depth=0.40, location=(hx * 0.78, 0.65, 0.48))
+            h2 = bpy.context.active_object
+            h2.rotation_euler = (math.radians(-25), math.radians(hx * 65), math.radians(hx * -50))
+            h2.data.materials.append(mat_horn_tip)
+            apply_uniform_clay_bevel(h2, width=0.03, segments=2)
+            objs.append(h2)
+
     elif type_name == "rest":
-        mat_f = create_clay_mat("m_um_f", (0.98, 0.55, 0.12, 1.0))
-        bpy.ops.mesh.primitive_cone_add(radius1=0.45, depth=0.8, location=(0, 0.1, 0.28))
-        fl = bpy.context.active_object
-        fl.data.materials.append(mat_f)
-        bpy.ops.object.shade_smooth()
-        objs.append(fl)
+        mat_wood = create_clay_mat("m_um_wood", (0.45, 0.28, 0.18, 1.0))
+        mat_flame_out = create_clay_mat("m_um_fo", (0.95, 0.35, 0.15, 1.0), emission=(0.95, 0.35, 0.15, 1.0), emission_str=1.8)
+        mat_flame_in = create_clay_mat("m_um_fi", (0.98, 0.85, 0.25, 1.0), emission=(0.98, 0.85, 0.25, 1.0), emission_str=2.8)
+        mat_ember = create_clay_mat("m_um_emb", (0.98, 0.45, 0.18, 1.0), emission=(0.98, 0.45, 0.18, 1.0), emission_str=2.0)
+
+        # 4 Criss-Cross Campfire Logs
+        log_angles = [25, -65, 115, -155]
+        for ang in log_angles:
+            rad = math.radians(ang)
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=1.05, vertices=12, location=(math.cos(rad)*0.18, math.sin(rad)*0.18, 0.18))
+            log = bpy.context.active_object
+            log.rotation_euler = (math.radians(90)*math.cos(rad), -math.radians(90)*math.sin(rad), rad)
+            log.data.materials.append(mat_wood)
+            apply_uniform_clay_bevel(log, width=0.03, segments=2)
+            objs.append(log)
+
+        # Main Outer Flame Tongue
+        bpy.ops.mesh.primitive_cone_add(radius1=0.52, depth=0.95, location=(0, 0, 0.42))
+        f_out = bpy.context.active_object
+        f_out.scale = (1.0, 0.85, 1.0)
+        f_out.data.materials.append(mat_flame_out)
+        apply_uniform_clay_bevel(f_out, width=0.08, segments=3)
+        objs.append(f_out)
+
+        # Side Licking Flame Tongue
+        bpy.ops.mesh.primitive_cone_add(radius1=0.32, depth=0.65, location=(0.22, -0.15, 0.38))
+        f_side = bpy.context.active_object
+        f_side.rotation_euler = (math.radians(15), math.radians(-20), 0)
+        f_side.data.materials.append(mat_flame_out)
+        apply_uniform_clay_bevel(f_side, width=0.05, segments=2)
+        objs.append(f_side)
+
+        # Bright Glowing Flame Core
+        bpy.ops.mesh.primitive_cone_add(radius1=0.34, depth=0.68, location=(0, 0, 0.38))
+        f_in = bpy.context.active_object
+        f_in.data.materials.append(mat_flame_in)
+        apply_uniform_clay_bevel(f_in, width=0.05, segments=2)
+        objs.append(f_in)
+
+        # Glowing Embers at base
+        for (ex, ey) in [(-0.45, 0.35), (0.45, 0.30), (0.05, -0.48)]:
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(ex, ey, 0.20))
+            emb = bpy.context.active_object
+            emb.data.materials.append(mat_ember)
+            bpy.ops.object.shade_smooth()
+            objs.append(emb)
+
     elif type_name == "shop":
-        mat_g = create_clay_mat("m_um_g", (0.92, 0.72, 0.15, 1.0))
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.25))
-        box = bpy.context.active_object
-        box.scale = (0.9, 0.7, 0.5)
-        box.data.materials.append(mat_g)
-        apply_uniform_clay_bevel(box, width=0.1, segments=3)
-        objs.append(box)
-    elif type_name == "event":
-        mat_q = create_clay_mat("m_um_q", (0.58, 0.28, 0.85, 1.0))
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.38, minor_radius=0.12, location=(0, 0.22, 0.25))
-        tor = bpy.context.active_object
-        tor.data.materials.append(mat_q)
+        mat_chest = create_clay_mat("m_um_ch", (0.55, 0.32, 0.18, 1.0))
+        mat_gold = create_clay_mat("m_um_chg", (0.95, 0.78, 0.22, 1.0))
+        mat_iron = create_clay_mat("m_um_chi", (0.35, 0.38, 0.45, 1.0))
+        mat_ruby = create_clay_mat("m_um_chrb", (0.95, 0.25, 0.35, 1.0), emission=(0.95, 0.25, 0.35, 1.0), emission_str=1.5)
+
+        # Treasure Chest Body
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.22))
+        body = bpy.context.active_object
+        body.scale = (1.10, 0.78, 0.38)
+        body.data.materials.append(mat_chest)
+        apply_uniform_clay_bevel(body, width=0.08, segments=3)
+        objs.append(body)
+
+        # Arched Chest Lid (Curved Cylinder)
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.40, depth=1.12, vertices=16, location=(0, 0, 0.44))
+        lid = bpy.context.active_object
+        lid.rotation_euler = (0, math.radians(90), 0)
+        lid.scale = (1.0, 0.75, 1.0)
+        lid.data.materials.append(mat_chest)
+        apply_uniform_clay_bevel(lid, width=0.06, segments=3)
+        objs.append(lid)
+
+        # Metal Corner Reinforcement Bands (Left & Right)
+        for bx in [-0.42, 0.42]:
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(bx, 0, 0.32))
+            band = bpy.context.active_object
+            band.scale = (0.16, 0.82, 0.52)
+            band.data.materials.append(mat_gold)
+            apply_uniform_clay_bevel(band, width=0.03, segments=2)
+            objs.append(band)
+
+        # Front Lock Latch / Keyhole Clasp
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.41, 0.34))
+        lock = bpy.context.active_object
+        lock.scale = (0.24, 0.10, 0.22)
+        lock.data.materials.append(mat_gold)
+        apply_uniform_clay_bevel(lock, width=0.03, segments=2)
+        objs.append(lock)
+
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.06, location=(0, -0.46, 0.34))
+        keyhole = bpy.context.active_object
+        keyhole.data.materials.append(mat_iron)
         bpy.ops.object.shade_smooth()
-        objs.append(tor)
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, location=(0, -0.4, 0.25))
+        objs.append(keyhole)
+
+        # Gold Coins / Gems beside the chest
+        for (cx, cy) in [(-0.68, -0.32), (-0.75, 0.15), (0.72, -0.25)]:
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=0.08, vertices=12, location=(cx, cy, 0.20))
+            coin = bpy.context.active_object
+            coin.data.materials.append(mat_gold)
+            apply_uniform_clay_bevel(coin, width=0.02, segments=2)
+            objs.append(coin)
+
+    elif type_name == "event":
+        mat_q = create_clay_mat("m_um_q", (0.62, 0.28, 0.88, 1.0))
+        mat_q_glow = create_clay_mat("m_um_qgl", (0.88, 0.55, 1.0, 1.0), emission=(0.88, 0.55, 1.0, 1.0), emission_str=2.0)
+        mat_gold = create_clay_mat("m_um_qg", (0.95, 0.78, 0.22, 1.0))
+
+        # Real 3D Question Mark "?" Structure
+        # Upper Loop Arc
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.42, minor_radius=0.14, location=(0, 0.32, 0.28))
+        loop = bpy.context.active_object
+        loop.scale = (1.0, 0.95, 1.0)
+        loop.data.materials.append(mat_q)
+        bpy.ops.object.shade_smooth()
+        objs.append(loop)
+
+        # Middle Hook Stem
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.13, depth=0.45, vertices=16, location=(0.04, 0.05, 0.28))
+        stem = bpy.context.active_object
+        stem.rotation_euler = (0, 0, math.radians(25))
+        stem.data.materials.append(mat_q)
+        apply_uniform_clay_bevel(stem, width=0.04, segments=2)
+        objs.append(stem)
+
+        # Central mask block (cuts the left side of torus to turn loop into a clean '?')
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-0.35, 0.22, 0.28))
+        mask = bpy.context.active_object
+        mask.scale = (0.35, 0.40, 0.35)
+        mask.data.materials.append(mat_base)
+        apply_uniform_clay_bevel(mask, width=0.04, segments=2)
+        objs.append(mask)
+
+        # Question Mark Bottom Dot
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.16, location=(0, -0.42, 0.28))
         dot = bpy.context.active_object
-        dot.data.materials.append(mat_q)
+        dot.data.materials.append(mat_q_glow)
         bpy.ops.object.shade_smooth()
         objs.append(dot)
+
+        # Magical Sparkle Stars
+        for (sx, sy, sz) in [(-0.62, 0.45, 0.30), (0.65, 0.42, 0.30)]:
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.09, location=(sx, sy, sz))
+            sp = bpy.context.active_object
+            sp.data.materials.append(mat_gold)
+            bpy.ops.object.shade_smooth()
+            objs.append(sp)
+
     elif type_name == "boss":
-        mat_cr = create_clay_mat("m_um_cr", (0.98, 0.76, 0.12, 1.0))
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.68, depth=0.45, vertices=16, location=(0, 0, 0.25))
-        cr = bpy.context.active_object
-        cr.data.materials.append(mat_cr)
-        apply_uniform_clay_bevel(cr, width=0.1, segments=3)
-        objs.append(cr)
-        for i in range(3):
-            angle = (i - 1) * 0.4
-            bpy.ops.mesh.primitive_cone_add(radius1=0.18, depth=0.4, location=(math.sin(angle)*0.55, math.cos(angle)*0.2 + 0.1, 0.52))
-            pt = bpy.context.active_object
-            pt.data.materials.append(mat_cr)
-            objs.append(pt)
+        mat_cr = create_clay_mat("m_um_cr", (0.98, 0.78, 0.15, 1.0))
+        mat_cushion = create_clay_mat("m_um_cush", (0.85, 0.18, 0.25, 1.0))
+        mat_ruby = create_clay_mat("m_um_crub", (0.95, 0.22, 0.35, 1.0), emission=(0.95, 0.22, 0.35, 1.0), emission_str=2.0)
+        mat_pearl = create_clay_mat("m_um_cprl", (0.95, 0.95, 0.98, 1.0))
+
+        # Royal Velvet Interior Dome Cushion
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.62, location=(0, 0, 0.28))
+        cush = bpy.context.active_object
+        cush.scale = (1.0, 1.0, 0.75)
+        cush.data.materials.append(mat_cushion)
+        bpy.ops.object.shade_smooth()
+        objs.append(cush)
+
+        # Crown Base Rim
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.76, depth=0.22, vertices=20, location=(0, 0, 0.20))
+        band = bpy.context.active_object
+        band.data.materials.append(mat_cr)
+        apply_uniform_clay_bevel(band, width=0.06, segments=3)
+        objs.append(band)
+
+        # 5 Crenelated Crown Peaks (Front Center Tall, Sides Medium, Back Peaks)
+        peak_angles = [0, 0.65, -0.65, 1.35, -1.35]
+        for idx, ang in enumerate(peak_angles):
+            px = math.sin(ang) * 0.68
+            py = math.cos(ang) * 0.32 - 0.10
+            h = 0.55 if idx == 0 else (0.45 if idx < 3 else 0.38)
+            r = 0.18 if idx == 0 else 0.14
+            bpy.ops.mesh.primitive_cone_add(radius1=r, depth=h, location=(px, py, 0.38 + h/2.0))
+            pk = bpy.context.active_object
+            pk.data.materials.append(mat_cr)
+            apply_uniform_clay_bevel(pk, width=0.03, segments=2)
+            objs.append(pk)
+
+            # Pearl / Gem on top of each peak
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.09 if idx == 0 else 0.07, location=(px, py, 0.38 + h + 0.04))
+            pearl = bpy.context.active_object
+            pearl.data.materials.append(mat_ruby if idx == 0 else mat_pearl)
+            bpy.ops.object.shade_smooth()
+            objs.append(pearl)
+
+        # Center Huge Ruby Medallion
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.15, location=(0, -0.72, 0.26))
+        c_gem = bpy.context.active_object
+        c_gem.data.materials.append(mat_ruby)
+        bpy.ops.object.shade_smooth()
+        objs.append(c_gem)
 
     return objs
 
 def build_sokpop_active_ring():
     objs = []
-    mat_r = create_clay_mat("m_um_ar", (0.25, 0.88, 0.48, 1.0), emission=(0.25, 0.88, 0.48, 1.0), emission_str=2.0)
-    bpy.ops.mesh.primitive_torus_add(major_radius=1.35, minor_radius=0.14, location=(0, 0, 0))
+    # Use lower roughness + low emission_str so top faces don't blow out
+    mat_r    = create_clay_mat("m_um_ar",  (0.25, 0.88, 0.48, 1.0), roughness=0.55, emission=(0.25, 0.88, 0.48, 1.0), emission_str=0.6)
+    mat_r2   = create_clay_mat("m_um_ar2", (0.42, 0.95, 0.65, 1.0), roughness=0.60, emission=(0.42, 0.95, 0.65, 1.0), emission_str=0.4)
+    mat_stud = create_clay_mat("m_um_ars", (0.92, 0.96, 0.98, 1.0), roughness=0.45, emission=(0.85, 0.95, 0.90, 1.0), emission_str=0.7)
+
+    # Outer glowing main orbit ring
+    bpy.ops.mesh.primitive_torus_add(major_radius=1.35, minor_radius=0.12, location=(0, 0, 0))
     ring = bpy.context.active_object
     ring.data.materials.append(mat_r)
     bpy.ops.object.shade_smooth()
     objs.append(ring)
+
+    # Inner secondary orbit ring (slightly smaller, different shade)
+    bpy.ops.mesh.primitive_torus_add(major_radius=1.08, minor_radius=0.07, location=(0, 0, 0))
+    ring2 = bpy.context.active_object
+    ring2.data.materials.append(mat_r2)
+    bpy.ops.object.shade_smooth()
+    objs.append(ring2)
+
+    # 4 Cardinal direction diamond studs — smaller radius to avoid big blown patches
+    for ang_deg in [0, 90, 180, 270]:
+        ang = math.radians(ang_deg)
+        sx, sy = math.cos(ang) * 1.35, math.sin(ang) * 1.35
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.10, location=(sx, sy, 0))
+        stud = bpy.context.active_object
+        stud.data.materials.append(mat_stud)
+        bpy.ops.object.shade_smooth()
+        objs.append(stud)
+
     return objs
 
 # ==================== 5. SOKPOP POWERUPS ====================
@@ -674,6 +1173,7 @@ def build_sokpop_powerup(p_type):
     mat_white = create_clay_mat("m_upw_w", (0.95, 0.95, 0.98, 1.0))
     mat_dark = create_clay_mat("m_upw_d", (0.28, 0.30, 0.35, 1.0))
     mat_metal = create_clay_mat("m_upw_m", (0.75, 0.78, 0.84, 1.0))
+    mat_wood = create_clay_mat("m_upw_wd", (0.55, 0.35, 0.22, 1.0))
 
     if p_type == "star":
         star_outer = create_3d_star(r_out=1.15, r_in=0.52, depth=0.32, z_pos=0.0)
@@ -705,6 +1205,7 @@ def build_sokpop_powerup(p_type):
         objs.append(coin_star)
 
     elif p_type == "helmet":
+        # 1. Helmet Dome
         bpy.ops.mesh.primitive_uv_sphere_add(radius=0.90, location=(0, -0.05, 0.15))
         h = bpy.context.active_object
         h.scale = (1.05, 1.15, 0.85)
@@ -712,13 +1213,23 @@ def build_sokpop_powerup(p_type):
         bpy.ops.object.shade_smooth()
         objs.append(h)
 
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.92, depth=0.15, vertices=16, location=(0, 0.42, 0.08))
+        # 2. Central Raised Crest Ridge
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.05, 0.65))
+        crest = bpy.context.active_object
+        crest.scale = (0.20, 1.10, 0.20)
+        crest.data.materials.append(mat_dark)
+        apply_uniform_clay_bevel(crest, width=0.04, segments=2)
+        objs.append(crest)
+
+        # 3. Flared Contoured Brow Brim
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.96, depth=0.16, vertices=20, location=(0, 0.38, 0.08))
         brim = bpy.context.active_object
-        brim.scale = (1.05, 0.45, 1.0)
+        brim.scale = (1.05, 0.50, 1.0)
         brim.data.materials.append(mat_dark)
         apply_uniform_clay_bevel(brim, width=0.06, segments=2)
         objs.append(brim)
 
+        # 4. Ear Covers with Retaining Straps
         for sx in [-0.98, 0.98]:
             bpy.ops.mesh.primitive_cylinder_add(radius=0.26, depth=0.20, vertices=16, location=(sx, -0.08, 0.15))
             ear = bpy.context.active_object
@@ -727,113 +1238,193 @@ def build_sokpop_powerup(p_type):
             apply_uniform_clay_bevel(ear, width=0.05, segments=2)
             objs.append(ear)
 
-        top_badge = create_3d_star(r_out=0.35, r_in=0.16, depth=0.08, z_pos=0.88)
+            # Rivet
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.06, location=(sx * 1.10, -0.08, 0.15))
+            rivet = bpy.context.active_object
+            rivet.data.materials.append(mat_white)
+            bpy.ops.object.shade_smooth()
+            objs.append(rivet)
+
+        # 5. Star Badge on Front
+        top_badge = create_3d_star(r_out=0.38, r_in=0.18, depth=0.10, z_pos=0.88)
         top_badge.data.materials.append(mat_white)
         apply_uniform_clay_bevel(top_badge, width=0.02, segments=2)
         objs.append(top_badge)
 
     elif p_type == "bomb":
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.92, location=(0, -0.1, 0))
+        # 1. Spherical Cast Iron Body
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.92, location=(0, -0.12, 0))
         b = bpy.context.active_object
         b.data.materials.append(mat_dark)
         bpy.ops.object.shade_smooth()
         objs.append(b)
 
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.22, depth=0.25, vertices=16, location=(0, 0.80, 0))
+        # 2. Threaded Brass Fuse Collar / Cap
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.26, depth=0.22, vertices=16, location=(0, 0.76, 0))
         c = bpy.context.active_object
         c.data.materials.append(mat_gold)
         apply_uniform_clay_bevel(c, width=0.04, segments=2)
         objs.append(c)
 
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.08, depth=0.45, vertices=12, location=(0.08, 1.05, 0))
-        fuse = bpy.context.active_object
-        fuse.rotation_euler = (0, 0, math.radians(-25))
-        fuse.data.materials.append(mat_white)
-        apply_uniform_clay_bevel(fuse, width=0.02, segments=2)
-        objs.append(fuse)
+        # 3. Naturally Curved Fuse Twine (Multi-Segment Arc)
+        fuse_nodes = [
+            (0.04, 0.94, 0.0, -15),
+            (0.14, 1.12, 0.0, -35),
+            (0.30, 1.25, 0.0, -60),
+        ]
+        for fx, fy, fz, fang in fuse_nodes:
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.065, depth=0.24, vertices=12, location=(fx, fy, fz))
+            fuse_seg = bpy.context.active_object
+            fuse_seg.rotation_euler = (0, 0, math.radians(fang))
+            fuse_seg.data.materials.append(mat_white)
+            apply_uniform_clay_bevel(fuse_seg, width=0.02, segments=2)
+            objs.append(fuse_seg)
 
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.18, location=(0.18, 1.28, 0))
+        # 4. Crackling Spark Flame & Spark Beads
+        mat_spark_core = create_clay_mat("m_upw_spkc", (1.0, 0.95, 0.65, 1.0), emission=(1.0, 0.95, 0.65, 1.0), emission_str=3.0)
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.18, location=(0.42, 1.34, 0))
         flame = bpy.context.active_object
         flame.data.materials.append(mat_red)
         bpy.ops.object.shade_smooth()
         objs.append(flame)
 
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.10, location=(0.42, 1.34, 0.06))
+        spark_core = bpy.context.active_object
+        spark_core.data.materials.append(mat_spark_core)
+        bpy.ops.object.shade_smooth()
+        objs.append(spark_core)
+
     elif p_type == "clock":
-        bpy.ops.mesh.primitive_cylinder_add(radius=1.05, depth=0.3, vertices=20, location=(0, -0.08, 0))
+        # 1. Main Cylinder Body
+        bpy.ops.mesh.primitive_cylinder_add(radius=1.05, depth=0.32, vertices=24, location=(0, -0.08, 0))
         clk = bpy.context.active_object
         clk.data.materials.append(mat_cyan)
-        apply_uniform_clay_bevel(clk, width=0.1, segments=3)
+        apply_uniform_clay_bevel(clk, width=0.10, segments=3)
         objs.append(clk)
 
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.26, minor_radius=0.08, location=(0, 1.08, 0))
+        # 2. Twin Top Alarm Bells (Left & Right)
+        for (bx, by, rot) in [(-0.75, 0.88, 30), (0.75, 0.88, -30)]:
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.32, depth=0.22, vertices=16, location=(bx, by, 0))
+            bell = bpy.context.active_object
+            bell.rotation_euler = (0, 0, math.radians(rot))
+            bell.data.materials.append(mat_gold)
+            apply_uniform_clay_bevel(bell, width=0.04, segments=2)
+            objs.append(bell)
+
+        # 3. Top Striker Button
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.22, minor_radius=0.06, location=(0, 1.05, 0))
         btn = bpy.context.active_object
         btn.data.materials.append(mat_gold)
         bpy.ops.object.shade_smooth()
         objs.append(btn)
 
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.78, depth=0.08, vertices=20, location=(0, -0.08, 0.16))
+        # 4. Dial Face
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.82, depth=0.10, vertices=24, location=(0, -0.08, 0.16))
         face = bpy.context.active_object
         face.data.materials.append(mat_white)
         objs.append(face)
 
-        for (hx, hy, hl, ang) in [(-0.14, 0.12, 0.40, -40), (0.16, 0.12, 0.46, 45)]:
-            bpy.ops.mesh.primitive_cylinder_add(radius=0.05, depth=hl, vertices=8, location=(hx, hy - 0.08, 0.22))
+        # 5. 12 Hour Dial Tick Dots
+        for i in range(12):
+            ang = i * (math.pi / 6.0)
+            tx = math.sin(ang) * 0.68
+            ty = math.cos(ang) * 0.68 - 0.08
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.035, location=(tx, ty, 0.22))
+            dot = bpy.context.active_object
+            dot.data.materials.append(mat_dark)
+            bpy.ops.object.shade_smooth()
+            objs.append(dot)
+
+        # 6. Hour & Minute Hands
+        for (hx, hy, hl, ang) in [(-0.14, 0.12, 0.40, -40), (0.16, 0.12, 0.48, 45)]:
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.045, depth=hl, vertices=8, location=(hx, hy - 0.08, 0.23))
             h = bpy.context.active_object
             h.rotation_euler = (0, 0, math.radians(ang))
             h.data.materials.append(mat_dark)
             objs.append(h)
 
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(0, -0.08, 0.24))
+        # Center Pin Cap
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(0, -0.08, 0.25))
         pin = bpy.context.active_object
         pin.data.materials.append(mat_red)
         bpy.ops.object.shade_smooth()
         objs.append(pin)
 
     elif p_type == "shovel":
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.32, 0))
+        # 1. Beveled Spade Scoop Blade
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.28, 0))
         b = bpy.context.active_object
-        b.scale = (1.05, 0.95, 0.24)
+        b.scale = (1.10, 0.95, 0.22)
         b.data.materials.append(mat_metal)
-        apply_uniform_clay_bevel(b, width=0.12, segments=3)
+        apply_uniform_clay_bevel(b, width=0.10, segments=3)
         objs.append(b)
 
-        bpy.ops.mesh.primitive_cone_add(radius1=0.52, depth=0.45, location=(0, -0.85, 0))
+        # Tapered Spade Point
+        bpy.ops.mesh.primitive_cone_add(radius1=0.55, depth=0.52, location=(0, -0.85, 0))
         cone = bpy.context.active_object
         cone.rotation_euler = (0, 0, math.radians(180))
-        cone.scale = (1.0, 0.5, 0.5)
+        cone.scale = (1.0, 0.55, 0.45)
         cone.data.materials.append(mat_metal)
         apply_uniform_clay_bevel(cone, width=0.05, segments=2)
         objs.append(cone)
 
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.11, depth=1.1, vertices=12, location=(0, 0.50, 0))
+        # Center Reinforcing Spine Ridge
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.10, depth=1.05, vertices=12, location=(0, -0.42, 0.12))
+        spine = bpy.context.active_object
+        spine.data.materials.append(mat_metal)
+        apply_uniform_clay_bevel(spine, width=0.03, segments=2)
+        objs.append(spine)
+
+        # 2. Steel Collar Sleeve Socket
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.16, depth=0.35, vertices=16, location=(0, 0.25, 0))
+        collar = bpy.context.active_object
+        collar.data.materials.append(mat_metal)
+        apply_uniform_clay_bevel(collar, width=0.04, segments=2)
+        objs.append(collar)
+
+        # 3. Wooden Shaft
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.11, depth=0.85, vertices=12, location=(0, 0.68, 0))
         handle = bpy.context.active_object
-        handle.data.materials.append(mat_gold)
-        apply_uniform_clay_bevel(handle, width=0.04, segments=2)
+        handle.data.materials.append(mat_wood)
+        apply_uniform_clay_bevel(handle, width=0.03, segments=2)
         objs.append(handle)
 
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.25, minor_radius=0.07, location=(0, 1.15, 0))
+        # 4. Ergonomic D-Grip Handle (Torus + Cross-Bar)
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.26, minor_radius=0.07, location=(0, 1.18, 0))
         d_grip = bpy.context.active_object
         d_grip.data.materials.append(mat_red)
         bpy.ops.object.shade_smooth()
         objs.append(d_grip)
 
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.065, depth=0.45, vertices=12, location=(0, 1.18, 0))
+        d_bar = bpy.context.active_object
+        d_bar.rotation_euler = (0, math.radians(90), 0)
+        d_bar.data.materials.append(mat_wood)
+        apply_uniform_clay_bevel(d_bar, width=0.02, segments=2)
+        objs.append(d_bar)
+
     elif p_type == "life":
+        # Sculpted Organic Clay Heart
         for sx in [-0.38, 0.38]:
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.54, location=(sx, 0.25, 0))
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.55, location=(sx, 0.25, 0))
             sph = bpy.context.active_object
+            sph.scale = (1.0, 1.0, 0.75)
             sph.data.materials.append(mat_red)
             bpy.ops.object.shade_smooth()
             objs.append(sph)
 
-        bpy.ops.mesh.primitive_cone_add(radius1=0.76, depth=1.15, location=(0, -0.32, 0))
+        bpy.ops.mesh.primitive_cone_add(radius1=0.78, depth=1.18, location=(0, -0.32, 0))
         cone = bpy.context.active_object
         cone.rotation_euler = (0, 0, math.radians(180))
+        cone.scale = (1.0, 0.85, 0.75)
         cone.data.materials.append(mat_red)
-        apply_uniform_clay_bevel(cone, width=0.15, segments=3)
+        apply_uniform_clay_bevel(cone, width=0.14, segments=3)
         objs.append(cone)
 
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, location=(-0.35, 0.45, 0.42))
+        # Glossy White Clay Reflection Highlight
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, location=(-0.35, 0.45, 0.32))
         hl = bpy.context.active_object
+        hl.scale = (1.0, 1.0, 0.6)
         hl.data.materials.append(mat_white)
         bpy.ops.object.shade_smooth()
         objs.append(hl)
@@ -844,23 +1435,85 @@ def build_sokpop_powerup(p_type):
 
 def build_sokpop_explosion(frame_idx):
     objs = []
-    mat_fire = create_clay_mat("m_uexp_f", (0.98, 0.45, 0.15, 1.0))
-    mat_smoke = create_clay_mat("m_uexp_s", (0.88, 0.85, 0.82, 1.0))
-    mat_outer = create_clay_mat("m_uexp_o", (0.42, 0.40, 0.45, 1.0))
+    mat_fire   = create_clay_mat("m_uexp_f",  (0.98, 0.42, 0.12, 1.0))
+    mat_yellow = create_clay_mat("m_uexp_y",  (0.98, 0.88, 0.22, 1.0))
+    mat_smoke  = create_clay_mat("m_uexp_s",  (0.88, 0.84, 0.80, 1.0))
+    mat_dark   = create_clay_mat("m_uexp_d",  (0.35, 0.33, 0.38, 1.0))
 
-    scale_factor = 0.4 + frame_idx * 0.22
-    mat_curr = mat_fire if frame_idx < 2 else (mat_smoke if frame_idx < 4 else mat_outer)
+    scale_factor = 0.38 + frame_idx * 0.24
 
-    num_puffs = 5 + frame_idx
-    for i in range(num_puffs):
-        angle = i * (2.0 * math.pi / float(num_puffs))
-        dist = 0.15 + frame_idx * 0.18
-        r = 0.35 + (0.1 if i % 2 == 0 else -0.05)
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=r * scale_factor, location=(math.cos(angle)*dist, math.sin(angle)*dist, 0))
-        sph = bpy.context.active_object
-        sph.data.materials.append(mat_curr)
+    if frame_idx <= 1:
+        # Early: compact fiery core + white-yellow hot center + pointed shard spikes
+        num_puffs = 5
+        for i in range(num_puffs):
+            angle = i * (2.0 * math.pi / float(num_puffs)) + frame_idx * 0.3
+            dist  = 0.12 + frame_idx * 0.14
+            r     = (0.38 + (0.08 if i % 2 == 0 else -0.06)) * scale_factor
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(angle)*dist, math.sin(angle)*dist, 0))
+            sph = bpy.context.active_object
+            sph.data.materials.append(mat_fire)
+            bpy.ops.object.shade_smooth()
+            objs.append(sph)
+
+        # White-hot central core
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.22 * scale_factor, location=(0, 0, 0))
+        core = bpy.context.active_object
+        core.data.materials.append(mat_yellow)
         bpy.ops.object.shade_smooth()
-        objs.append(sph)
+        objs.append(core)
+
+        # 4 Radial spark shard spikes
+        for i in range(4):
+            ang = i * (math.pi / 2.0) + frame_idx * 0.5
+            bpy.ops.mesh.primitive_cone_add(radius1=0.08*scale_factor, depth=0.42*scale_factor,
+                                             location=(math.cos(ang)*0.48*scale_factor,
+                                                       math.sin(ang)*0.48*scale_factor, 0))
+            shard = bpy.context.active_object
+            shard.rotation_euler = (math.radians(90), 0, ang + math.pi/2)
+            shard.data.materials.append(mat_yellow)
+            apply_uniform_clay_bevel(shard, width=0.02, segments=2)
+            objs.append(shard)
+
+    elif frame_idx <= 3:
+        # Mid: expanding orange fireball puffs with inner lighter layer
+        num_puffs = 6 + frame_idx
+        for i in range(num_puffs):
+            angle = i * (2.0 * math.pi / float(num_puffs)) + frame_idx * 0.15
+            dist  = 0.16 + frame_idx * 0.18
+            r     = (0.34 + (0.10 if i % 2 == 0 else -0.04)) * scale_factor
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(angle)*dist, math.sin(angle)*dist, 0))
+            sph = bpy.context.active_object
+            sph.data.materials.append(mat_fire if i % 3 != 2 else mat_smoke)
+            bpy.ops.object.shade_smooth()
+            objs.append(sph)
+
+        # Fading ember center
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.20 * scale_factor, location=(0, 0, 0))
+        center = bpy.context.active_object
+        center.data.materials.append(mat_fire)
+        bpy.ops.object.shade_smooth()
+        objs.append(center)
+
+    else:
+        # Late: billowing dark smoke tufts with pale ash wisps
+        num_puffs = 7 + (frame_idx - 4)
+        for i in range(num_puffs):
+            angle = i * (2.0 * math.pi / float(num_puffs)) + frame_idx * 0.2
+            dist  = 0.24 + (frame_idx - 4) * 0.22
+            r     = (0.32 + (0.12 if i % 2 == 0 else -0.05)) * scale_factor
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(angle)*dist, math.sin(angle)*dist, 0))
+            sph = bpy.context.active_object
+            sph.data.materials.append(mat_dark if i % 3 == 0 else mat_smoke)
+            bpy.ops.object.shade_smooth()
+            objs.append(sph)
+
+        # Tiny residual ember core
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12 * scale_factor, location=(0, 0, 0))
+        ember = bpy.context.active_object
+        ember.data.materials.append(mat_fire)
+        bpy.ops.object.shade_smooth()
+        objs.append(ember)
+
     return objs
 
 def build_sokpop_spawn_star(frame_idx):
@@ -880,13 +1533,76 @@ def build_sokpop_spawn_star(frame_idx):
 
 def build_sokpop_bullet(is_plasma=False):
     objs = []
-    col = (0.28, 0.85, 1.0, 1.0) if is_plasma else (0.95, 0.52, 0.22, 1.0)
-    mat_b = create_clay_mat("m_ubull", col, emission=col if is_plasma else None, emission_str=3.0 if is_plasma else 0.0)
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45, location=(0, 0, 0))
-    sph = bpy.context.active_object
-    sph.data.materials.append(mat_b)
-    bpy.ops.object.shade_smooth()
-    objs.append(sph)
+    if not is_plasma:
+        # Regular Shell: beveled oval cannonball shape
+        mat_shell  = create_clay_mat("m_ubull_s", (0.92, 0.50, 0.20, 1.0))
+        mat_tip    = create_clay_mat("m_ubull_t", (0.85, 0.85, 0.90, 1.0))
+        mat_base   = create_clay_mat("m_ubull_b", (0.32, 0.32, 0.38, 1.0))
+        mat_band   = create_clay_mat("m_ubull_bd", (0.95, 0.78, 0.22, 1.0))
+
+        # Oval body
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.48, location=(0, 0, 0))
+        body = bpy.context.active_object
+        body.scale = (1.0, 0.78, 1.0)
+        body.data.materials.append(mat_shell)
+        bpy.ops.object.shade_smooth()
+        objs.append(body)
+
+        # Pointed steel cap tip
+        bpy.ops.mesh.primitive_cone_add(radius1=0.32, depth=0.52, location=(0, 0.46, 0))
+        tip = bpy.context.active_object
+        tip.rotation_euler = (math.radians(90), 0, 0)
+        tip.scale = (1.0, 1.0, 0.85)
+        tip.data.materials.append(mat_tip)
+        apply_uniform_clay_bevel(tip, width=0.04, segments=2)
+        objs.append(tip)
+
+        # Flat brass base cap
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.38, depth=0.16, vertices=14, location=(0, -0.45, 0))
+        base_cap = bpy.context.active_object
+        base_cap.rotation_euler = (math.radians(90), 0, 0)
+        base_cap.data.materials.append(mat_base)
+        apply_uniform_clay_bevel(base_cap, width=0.04, segments=2)
+        objs.append(base_cap)
+
+        # Gold driving band ring at equator
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.50, minor_radius=0.06, location=(0, 0, 0))
+        band = bpy.context.active_object
+        band.rotation_euler = (math.radians(90), 0, 0)
+        band.data.materials.append(mat_band)
+        bpy.ops.object.shade_smooth()
+        objs.append(band)
+
+    else:
+        # Plasma Bolt: cyan teardrop body + energy coil rings + glowing core
+        mat_plasma = create_clay_mat("m_ubull_pl", (0.28, 0.88, 1.0, 1.0), emission=(0.28, 0.88, 1.0, 1.0), emission_str=3.5)
+        mat_core   = create_clay_mat("m_ubull_plc", (0.85, 0.98, 1.0, 1.0), emission=(0.85, 0.98, 1.0, 1.0), emission_str=5.0)
+        mat_tail   = create_clay_mat("m_ubull_plt", (0.15, 0.55, 0.82, 1.0), emission=(0.15, 0.55, 0.82, 1.0), emission_str=2.0)
+
+        # Elongated teardrop body
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.50, location=(0, 0, 0))
+        body = bpy.context.active_object
+        body.scale = (1.0, 1.38, 1.0)
+        body.data.materials.append(mat_plasma)
+        bpy.ops.object.shade_smooth()
+        objs.append(body)
+
+        # Bright glowing core
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.28, location=(0, 0.05, 0))
+        core = bpy.context.active_object
+        core.data.materials.append(mat_core)
+        bpy.ops.object.shade_smooth()
+        objs.append(core)
+
+        # 3 Energy coil rings along the tail
+        for ry in [-0.18, -0.40, -0.60]:
+            bpy.ops.mesh.primitive_torus_add(major_radius=0.38 + abs(ry) * 0.2, minor_radius=0.055, location=(0, ry, 0))
+            coil = bpy.context.active_object
+            coil.rotation_euler = (math.radians(90), 0, 0)
+            coil.data.materials.append(mat_tail)
+            bpy.ops.object.shade_smooth()
+            objs.append(coil)
+
     return objs
 
 # ==================== MASTER BATCH RENDER ====================
@@ -965,7 +1681,9 @@ def main():
     print(">>> 6. Rendering High-Contrast Sokpop Map Nodes...")
     for node_type in ["battle", "elite", "rest", "shop", "event", "boss"]:
         render_and_clean(build_sokpop_map_node(node_type), os.path.join(SPRITES_MAP, f"node_{node_type}.png"))
+    create_sokpop_lighting(ortho_scale=4.2, sun_energy=1.4)  # Wider frame, dimmer sun for glow-heavy ring
     render_and_clean(build_sokpop_active_ring(), os.path.join(SPRITES_MAP, "node_active_ring.png"))
+    create_sokpop_lighting(ortho_scale=3.3)
 
     # Master .blend clean and save
     for mat in list(bpy.data.materials):

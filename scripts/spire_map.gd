@@ -17,6 +17,7 @@ const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 @onready var btn_back: Button = $TopBar/HBox/BackToMenuButton
 
 var node_buttons: Dictionary = {}
+var active_rings: Array[Sprite2D] = []
 
 func _ready() -> void:
 	UIThemeHelper.apply_clay_button(btn_back)
@@ -27,6 +28,13 @@ func _ready() -> void:
 	lines_draw.draw.connect(_on_draw_lines)
 	_build_spire_ui()
 	_update_top_bar()
+
+func _process(delta: float) -> void:
+	for ring in active_rings:
+		if is_instance_valid(ring):
+			ring.rotation += delta * 2.0
+			var pulse = 0.35 + sin(Time.get_ticks_msec() * 0.006) * 0.03
+			ring.scale = Vector2(pulse, pulse)
 
 func _on_back_to_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
@@ -45,6 +53,7 @@ func _build_spire_ui() -> void:
 	for child in map_canvas.get_children():
 		child.queue_free()
 	node_buttons.clear()
+	active_rings.clear()
 
 	var map_size = map_canvas.size
 	if map_size.x <= 0:
@@ -90,6 +99,7 @@ func _build_spire_ui() -> void:
 			ring.scale = Vector2(0.35, 0.35)
 			ring.modulate = Color(0.58, 0.88, 0.62, 0.9)
 			btn.add_child(ring)
+			active_rings.append(ring)
 		else:
 			btn.modulate = Color(0.45, 0.48, 0.55, 0.45)
 			btn.disabled = true

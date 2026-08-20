@@ -196,6 +196,12 @@ func take_damage(amount: int) -> void:
 	health -= amount
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
+	# 按敌人类型追加额外特效
+	if enemy_type == EnemyType.ARMOR:
+		VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+	elif enemy_type == EnemyType.POWER:
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+
 	# 受击形变晃动
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
@@ -213,8 +219,15 @@ func _die() -> void:
 		exp_inst.global_position = global_position
 		get_parent().add_child(exp_inst)
 
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+
 	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.POWER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+		# Delayed second shockwave for dramatic heavy-tank destruction
+		get_tree().create_timer(0.15).timeout.connect(func():
+			if is_instance_valid(get_parent()):
+				VFXAnimator.spawn_shockwave(get_parent(), global_position)
+		)
 
 	if coin_scene and randf() < 0.4:
 		var coin = coin_scene.instantiate()

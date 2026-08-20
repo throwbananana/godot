@@ -3,6 +3,7 @@ extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 @onready var sprite: Sprite2D = $Sprite2D
 var explosion_scene: PackedScene
@@ -33,6 +34,8 @@ func _detonate() -> void:
 		exp_inst.global_position = global_position
 		exp_inst.scale = Vector2(1.5, 1.5)
 		get_parent().add_child(exp_inst)
+	VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
 	# 范围巨大杀伤
 	var enemies = get_tree().get_nodes_in_group("enemies")

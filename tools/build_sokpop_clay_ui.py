@@ -119,20 +119,33 @@ def build_clay_heart(full=True):
     objs = []
     col = (0.92, 0.32, 0.42, 1.0) if full else (0.42, 0.44, 0.50, 1.0)
     mat_h = create_sokpop_clay_mat(f"m_heart_{full}", col)
+    mat_hl = create_sokpop_clay_mat(f"m_heart_hl_{full}", (0.98, 0.98, 1.0, 1.0))
 
+    # Sculpted Organic Clay Heart
     for sx in [-0.38, 0.38]:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.52, location=(sx, 0.25, 0))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.55, location=(sx, 0.25, 0))
         sph = bpy.context.active_object
+        sph.scale = (1.0, 1.0, 0.75)
         sph.data.materials.append(mat_h)
         bpy.ops.object.shade_smooth()
         objs.append(sph)
 
-    bpy.ops.mesh.primitive_cone_add(radius1=0.74, depth=1.1, location=(0, -0.32, 0))
+    bpy.ops.mesh.primitive_cone_add(radius1=0.78, depth=1.18, location=(0, -0.32, 0))
     cone = bpy.context.active_object
     cone.rotation_euler = (0, 0, math.radians(180))
+    cone.scale = (1.0, 0.85, 0.75)
     cone.data.materials.append(mat_h)
-    add_smooth_clay_bevel(cone, width=0.15, segments=3)
+    add_smooth_clay_bevel(cone, width=0.14, segments=3)
     objs.append(cone)
+
+    if full:
+        # Glossy White Clay Reflection Highlight
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14, location=(-0.35, 0.45, 0.30))
+        hl = bpy.context.active_object
+        hl.scale = (1.0, 1.0, 0.6)
+        hl.data.materials.append(mat_hl)
+        bpy.ops.object.shade_smooth()
+        objs.append(hl)
 
     return objs
 
