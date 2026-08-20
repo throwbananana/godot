@@ -48,7 +48,7 @@ func _ready() -> void:
 		base_color = Color(1.0, 1.0, 1.0)
 	else:
 		add_to_group("p2")
-		base_color = Color(0.40, 1.35, 0.70)
+		base_color = Color(1.0, 1.0, 1.0)
 
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
@@ -81,7 +81,7 @@ func heal(amount: int) -> void:
 	tween.tween_property(sprite, "modulate", base_color, 0.1)
 
 func _update_tier_appearance() -> void:
-	var prefix = "player_tier%d" % upgrade_tier
+	var prefix = "player_tier%d" % upgrade_tier if player_id == 1 else "player2_tier%d" % upgrade_tier
 	tank_frames.clear()
 	for i in range(6):
 		var tex = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f%d.png" % [prefix, i])

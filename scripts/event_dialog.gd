@@ -18,6 +18,7 @@ signal closed
 var dialog_type: String = "rest"
 
 func _ready() -> void:
+	UIThemeHelper.apply_clay_panel(self, Color(0.16, 0.14, 0.18, 0.96), 16)
 	UIThemeHelper.apply_clay_button(btn_1)
 	UIThemeHelper.apply_clay_button(btn_2)
 	UIThemeHelper.apply_clay_button(btn_3)
@@ -29,24 +30,24 @@ func _ready() -> void:
 func setup(type: String) -> void:
 	dialog_type = type
 	visible = true
-	var icon_path = "res://assets/sprites/map/node_rest.png"
+	var icon_path = "res://assets/sprites/ui/diorama_rest.png"
 	
 	if type == "rest":
-		icon_path = "res://assets/sprites/map/node_rest.png"
+		icon_path = "res://assets/sprites/ui/diorama_rest.png"
 		title_label.text = "FORWARD REPAIR OUTPOST (CAMPFIRE)"
 		desc_label.text = "You reached a secured allied outpost. Choose your preparation for the battles ahead:"
 		btn_1.text = "1. 🛠 Full Vehicle Overhaul (Restore HP & Fortify)"
 		btn_2.text = "2. ⚡ Gunsmith Calibration (+1 ATK Bonus)"
 		btn_3.text = "3. ❤️ Request Reinforcements (+1 Extra Life)"
 	elif type == "shop":
-		icon_path = "res://assets/sprites/map/node_shop.png"
+		icon_path = "res://assets/sprites/ui/diorama_shop.png"
 		title_label.text = "BLACK MARKET ARMS DEALER"
 		desc_label.text = "The arms dealer offers military-grade prototypes. (Current Gold: %dG)" % GameState.gold
 		btn_1.text = "1. ⭐ Star Weapon Module (100G) -> Tier Up!"
 		btn_2.text = "2. 🛡 Forcefield Generator (60G) -> +2 Max HP"
 		btn_3.text = "3. ❤️ Heavy Supply Crate (80G) -> +2 Extra Lives"
 	elif type == "event":
-		icon_path = "res://assets/sprites/map/node_event.png"
+		icon_path = "res://assets/sprites/ui/diorama_event.png"
 		title_label.text = "UNEXPLORED COMBAT ZONE (MYSTERY)"
 		desc_label.text = "You discovered an abandoned enemy munitions depot in the ruins:"
 		btn_1.text = "1. 📦 Scavenge Munitions (+80 Gold, +50 XP)"

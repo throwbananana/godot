@@ -85,3 +85,48 @@ static func apply_clay_button(btn: Button, dark_text: bool = true) -> void:
 		btn.add_theme_color_override("font_hover_color", Color(0.1, 0.08, 0.05, 1.0))
 		btn.add_theme_color_override("font_pressed_color", Color(0.3, 0.15, 0.1, 1.0))
 		btn.add_theme_color_override("font_focus_color", Color(0.2, 0.16, 0.12, 1.0))
+
+static func apply_clay_panel(panel: PanelContainer, bg_color: Color = Color(0.18, 0.15, 0.20, 0.92), corner_radius: int = 14) -> void:
+	if not panel: return
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = bg_color
+	sb.corner_radius_top_left = corner_radius
+	sb.corner_radius_top_right = corner_radius
+	sb.corner_radius_bottom_left = corner_radius
+	sb.corner_radius_bottom_right = corner_radius
+	sb.border_width_left = 3
+	sb.border_width_top = 3
+	sb.border_width_right = 3
+	sb.border_width_bottom = 3
+	sb.border_color = Color(0.38, 0.32, 0.38, 0.95)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 4)
+	sb.content_margin_left = 16
+	sb.content_margin_right = 16
+	sb.content_margin_top = 14
+	sb.content_margin_bottom = 14
+	panel.add_theme_stylebox_override("panel", sb)
+
+static func apply_clay_progressbar(bar: ProgressBar, fill_color: Color = Color(0.35, 0.82, 0.95, 1.0)) -> void:
+	if not bar: return
+	var bg = StyleBoxFlat.new()
+	bg.bg_color = Color(0.14, 0.12, 0.16, 0.9)
+	bg.corner_radius_top_left = 5
+	bg.corner_radius_top_right = 5
+	bg.corner_radius_bottom_left = 5
+	bg.corner_radius_bottom_right = 5
+	bg.border_width_left = 1
+	bg.border_width_top = 1
+	bg.border_width_right = 1
+	bg.border_width_bottom = 1
+	bg.border_color = Color(0.28, 0.24, 0.30, 0.8)
+	bar.add_theme_stylebox_override("background", bg)
+
+	var fill = StyleBoxFlat.new()
+	fill.bg_color = fill_color
+	fill.corner_radius_top_left = 5
+	fill.corner_radius_top_right = 5
+	fill.corner_radius_bottom_left = 5
+	fill.corner_radius_bottom_right = 5
+	bar.add_theme_stylebox_override("fill", fill)

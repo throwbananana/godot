@@ -29,12 +29,12 @@ text = "OUTPOST ENCOUNTER"
 horizontal_alignment = 1
 
 [node name="IconContainer" type="Control" parent="VBox"]
-custom_minimum_size = Vector2(0, 70)
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 
 [node name="IconSprite" type="Sprite2D" parent="VBox/IconContainer"]
-position = Vector2(280, 35)
-scale = Vector2(0.42, 0.42)
+position = Vector2(280, 55)
+scale = Vector2(0.46, 0.46)
 
 [node name="DescLabel" type="Label" parent="VBox"]
 custom_minimum_size = Vector2(500, 40)

@@ -10,6 +10,7 @@ const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 @onready var map_canvas: Control = $MapArea/MapCanvas
 @onready var lines_draw: Control = $MapArea/LinesDraw
 @onready var event_dialog: PanelContainer = $EventDialog
+@onready var top_bar: PanelContainer = $TopBar
 @onready var hud_floor: Label = $TopBar/HBox/FloorLabel
 @onready var hud_gold: Label = $TopBar/HBox/GoldLabel
 @onready var hud_lives: Label = $TopBar/HBox/LivesLabel
@@ -20,6 +21,7 @@ var node_buttons: Dictionary = {}
 var active_rings: Array[Sprite2D] = []
 
 func _ready() -> void:
+	UIThemeHelper.apply_clay_panel(top_bar, Color(0.18, 0.15, 0.20, 0.95), 12)
 	UIThemeHelper.apply_clay_button(btn_back)
 	btn_back.pressed.connect(_on_back_to_menu)
 	event_dialog.closed.connect(_on_event_closed)

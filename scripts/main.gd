@@ -47,6 +47,11 @@ var tex_ice: Texture2D
 @onready var hud_status: Label = $HUD/CenterMessage
 @onready var hud_toast: Label = $HUD/SidePanel/VBox/ToastLabel
 @onready var btn_restart: Button = $HUD/RestartButton
+@onready var side_panel: PanelContainer = $HUD/SidePanel
+@onready var pause_menu: PanelContainer = $HUD/PauseMenu
+@onready var btn_resume: Button = $HUD/PauseMenu/VBox/ResumeButton
+@onready var btn_restart_stage: Button = $HUD/PauseMenu/VBox/RestartStageButton
+@onready var btn_quit_menu: Button = $HUD/PauseMenu/VBox/QuitToMenuButton
 
 var score: int = 0
 var p1_lives: int = 3
@@ -109,10 +114,28 @@ func _ready() -> void:
 	rpg_mgr.stats_changed.connect(_update_rpg_hud)
 	rpg_mgr.gold_changed.connect(func(_g): _update_rpg_hud())
 
+	UIThemeHelper.apply_clay_panel(side_panel)
+	UIThemeHelper.apply_clay_panel(pause_menu)
+	UIThemeHelper.apply_clay_progressbar(hud_rpg_xp)
+
 	UIThemeHelper.apply_clay_button(btn_restart)
 	btn_restart.pressed.connect(_on_button_action)
 	btn_restart.visible = false
 	hud_status.visible = false
+
+	UIThemeHelper.apply_clay_button(btn_resume)
+	UIThemeHelper.apply_clay_button(btn_restart_stage)
+	UIThemeHelper.apply_clay_button(btn_quit_menu)
+
+	btn_resume.pressed.connect(_toggle_pause)
+	btn_restart_stage.pressed.connect(func():
+		_toggle_pause()
+		start_game()
+	)
+	btn_quit_menu.pressed.connect(func():
+		_toggle_pause()
+		get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	)
 
 	var origin_x = 48.0
 	var origin_y = 48.0
@@ -127,6 +150,16 @@ func _ready() -> void:
 	p2_spawn_point = Vector2(8.5 * TILE_SIZE, 12.0 * TILE_SIZE)
 
 	start_game()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode == KEY_P):
+		if not is_game_over and not is_victory:
+			_toggle_pause()
+
+func _toggle_pause() -> void:
+	var paused = not get_tree().paused
+	get_tree().paused = paused
+	pause_menu.visible = paused
 
 func start_game() -> void:
 	score = 0
@@ -447,7 +480,12 @@ func _request_spawn_enemy() -> void:
 	if GameState.battle_type == "elite":
 		type = EnemyTank.EnemyType.ARMOR if r < 0.55 else EnemyTank.EnemyType.POWER
 	elif GameState.battle_type == "boss":
-		type = EnemyTank.EnemyType.ARMOR if r < 0.70 else EnemyTank.EnemyType.POWER
+		if enemies_spawned == 0 or enemies_spawned == total_enemies - 1:
+			type = EnemyTank.EnemyType.BOSS
+			show_toast("⚠️ SUMMIT COLOSSUS DETECTED! ⚠️")
+			add_trauma(0.50)
+		else:
+			type = EnemyTank.EnemyType.ARMOR if r < 0.60 else EnemyTank.EnemyType.POWER
 	else:
 		if r < 0.40: type = EnemyTank.EnemyType.BASIC
 		elif r < 0.65: type = EnemyTank.EnemyType.FAST
@@ -594,18 +632,18 @@ func _update_hud() -> void:
 
 func _update_rpg_hud() -> void:
 	if hud_rpg_level:
-		hud_rpg_level.text = "LEVEL: LV.%d" % rpg_mgr.level
+		hud_rpg_level.text = "★ LEVEL: LV.%d" % rpg_mgr.level
 	if hud_rpg_xp:
 		hud_rpg_xp.max_value = rpg_mgr.xp_to_next
 		hud_rpg_xp.value = rpg_mgr.current_xp
 	if hud_gold:
-		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
+		hud_gold.text = "🪙 GOLD: %d G" % rpg_mgr.gold
 	if hud_p1_hp and p1_instance and is_instance_valid(p1_instance):
 		hud_p1_hp.text = "P1 [YEL] HP: %d / %d" % [p1_instance.current_health, p1_instance.max_health]
 	if hud_p2_hp and p2_instance and is_instance_valid(p2_instance):
 		hud_p2_hp.text = "P2 [GRN] HP: %d / %d" % [p2_instance.current_health, p2_instance.max_health]
 	if hud_stats:
-		hud_stats.text = "ATK: +%d | SPD: +%d%%\nREGEN: +%.1f/s" % [
+		hud_stats.text = "⚔️ ATK: +%d | ⚡ SPD: +%d%%\n❤️ REGEN: +%.1f/s" % [
 			rpg_mgr.atk_bonus,
 			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
 			rpg_mgr.get_regen_rate()

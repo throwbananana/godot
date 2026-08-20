@@ -7,7 +7,7 @@ const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, BOSS }
 
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
@@ -81,6 +81,14 @@ func _setup_tank_type() -> void:
 			xp_value = 80
 			gold_value = 50
 			fire_interval = 1.0
+		EnemyType.BOSS:
+			prefix = "enemy_boss"
+			speed = 75.0
+			max_health = 10
+			score_value = 1500
+			xp_value = 250
+			gold_value = 180
+			fire_interval = 0.65
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * 0.08
@@ -92,12 +100,13 @@ func _setup_tank_type() -> void:
 		score_value = int(score_value * 1.5)
 		fire_interval = fire_interval * 0.85
 	elif GameState.battle_type == "boss":
-		max_health = int(ceil(max_health * 2.0))
-		speed = speed * 1.18
-		xp_value = int(xp_value * 2.2)
-		gold_value = int(gold_value * 2.0)
-		score_value = int(score_value * 2.0)
-		fire_interval = fire_interval * 0.75
+		if enemy_type != EnemyType.BOSS:
+			max_health = int(ceil(max_health * 1.6))
+		speed = speed * 1.12
+		xp_value = int(xp_value * 1.8)
+		gold_value = int(gold_value * 1.8)
+		score_value = int(score_value * 1.8)
+		fire_interval = fire_interval * 0.80
 	else:
 		xp_value = int(xp_value * floor_mult)
 		gold_value = int(gold_value * floor_mult)
@@ -111,6 +120,8 @@ func _setup_tank_type() -> void:
 			tank_frames.append(tex)
 	if tank_frames.size() > 0 and sprite:
 		sprite.texture = tank_frames[0]
+		if enemy_type == EnemyType.BOSS:
+			sprite.scale = Vector2(0.24, 0.24)
 
 func freeze(duration: float) -> void:
 	freeze_timer = duration
@@ -176,42 +187,63 @@ func _choose_new_direction() -> void:
 func _shoot() -> void:
 	if not bullet_scene:
 		return
-	var bullet = bullet_scene.instantiate()
-	bullet.direction = facing_direction
-	bullet.speed = 360.0 if enemy_type != EnemyType.POWER else 480.0
-	bullet.damage = 1
-	bullet.can_destroy_steel = false
-	var muzzle_pos = global_position + facing_direction * 26.0
-	bullet.global_position = muzzle_pos
-	bullet.shooter = self
-	bullet.shooter_type = "enemy"
-	get_parent().add_child(bullet)
+
+	if enemy_type == EnemyType.BOSS:
+		# Twin Super Siege Cannons Firing
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-1.0, 1.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = facing_direction
+			b.speed = 460.0
+			b.damage = 1
+			b.can_destroy_steel = true
+			var m_pos = global_position + facing_direction * 30.0 + right_vec * (side * 8.0)
+			b.global_position = m_pos
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+	else:
+		var bullet = bullet_scene.instantiate()
+		bullet.direction = facing_direction
+		bullet.speed = 360.0 if enemy_type != EnemyType.POWER else 480.0
+		bullet.damage = 1
+		bullet.can_destroy_steel = false
+		var muzzle_pos = global_position + facing_direction * 26.0
+		bullet.global_position = muzzle_pos
+		bullet.shooter = self
+		bullet.shooter_type = "enemy"
+		get_parent().add_child(bullet)
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 
 	# 枪口后坐力与火花
 	if recoil_tween and recoil_tween.is_valid():
 		recoil_tween.kill()
 	recoil_tween = create_tween()
-	recoil_tween.tween_property(sprite, "position", Vector2(0, 3.0), 0.04)
+	recoil_tween.tween_property(sprite, "position", Vector2(0, 4.0), 0.04)
 	recoil_tween.tween_property(sprite, "position", Vector2.ZERO, 0.08)
-	VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 
 func take_damage(amount: int) -> void:
 	health -= amount
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
 	# 按敌人类型追加额外特效
-	if enemy_type == EnemyType.ARMOR:
+	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.BOSS:
 		VFXAnimator.spawn_dust_puff(get_parent(), global_position)
 	elif enemy_type == EnemyType.POWER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
+	if enemy_type == EnemyType.BOSS:
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+
 	# 受击形变晃动
+	var base_scale = Vector2(0.24, 0.24) if enemy_type == EnemyType.BOSS else Vector2(0.196, 0.196)
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
 	hit_tween = create_tween()
-	hit_tween.tween_property(sprite, "scale", Vector2(0.24, 0.12), 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	hit_tween.tween_property(sprite, "scale", Vector2(0.15, 0.22), 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	hit_tween.tween_property(sprite, "scale", Vector2(0.18, 0.18), 0.08).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	hit_tween.tween_property(sprite, "scale", base_scale * Vector2(1.3, 0.7), 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	hit_tween.tween_property(sprite, "scale", base_scale * Vector2(0.8, 1.2), 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	hit_tween.tween_property(sprite, "scale", base_scale, 0.08).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 	if health <= 0:
 		_die()
