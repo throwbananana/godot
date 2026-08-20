@@ -7,6 +7,7 @@ const PowerUp = preload("res://scripts/power_up.gd")
 const SpawnStar = preload("res://scripts/spawn_star.gd")
 const RPGManager = preload("res://scripts/rpg_manager.gd")
 const BuilderController = preload("res://scripts/builder_controller.gd")
+const GameState = preload("res://scripts/game_state.gd")
 
 const TILE_SIZE: float = 48.0
 const GRID_W: int = 13
@@ -47,7 +48,7 @@ var tex_ice: Texture2D
 
 var score: int = 0
 var player_lives: int = 3
-var total_enemies: int = 20
+var total_enemies: int = 15
 var enemies_spawned: int = 0
 var enemies_alive: int = 0
 var is_game_over: bool = false
@@ -56,7 +57,7 @@ var is_victory: bool = false
 var player_instance: CharacterBody2D = null
 var base_instance: Area2D = null
 var spawn_timer: float = 0.0
-var spawn_interval: float = 2.8
+var spawn_interval: float = 2.6
 
 var enemy_spawn_points: Array[Vector2] = []
 var player_spawn_point: Vector2 = Vector2.ZERO
@@ -85,7 +86,7 @@ func _ready() -> void:
 	rpg_mgr.stats_changed.connect(_update_rpg_hud)
 	rpg_mgr.gold_changed.connect(func(_g): _update_rpg_hud())
 
-	btn_restart.pressed.connect(restart_game)
+	btn_restart.pressed.connect(_on_button_action)
 	btn_restart.visible = false
 	hud_status.visible = false
 
@@ -104,8 +105,6 @@ func _ready() -> void:
 
 func start_game() -> void:
 	score = 0
-	player_lives = 3
-	total_enemies = 20
 	enemies_spawned = 0
 	enemies_alive = 0
 	is_game_over = false
@@ -115,7 +114,32 @@ func start_game() -> void:
 	hud_status.visible = false
 	btn_restart.visible = false
 
-	rpg_mgr.reset()
+	# 根据爬塔或街机模式配置敌人与属性
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		player_lives = GameState.player_lives
+		rpg_mgr.gold = GameState.gold
+		rpg_mgr.level = GameState.player_level
+		rpg_mgr.atk_bonus = GameState.atk_bonus
+		rpg_mgr.max_hp_lvl = max(0, GameState.max_hp - 1)
+		rpg_mgr.speed_lvl = GameState.speed_bonus
+		
+		if GameState.battle_type == "elite":
+			total_enemies = 18
+			spawn_interval = 2.0
+			show_toast("⚠️ ELITE BATTLE: HEAVY ARMORED CORPS!")
+		elif GameState.battle_type == "boss":
+			total_enemies = 24
+			spawn_interval = 1.6
+			show_toast("👑 BOSS BATTLE: REGIONAL COMMANDER FORTRESS!")
+		else:
+			total_enemies = 12
+			spawn_interval = 2.5
+			show_toast("FLOOR %d: TACTICAL ENGAGEMENT" % (GameState.current_floor + 1))
+	else:
+		player_lives = 3
+		total_enemies = 20
+		rpg_mgr.reset()
+		show_toast("ENDLESS ARCADE - STAGE 1 READY!")
 
 	_clear_all()
 	_build_map()
@@ -123,15 +147,19 @@ func start_game() -> void:
 	_spawn_player()
 	_update_hud()
 	_update_rpg_hud()
-	show_toast("RPG BATTLE TANK - STAGE 1 READY!")
 
 func add_gold(amount: int) -> void:
 	rpg_mgr.add_gold(amount)
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		GameState.gold = rpg_mgr.gold
 	show_toast("+%d GOLD!" % amount)
 
 func _on_rpg_level_up(new_lvl: int) -> void:
 	SoundManager.play_hit_steel(get_tree())
 	show_toast("★ LEVEL UP! LV.%d REACHED! ★" % new_lvl)
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		GameState.player_level = new_lvl
+		GameState.atk_bonus = rpg_mgr.atk_bonus
 	if player_instance and is_instance_valid(player_instance):
 		player_instance._apply_rpg_stats()
 
@@ -283,6 +311,8 @@ func trigger_bomb() -> void:
 
 func add_life(amount: int = 1) -> void:
 	player_lives += amount
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		GameState.player_lives = player_lives
 	_update_hud()
 	show_toast("+1 EXTRA LIFE!")
 
@@ -304,6 +334,8 @@ func _spawn_player() -> void:
 	player_instance.destroyed.connect(_on_player_destroyed)
 	player_instance.powerup_collected.connect(func(type_name): show_toast("GOT %s!" % type_name))
 	player_instance.health_changed.connect(_on_player_hp_changed)
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		player_instance.upgrade_tier = GameState.player_tier
 	actors_container.add_child(player_instance)
 	_update_hud()
 	_update_rpg_hud()
@@ -335,7 +367,7 @@ func _process(delta: float) -> void:
 
 	if is_game_over or is_victory:
 		if Input.is_action_just_pressed("restart"):
-			restart_game()
+			_on_button_action()
 		return
 
 	if enemies_spawned < total_enemies and enemies_alive < 4:
@@ -354,14 +386,15 @@ func _request_spawn_enemy() -> void:
 	
 	var type = EnemyTank.EnemyType.BASIC
 	var r = randf()
-	if r < 0.40:
-		type = EnemyTank.EnemyType.BASIC
-	elif r < 0.65:
-		type = EnemyTank.EnemyType.FAST
-	elif r < 0.85:
-		type = EnemyTank.EnemyType.POWER
+	if GameState.battle_type == "elite":
+		type = EnemyTank.EnemyType.ARMOR if r < 0.55 else EnemyTank.EnemyType.POWER
+	elif GameState.battle_type == "boss":
+		type = EnemyTank.EnemyType.ARMOR if r < 0.70 else EnemyTank.EnemyType.POWER
 	else:
-		type = EnemyTank.EnemyType.ARMOR
+		if r < 0.40: type = EnemyTank.EnemyType.BASIC
+		elif r < 0.65: type = EnemyTank.EnemyType.FAST
+		elif r < 0.85: type = EnemyTank.EnemyType.POWER
+		else: type = EnemyTank.EnemyType.ARMOR
 
 	var star = spawnstar_scene.instantiate()
 	star.position = spawn_pos
@@ -402,6 +435,8 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 
 func _on_player_destroyed() -> void:
 	player_lives -= 1
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		GameState.player_lives = player_lives
 	SoundManager.play_explosion(get_tree())
 	_update_hud()
 	if player_lives > 0:
@@ -415,17 +450,46 @@ func _on_base_destroyed() -> void:
 func _game_over(victory: bool) -> void:
 	if is_game_over or is_victory:
 		return
+	
+	# 保存爬塔全局状态
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		GameState.gold = rpg_mgr.gold
+		GameState.player_lives = player_lives
+		if player_instance:
+			GameState.player_tier = player_instance.upgrade_tier
+
 	if victory:
 		is_victory = true
-		hud_status.text = "VICTORY!\nSTAGE CLEARED"
-		hud_status.modulate = Color(0.2, 1.0, 0.4)
+		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			if GameState.battle_type == "boss":
+				hud_status.text = "👑 VICTORY! 👑\nSPIRE CONQUERED!"
+				hud_status.modulate = Color(1.0, 0.85, 0.2)
+				btn_restart.text = "RETURN TO TITLE"
+			else:
+				hud_status.text = "VICTORY!\nSECTOR SECURED"
+				hud_status.modulate = Color(0.2, 1.0, 0.4)
+				btn_restart.text = "CONTINUE CLIMBING"
+		else:
+			hud_status.text = "VICTORY!\nSTAGE CLEARED"
+			hud_status.modulate = Color(0.2, 1.0, 0.4)
+			btn_restart.text = "PLAY AGAIN"
 	else:
 		is_game_over = true
 		hud_status.text = "GAME OVER\nBASE DESTROYED"
 		hud_status.modulate = Color(1.0, 0.2, 0.2)
+		btn_restart.text = "RETURN TO MENU"
 	
 	hud_status.visible = true
 	btn_restart.visible = true
+
+func _on_button_action() -> void:
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		if is_victory and GameState.battle_type != "boss":
+			get_tree().change_scene_to_file("res://scenes/spire_map.tscn")
+		else:
+			get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	else:
+		start_game()
 
 func _update_hud() -> void:
 	hud_score.text = "SCORE: %06d" % score
@@ -449,6 +513,3 @@ func _update_rpg_hud() -> void:
 			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
 			rpg_mgr.get_regen_rate()
 		]
-
-func restart_game() -> void:
-	start_game()

@@ -1,0 +1,94 @@
+[gd_scene load_steps=3 format=3 uid="uid://spm101scene01"]
+
+[ext_resource type="Script" path="res://scripts/spire_map.gd" id="1_spm"]
+[ext_resource type="PackedScene" path="res://scenes/event_dialog.tscn" id="2_evd"]
+
+[node name="SpireMap" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_spm")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.06, 0.07, 0.09, 1)
+
+[node name="TopBar" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 54.0
+grow_horizontal = 2
+
+[node name="HBox" type="HBoxContainer" parent="TopBar"]
+layout_mode = 2
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="FloorLabel" type="Label" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_font_sizes/font_size = 17
+text = "FLOOR: 1 / 6"
+
+[node name="GoldLabel" type="Label" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_font_sizes/font_size = 17
+text = "GOLD: 150 G"
+
+[node name="LivesLabel" type="Label" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 1, 0.5, 1)
+theme_override_font_sizes/font_size = 17
+text = "LIVES: 3"
+
+[node name="TierLabel" type="Label" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 17
+text = "TANK: SCOUT"
+
+[node name="BackToMenuButton" type="Button" parent="TopBar/HBox"]
+custom_minimum_size = Vector2(140, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "MAIN MENU"
+
+[node name="MapArea" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 60.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="LinesDraw" type="Control" parent="MapArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="MapCanvas" type="Control" parent="MapArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="EventDialog" parent="." instance=ExtResource("2_evd")]
+visible = false
+layout_mode = 1

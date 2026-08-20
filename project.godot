@@ -7,7 +7,7 @@ config_version=5
 [application]
 
 config/name="Tank Battle 2D"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/title_screen.tscn"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://assets/svg/player_tank.svg"
 
@@ -60,3 +60,4 @@ restart={
 
 renderer/rendering_method="forward_plus"
 textures/canvas_textures/default_texture_filter=0
+
