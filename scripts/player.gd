@@ -28,8 +28,7 @@ var regen_accumulator: float = 0.0
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shield_sprite: Sprite2D = $ShieldSprite
 
-var tex_f0: Texture2D
-var tex_f1: Texture2D
+var tank_frames: Array[Texture2D] = []
 var current_frame: int = 0
 
 var shield_textures: Array[Texture2D] = []
@@ -83,10 +82,13 @@ func heal(amount: int) -> void:
 
 func _update_tier_appearance() -> void:
 	var prefix = "player_tier%d" % upgrade_tier
-	tex_f0 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f0.png" % prefix)
-	tex_f1 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f1.png" % prefix)
-	if tex_f0 and sprite:
-		sprite.texture = tex_f0
+	tank_frames.clear()
+	for i in range(6):
+		var tex = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f%d.png" % [prefix, i])
+		if tex:
+			tank_frames.append(tex)
+	if tank_frames.size() > 0 and sprite:
+		sprite.texture = tank_frames[0]
 		sprite.modulate = base_color
 
 func apply_powerup(type: PowerUp.Type) -> void:
@@ -177,10 +179,11 @@ func _physics_process(delta: float) -> void:
 		velocity = input_vec * current_speed
 		rotation = facing_direction.angle() + PI / 2.0
 		
-		if int(Time.get_ticks_msec() / 65) % 2 != current_frame:
-			current_frame = 1 - current_frame
-			if tex_f0 and tex_f1:
-				sprite.texture = tex_f1 if current_frame == 1 else tex_f0
+		if tank_frames.size() > 0:
+			var f_idx = int(Time.get_ticks_msec() / 60) % tank_frames.size()
+			if f_idx != current_frame:
+				current_frame = f_idx
+				sprite.texture = tank_frames[current_frame]
 	else:
 		velocity = Vector2.ZERO
 

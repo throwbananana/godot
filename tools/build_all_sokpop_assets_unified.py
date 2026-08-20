@@ -61,6 +61,119 @@ def create_3d_star(r_out=1.15, r_in=0.52, depth=0.30, z_pos=0.0):
     mesh.update()
     return obj
 
+def create_wavy_ribbon(name, y_base, amp, freq, phase, width_y=0.34, height_z=0.08, z_base=0.10, x_min=-1.32, x_max=1.32, steps=36, taper=True):
+    """Generates a continuous smooth sinusoidal wavy ribbon of clay across the tile."""
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+
+    verts = []
+    for i in range(steps + 1):
+        t = i / float(steps)
+        x = x_min + t * (x_max - x_min)
+        y_center = y_base + amp * math.sin(x * freq + phase)
+        dy = amp * freq * math.cos(x * freq + phase)
+        length = math.hypot(1.0, dy)
+        nx = -dy / length
+        ny = 1.0 / length
+
+        # Smooth taper envelope at ends so ribbon stays neatly inside tile
+        env = min(1.0, math.sin(t * math.pi) * 1.8) if taper else 1.0
+        w_cur = width_y * env
+        h_cur = height_z * max(0.4, env)
+
+        half_w = w_cur * 0.5
+        z_top = z_base + h_cur * 0.5
+        z_bot = z_base - h_cur * 0.5
+
+        # Cross section vertices
+        lx = x + nx * half_w
+        ly = y_center + ny * half_w
+        rx = x - nx * half_w
+        ry = y_center - ny * half_w
+
+        verts.append((lx, ly, z_bot))  # 0: bot-left
+        verts.append((lx, ly, z_top))  # 1: top-left
+        verts.append((rx, ry, z_top))  # 2: top-right
+        verts.append((rx, ry, z_bot))  # 3: bot-right
+
+    faces = []
+    for i in range(steps):
+        v0 = i * 4
+        v1 = (i + 1) * 4
+        faces.append((v0 + 0, v1 + 0, v1 + 1, v0 + 1))  # Left side
+        faces.append((v0 + 1, v1 + 1, v1 + 2, v0 + 2))  # Top surface
+        faces.append((v0 + 2, v1 + 2, v1 + 3, v0 + 3))  # Right side
+        faces.append((v0 + 3, v1 + 3, v1 + 0, v0 + 0))  # Bottom surface
+
+    # End caps
+    faces.append((0, 3, 2, 1))
+    last_v = steps * 4
+    faces.append((last_v + 1, last_v + 2, last_v + 3, last_v + 0))
+
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.shade_smooth()
+    # Apply light subdivision for organic clay smoothness
+    sub = obj.modifiers.new(name="Subsurf", type='SUBSURF')
+    sub.levels = 1
+    sub.render_levels = 1
+
+    return obj
+
+def create_lily_pad(name, radius=0.44, depth=0.05, notch_angle=math.radians(35), z_pos=0.14, steps=28):
+    """Creates a circular clay lily pad with an authentic V-cut notch and gentle dished curvature."""
+    mesh = bpy.data.meshes.new(f"{name}_Mesh")
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.collection.objects.link(obj)
+
+    verts = []
+    z_bot = z_pos - depth * 0.5
+    z_top = z_pos + depth * 0.5
+    # Center vertices slightly lower for gentle cupping
+    verts.append((0.0, 0.0, z_bot - 0.01))  # 0: center bottom
+    verts.append((0.0, 0.0, z_top - 0.01))  # 1: center top
+
+    start_ang = notch_angle * 0.5
+    end_ang = 2.0 * math.pi - notch_angle * 0.5
+    for i in range(steps + 1):
+        ang = start_ang + (i / float(steps)) * (end_ang - start_ang)
+        x = math.cos(ang) * radius
+        y = math.sin(ang) * radius
+        verts.append((x, y, z_bot))  # 2 + i*2 + 0
+        verts.append((x, y, z_top))  # 2 + i*2 + 1
+
+    faces = []
+    for i in range(steps):
+        b0 = 2 + i * 2
+        t0 = b0 + 1
+        b1 = 2 + (i + 1) * 2
+        t1 = b1 + 1
+        faces.append((1, t0, t1))          # Top fan
+        faces.append((0, b1, b0))          # Bottom fan
+        faces.append((b0, b1, t1, t0))      # Outer rim
+
+    # Notch edge walls
+    first_b = 2
+    first_t = 3
+    last_b = 2 + steps * 2
+    last_t = last_b + 1
+    faces.append((0, 1, first_t, first_b))  # Start notch wall
+    faces.append((0, last_b, last_t, 1))    # End notch wall
+
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.shade_smooth()
+    sub = obj.modifiers.new(name="Subsurf", type='SUBSURF')
+    sub.levels = 1
+    sub.render_levels = 1
+
+    return obj
+
 # ==================== 1. SOKPOP TANKS ====================
 
 def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
@@ -81,8 +194,9 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
     tx = w * 0.5 + tw * 0.5 - 0.04
     tl = l * 1.1
 
-    # 1. Main Hull
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.05, 0))
+    # 1. Main Hull with subtle chassis suspension bob
+    bob_z = math.sin(frame * (2.0 * math.pi / 6.0)) * 0.012
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.05, bob_z))
     hull = bpy.context.active_object
     hull.scale = (w, l, 0.56)
     hull.data.materials.append(mat_body)
@@ -90,7 +204,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
     objs.append(hull)
 
     # 2. Nose Wedge & Fender
-    bpy.ops.mesh.primitive_cylinder_add(radius=w*0.42, depth=0.48, vertices=16, location=(0, l*0.42, 0.04))
+    bpy.ops.mesh.primitive_cylinder_add(radius=w*0.42, depth=0.48, vertices=16, location=(0, l*0.42, 0.04 + bob_z))
     nose = bpy.context.active_object
     nose.rotation_euler = (0, math.radians(90), 0)
     nose.data.materials.append(mat_trim)
@@ -99,7 +213,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
 
     # 3. Headlights
     for hx in [-w*0.28, w*0.28]:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.11, location=(hx, l*0.5, 0.12))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.11, location=(hx, l*0.5, 0.12 + bob_z))
         hl = bpy.context.active_object
         hl.data.materials.append(mat_eyes)
         bpy.ops.object.shade_smooth()
@@ -114,7 +228,8 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
         apply_uniform_clay_bevel(tr, width=0.16, segments=4)
         objs.append(tr)
 
-        # 3 Hubcap Roadwheels
+        # 3 Hubcap Roadwheels with rotating rim studs
+        wheel_rot = (frame / 6.0) * (2.0 * math.pi)
         for wy in [-0.45, 0.0, 0.45]:
             bpy.ops.mesh.primitive_cylinder_add(radius=0.24, depth=tw*1.08, vertices=16, location=(x_pos, wy, 0))
             wh = bpy.context.active_object
@@ -129,9 +244,22 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
             bpy.ops.object.shade_smooth()
             objs.append(hub)
 
-        # Tread Teeth animation offset
-        offset = 0.14 if frame == 1 else 0.0
+            # 3 Rotating Wheel Bolts/Studs per wheel
+            for b_i in range(3):
+                b_ang = wheel_rot + b_i * (2.0 * math.pi / 3.0)
+                b_y = wy + math.sin(b_ang) * 0.14
+                b_z = math.cos(b_ang) * 0.14
+                b_x = x_pos + (0.09 if x_pos > 0 else -0.09)
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=0.032, location=(b_x, b_y, b_z))
+                w_bolt = bpy.context.active_object
+                w_bolt.data.materials.append(mat_trim)
+                bpy.ops.object.shade_smooth()
+                objs.append(w_bolt)
+
+        # 6-Frame Continuous Tread Teeth animation offset
         num_treads = 6
+        tread_spacing = (tl * 0.84) / float(num_treads)
+        offset = (frame / 6.0) * tread_spacing
         for i in range(num_treads):
             y_pos = -tl*0.42 + (i / float(num_treads - 1)) * (tl * 0.84) + offset
             if y_pos > tl * 0.46: y_pos -= tl * 0.88
@@ -144,7 +272,7 @@ def build_sokpop_tank(name_prefix, col_body, col_turret, col_trim,
 
     # 5. Turret Dome
     tsize = 0.92 if is_heavy else 0.82
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=tsize*0.58, location=(0, -0.06, 0.52))
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=tsize*0.58, location=(0, -0.06, 0.52 + bob_z))
     turret = bpy.context.active_object
     turret.scale = (1.0, 1.0, 0.75)
     turret.data.materials.append(mat_turret)
@@ -290,44 +418,78 @@ def build_sokpop_steel():
 
 def build_sokpop_water(frame=0):
     objs = []
-    mat_water = create_clay_mat("m_uw_w", (0.26, 0.68, 0.88, 1.0), roughness=0.25, sss_weight=0.15)
-    mat_foam = create_clay_mat("m_uw_f", (0.95, 0.96, 0.98, 1.0))
-    mat_bubble = create_clay_mat("m_uw_b", (0.85, 0.95, 1.0, 1.0), roughness=0.1)
+    # Rich clay water palette
+    mat_deep_water   = create_clay_mat("m_uw_dw", (0.12, 0.40, 0.68, 1.0), roughness=0.18, sss_weight=0.22)
+    mat_mid_water    = create_clay_mat("m_uw_mw", (0.22, 0.64, 0.88, 1.0), roughness=0.16, sss_weight=0.24)
+    mat_light_water  = create_clay_mat("m_uw_lw", (0.46, 0.88, 0.98, 1.0), roughness=0.14, sss_weight=0.26)
+    mat_foam         = create_clay_mat("m_uw_fm", (0.96, 0.98, 1.0, 1.0), roughness=0.40)
+    mat_bubble       = create_clay_mat("m_uw_bub", (0.88, 0.96, 1.0, 1.0), roughness=0.10)
 
-    # 1. Main Water Basin Block
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
-    water = bpy.context.active_object
-    water.scale = (2.95, 2.95, 0.32)
-    water.data.materials.append(mat_water)
-    apply_uniform_clay_bevel(water, width=0.14, segments=3)
-    objs.append(water)
+    # 1. Main River Basin Deep Water Base Block
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.06))
+    base = bpy.context.active_object
+    base.scale = (2.96, 2.96, 0.32)
+    base.data.materials.append(mat_deep_water)
+    apply_uniform_clay_bevel(base, width=0.16, segments=4)
+    objs.append(base)
 
-    # 2. Fluid Curved Wave Ridges (Multi-lobe wavy crests)
-    offset = 0.45 if frame == 1 else 0.0
-    wave_configs = [
-        (-0.75, -0.65 + offset, 1.10, 15),
-        (0.65, -0.25 - offset, 0.95, -12),
-        (-0.35, 0.45 + offset, 1.25, 8),
-        (0.70, 0.75 - offset, 0.85, -20)
+    # 2. 5-Tier Full-Tile Overlapping Seamless River Wave Ribbons
+    # Phase shift across 6 frames for continuous 360-degree looping river flow
+    frame_phase = frame * (2.0 * math.pi / 6.0)
+
+    # Tile width 2.88, exactly 2 full wave periods across tile width for seamless horizontal tiling
+    tile_w = 2.88
+    freq = (2.0 * math.pi * 2.0) / tile_w
+
+    wave_tiers = [
+        # (name, y_base, amp, phase_offset, width_y, height_z, z_base)
+        ("WaveRow0",  1.08, 0.13, 0.0,  0.46, 0.10, 0.08),
+        ("WaveRow1",  0.54, 0.16, 1.3,  0.50, 0.12, 0.10),
+        ("WaveRow2",  0.00, 0.18, 2.6,  0.52, 0.13, 0.11),
+        ("WaveRow3", -0.54, 0.16, 3.9,  0.50, 0.12, 0.10),
+        ("WaveRow4", -1.08, 0.13, 5.2,  0.46, 0.10, 0.08),
     ]
-    for (wx, wy, wl, rot) in wave_configs:
-        if wy > 1.3: wy -= 2.6
-        if wy < -1.3: wy += 2.6
-        # Wavy ribbon
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.12, depth=wl, vertices=16, location=(wx, wy, 0.16))
-        w = bpy.context.active_object
-        w.rotation_euler = (0, math.radians(90), math.radians(rot))
-        w.scale = (0.8, 1.2, 1.0)
-        w.data.materials.append(mat_foam)
-        apply_uniform_clay_bevel(w, width=0.04, segments=2)
-        objs.append(w)
 
-        # Adjacent foam bead
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(wx + 0.35, wy + 0.1, 0.17))
-        bub = bpy.context.active_object
-        bub.data.materials.append(mat_bubble)
-        bpy.ops.object.shade_smooth()
-        objs.append(bub)
+    for name, y_base, amp, row_phase, wy, hz, zb in wave_tiers:
+        cur_phase = row_phase + frame_phase
+
+        # Main wave body ribbon spanning full tile width (seamless across tile borders)
+        wv = create_wavy_ribbon(f"{name}_Body", y_base, amp, freq, cur_phase,
+                                width_y=wy, height_z=hz, z_base=zb,
+                                x_min=-tile_w * 0.5, x_max=tile_w * 0.5, steps=40, taper=False)
+        wv.data.materials.append(mat_mid_water)
+        objs.append(wv)
+
+        # Upper wave crest highlight ribbon
+        wv_crest = create_wavy_ribbon(f"{name}_Crest", y_base, amp, freq, cur_phase,
+                                      width_y=wy * 0.38, height_z=hz * 0.60, z_base=zb + hz * 0.32,
+                                      x_min=-tile_w * 0.5, x_max=tile_w * 0.5, steps=40, taper=False)
+        wv_crest.data.materials.append(mat_light_water)
+        objs.append(wv_crest)
+
+        # Delicate white clay foam caps along the wave peaks inside the tile
+        for peak_k in [0, 1]:
+            target_ang = (0.5 + 2.0 * peak_k) * math.pi - cur_phase
+            peak_x = target_ang / freq
+            while peak_x < -tile_w * 0.5: peak_x += tile_w
+            while peak_x > tile_w * 0.5:  peak_x -= tile_w
+
+            flen = 0.50
+            if -1.15 <= peak_x <= 1.15:
+                fm = create_wavy_ribbon(f"{name}_Foam_{peak_k}", y_base, amp, freq, cur_phase,
+                                        width_y=0.06, height_z=0.04, z_base=zb + hz * 0.45,
+                                        x_min=peak_x - flen * 0.5, x_max=peak_x + flen * 0.5, steps=16, taper=True)
+                fm.data.materials.append(mat_foam)
+                objs.append(fm)
+
+                # Sparkling bubble droplets beside foam cap
+                bx = peak_x + flen * 0.30
+                by = y_base + amp * math.sin(bx * freq + cur_phase) + 0.04
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=0.045, location=(bx, by, zb + hz * 0.48))
+                bub = bpy.context.active_object
+                bub.data.materials.append(mat_bubble)
+                bpy.ops.object.shade_smooth()
+                objs.append(bub)
 
     return objs
 
@@ -1519,8 +1681,9 @@ def build_sokpop_explosion(frame_idx):
 def build_sokpop_spawn_star(frame_idx):
     objs = []
     mat_star = create_clay_mat("m_ustar", (0.98, 0.82, 0.22, 1.0), emission=(0.98, 0.82, 0.22, 1.0), emission_str=2.0)
-    rot = frame_idx * (math.pi / 4.0)
-    scale_factor = 0.4 + (frame_idx % 2) * 0.45
+    mat_core = create_clay_mat("m_ustarc", (1.0, 0.98, 0.80, 1.0), emission=(1.0, 0.98, 0.80, 1.0), emission_str=3.0)
+    rot = frame_idx * (math.pi / 6.0)
+    scale_factor = 0.45 + math.sin(frame_idx * (math.pi / 3.0)) * 0.35
     for i in range(4):
         angle = rot + i * (math.pi / 2.0)
         bpy.ops.mesh.primitive_cylinder_add(radius=0.16 * scale_factor, depth=1.6 * scale_factor, vertices=10, location=(0, 0, 0))
@@ -1529,6 +1692,13 @@ def build_sokpop_spawn_star(frame_idx):
         pt.data.materials.append(mat_star)
         apply_uniform_clay_bevel(pt, width=0.04, segments=2)
         objs.append(pt)
+
+    # Bright central glow core
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.28 * scale_factor, location=(0, 0, 0))
+    core = bpy.context.active_object
+    core.data.materials.append(mat_core)
+    bpy.ops.object.shade_smooth()
+    objs.append(core)
     return objs
 
 def build_sokpop_bullet(is_plasma=False):
@@ -1613,7 +1783,7 @@ def main():
     create_sokpop_lighting(ortho_scale=3.3)
     reset_jitter_seed(1000)
 
-    print(">>> 1. Rendering Unified Sokpop Tanks...")
+    print(">>> 1. Rendering Unified Sokpop Tanks (6-Frame Smooth Loop)...")
     player_palettes = {
         "player_tier0": {"body": (0.98, 0.80, 0.22, 1.0), "turret": (1.0, 0.86, 0.35, 1.0), "trim": (0.38, 0.75, 0.45, 1.0), "b_cnt": 1, "blen": 0.95, "bthick": 0.19, "heavy": False, "plasma": False},
         "player_tier1": {"body": (0.98, 0.58, 0.26, 1.0), "turret": (1.0, 0.70, 0.36, 1.0), "trim": (0.98, 0.38, 0.48, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.20, "heavy": False, "plasma": False},
@@ -1621,7 +1791,7 @@ def main():
         "player_tier3": {"body": (0.28, 0.62, 0.95, 1.0), "turret": (0.38, 0.72, 0.98, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.35, "bthick": 0.24, "heavy": True, "plasma": True},
     }
     for name, cfg in player_palettes.items():
-        for frame in [0, 1]:
+        for frame in range(6):
             objs = build_sokpop_tank(
                 f"{name}_f{frame}", cfg["body"], cfg["turret"], cfg["trim"],
                 barrel_count=cfg["b_cnt"], barrel_len=cfg["blen"], barrel_thick=cfg["bthick"],
@@ -1636,7 +1806,7 @@ def main():
         "enemy_armor": {"body": (0.28, 0.62, 0.38, 1.0), "turret": (0.38, 0.72, 0.48, 1.0), "trim": (0.90, 0.85, 0.35, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.24, "heavy": True},
     }
     for name, cfg in enemies.items():
-        for frame in [0, 1]:
+        for frame in range(6):
             objs = build_sokpop_tank(
                 f"{name}_f{frame}", cfg["body"], cfg["turret"], cfg["trim"],
                 barrel_count=cfg["b_cnt"], barrel_len=cfg["blen"], barrel_thick=cfg["bthick"],
@@ -1644,12 +1814,10 @@ def main():
             )
             render_and_clean(objs, os.path.join(SPRITES_TANKS, f"{name}_f{frame}.png"))
 
-    print(">>> 2. Rendering Unified Sokpop Tiles...")
+    print(">>> 2. Rendering Unified Sokpop Tiles (6-Frame Water Flow)...")
     tiles = {
         "tile_brick.png": build_sokpop_brick,
         "tile_steel.png": build_sokpop_steel,
-        "tile_water_f0.png": lambda: build_sokpop_water(0),
-        "tile_water_f1.png": lambda: build_sokpop_water(1),
         "tile_trees.png": build_sokpop_trees,
         "tile_ice.png": build_sokpop_ice,
         "base_eagle.png": lambda: build_sokpop_eagle(False),
@@ -1658,6 +1826,11 @@ def main():
     for fname, builder in tiles.items():
         objs = builder()
         render_and_clean(objs, os.path.join(SPRITES_TILES, fname))
+
+    # 6-Frame Continuous Looping Water River
+    for w_f in range(6):
+        objs = build_sokpop_water(w_f)
+        render_and_clean(objs, os.path.join(SPRITES_TILES, f"tile_water_f{w_f}.png"))
 
     print(">>> 3. Rendering Unified Sokpop Buildings...")
     render_and_clean(build_sokpop_turret_base(), os.path.join(SPRITES_BUILDINGS, "turret_base.png"))
@@ -1670,10 +1843,10 @@ def main():
     for p in ["star", "bomb", "clock", "helmet", "shovel", "life", "gold_coin"]:
         render_and_clean(build_sokpop_powerup(p), os.path.join(SPRITES_POWERUPS, f"{p}.png" if p != "gold_coin" else "gold_coin.png"))
 
-    print(">>> 5. Rendering Unified Sokpop VFX (Explosions, Stars, Projectiles)...")
+    print(">>> 5. Rendering Unified Sokpop VFX (Explosions 6f, Stars 6f, Projectiles)...")
     for e_idx in range(6):
         render_and_clean(build_sokpop_explosion(e_idx), os.path.join(SPRITES_EFFECTS, f"explosion_{e_idx}.png"))
-    for s_idx in range(4):
+    for s_idx in range(6):
         render_and_clean(build_sokpop_spawn_star(s_idx), os.path.join(SPRITES_EFFECTS, f"spawn_star_{s_idx}.png"))
     render_and_clean(build_sokpop_bullet(False), os.path.join(SPRITES_EFFECTS, "bullet.png"))
     render_and_clean(build_sokpop_bullet(True), os.path.join(SPRITES_EFFECTS, "bullet_plasma.png"))

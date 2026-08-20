@@ -55,33 +55,42 @@ static func spawn_muzzle_flash(parent: Node, pos: Vector2, rot: float) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/muzzle_flash_0.png",
 		"res://assets/sprites/effects/muzzle_flash_1.png",
-		"res://assets/sprites/effects/muzzle_flash_2.png"
+		"res://assets/sprites/effects/muzzle_flash_2.png",
+		"res://assets/sprites/effects/muzzle_flash_3.png",
+		"res://assets/sprites/effects/muzzle_flash_4.png",
+		"res://assets/sprites/effects/muzzle_flash_5.png"
 	]
-	create_anim(parent, pos, paths, 0.1875, 20.0, rot)
+	create_anim(parent, pos, paths, 0.1875, 24.0, rot)
 
 static func spawn_clay_debris(parent: Node, pos: Vector2) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/clay_debris_0.png",
 		"res://assets/sprites/effects/clay_debris_1.png",
 		"res://assets/sprites/effects/clay_debris_2.png",
-		"res://assets/sprites/effects/clay_debris_3.png"
+		"res://assets/sprites/effects/clay_debris_3.png",
+		"res://assets/sprites/effects/clay_debris_4.png",
+		"res://assets/sprites/effects/clay_debris_5.png"
 	]
-	create_anim(parent, pos, paths, 0.1875, 15.0)
+	create_anim(parent, pos, paths, 0.1875, 18.0)
 
 static func spawn_dust_puff(parent: Node, pos: Vector2) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/dust_puff_0.png",
 		"res://assets/sprites/effects/dust_puff_1.png",
 		"res://assets/sprites/effects/dust_puff_2.png",
-		"res://assets/sprites/effects/dust_puff_3.png"
+		"res://assets/sprites/effects/dust_puff_3.png",
+		"res://assets/sprites/effects/dust_puff_4.png",
+		"res://assets/sprites/effects/dust_puff_5.png"
 	]
-	create_anim(parent, pos, paths, 0.1875, 16.0)
+	create_anim(parent, pos, paths, 0.1875, 18.0)
 
 static func spawn_shockwave(parent: Node, pos: Vector2) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/shockwave_0.png",
 		"res://assets/sprites/effects/shockwave_1.png",
 		"res://assets/sprites/effects/shockwave_2.png",
-		"res://assets/sprites/effects/shockwave_3.png"
+		"res://assets/sprites/effects/shockwave_3.png",
+		"res://assets/sprites/effects/shockwave_4.png",
+		"res://assets/sprites/effects/shockwave_5.png"
 	]
-	create_anim(parent, pos, paths, 0.25, 14.0)
+	create_anim(parent, pos, paths, 0.25, 16.0)

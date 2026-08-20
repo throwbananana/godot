@@ -25,8 +25,7 @@ var spawnstar_scene: PackedScene
 
 var tex_brick: Texture2D
 var tex_steel: Texture2D
-var tex_water_f0: Texture2D
-var tex_water_f1: Texture2D
+var tex_water_frames: Array[Texture2D] = []
 var tex_trees: Texture2D
 var tex_ice: Texture2D
 
@@ -83,8 +82,11 @@ func _ready() -> void:
 
 	tex_brick = TextureHelper.get_tex("res://assets/sprites/tiles/tile_brick.png")
 	tex_steel = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png")
-	tex_water_f0 = TextureHelper.get_tex("res://assets/sprites/tiles/tile_water_f0.png")
-	tex_water_f1 = TextureHelper.get_tex("res://assets/sprites/tiles/tile_water_f1.png")
+	tex_water_frames.clear()
+	for i in range(6):
+		var w_tex = TextureHelper.get_tex("res://assets/sprites/tiles/tile_water_f%d.png" % i)
+		if w_tex:
+			tex_water_frames.append(w_tex)
 	tex_trees = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
 	tex_ice = TextureHelper.get_tex("res://assets/sprites/tiles/tile_ice.png")
 
@@ -218,7 +220,7 @@ func _build_map() -> void:
 			elif tile_type == 2:
 				_spawn_tile("steel", pos, tex_steel)
 			elif tile_type == 3:
-				_spawn_tile("water", pos, tex_water_f0)
+				_spawn_tile("water", pos, tex_water_frames[0] if tex_water_frames.size() > 0 else null)
 			elif tile_type == 4:
 				_spawn_tile("trees", pos, tex_trees)
 
@@ -374,11 +376,11 @@ func _on_player_hp_changed(pid: int, curr: int, max_hp: int) -> void:
 
 func _process(delta: float) -> void:
 	water_anim_timer += delta
-	if water_anim_timer >= 0.35:
+	if water_anim_timer >= 0.12:
 		water_anim_timer = 0.0
-		water_frame = 1 - water_frame
-		var w_tex = tex_water_f1 if water_frame == 1 else tex_water_f0
-		if w_tex:
+		if tex_water_frames.size() > 0:
+			water_frame = (water_frame + 1) % tex_water_frames.size()
+			var w_tex = tex_water_frames[water_frame]
 			for spr in water_sprites:
 				if is_instance_valid(spr):
 					spr.texture = w_tex

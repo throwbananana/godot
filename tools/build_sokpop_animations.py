@@ -34,53 +34,68 @@ def create_lighting(ortho_scale=3.3):
 def render_and_clean(objects, out_path):
     _render_and_clean(objects, out_path, label="Rendered Animation Asset")
 
-# ==================== 1. 开火枪口火花 (MUZZLE FLASH 3 FRAMES) ====================
+# ==================== 1. 开火枪口火花 (MUZZLE FLASH 6 FRAMES) ====================
 
 def build_muzzle_flash(frame_idx):
     objs = []
-    mat_core = create_clay_mat(f"m_mf_c_{frame_idx}", (1.0, 0.95, 0.65, 1.0), emission=(1.0, 0.95, 0.65, 1.0), emission_str=3.5)
-    mat_ring = create_clay_mat(f"m_mf_r_{frame_idx}", (0.98, 0.55, 0.18, 1.0), emission=(0.98, 0.55, 0.18, 1.0), emission_str=2.0)
+    mat_core = create_clay_mat(f"m_mf_c_{frame_idx}", (1.0, 0.95, 0.65, 1.0), emission=(1.0, 0.95, 0.65, 1.0), emission_str=2.5)
+    mat_ring = create_clay_mat(f"m_mf_r_{frame_idx}", (0.98, 0.55, 0.18, 1.0), emission=(0.98, 0.55, 0.18, 1.0), emission_str=1.8)
+    mat_smoke = create_clay_mat(f"m_mf_sm_{frame_idx}", (0.85, 0.82, 0.78, 1.0))
 
-    scale_mult = [0.65, 1.15, 0.8][frame_idx]
-    rot = frame_idx * 0.45
+    scale_mult = [0.55, 1.25, 1.10, 0.90, 0.65, 0.40][frame_idx]
+    rot = frame_idx * 0.35
 
-    # Center Clay Fireball
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45 * scale_mult, location=(0, 0, 0))
-    sph = bpy.context.active_object
-    sph.data.materials.append(mat_core)
-    bpy.ops.object.shade_smooth()
-    objs.append(sph)
+    if frame_idx < 4:
+        # Center Clay Fireball
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.45 * scale_mult, location=(0, 0, 0))
+        sph = bpy.context.active_object
+        sph.data.materials.append(mat_core)
+        bpy.ops.object.shade_smooth()
+        objs.append(sph)
 
-    # 4 Fluffy Clay Starburst Spikes
-    for i in range(4):
-        ang = rot + i * (math.pi / 2.0)
-        bpy.ops.mesh.primitive_cone_add(radius1=0.22 * scale_mult, depth=0.75 * scale_mult, location=(math.cos(ang)*0.45*scale_mult, math.sin(ang)*0.45*scale_mult, 0))
-        cone = bpy.context.active_object
-        cone.rotation_euler = (0, math.radians(90), ang)
-        cone.data.materials.append(mat_ring)
-        apply_bevel(cone, width=0.04, segments=2)
-        objs.append(cone)
+        # 4-6 Fluffy Clay Starburst Spikes
+        num_spikes = 6 if frame_idx in [1, 2] else 4
+        for i in range(num_spikes):
+            ang = rot + i * (2.0 * math.pi / float(num_spikes))
+            bpy.ops.mesh.primitive_cone_add(radius1=0.20 * scale_mult, depth=0.75 * scale_mult,
+                                            location=(math.cos(ang)*0.42*scale_mult, math.sin(ang)*0.42*scale_mult, 0))
+            cone = bpy.context.active_object
+            cone.rotation_euler = (0, math.radians(90), ang)
+            cone.data.materials.append(mat_ring)
+            apply_bevel(cone, width=0.03, segments=2, jitter=0.0)
+            objs.append(cone)
+    else:
+        # Fading smoke puffs for late frames
+        for i in range(4):
+            ang = rot + i * (math.pi / 2.0)
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.25 * scale_mult,
+                                                location=(math.cos(ang)*0.35*scale_mult, math.sin(ang)*0.35*scale_mult, 0))
+            puff = bpy.context.active_object
+            puff.data.materials.append(mat_smoke)
+            bpy.ops.object.shade_smooth()
+            objs.append(puff)
 
     return objs
 
-# ==================== 2. 受击飞溅陶泥碎屑 (CLAY DEBRIS 4 FRAMES) ====================
+# ==================== 2. 受击飞溅陶泥碎屑 (CLAY DEBRIS 6 FRAMES) ====================
 
 def build_clay_debris(frame_idx):
     objs = []
     mat_clay = create_clay_mat(f"m_deb_{frame_idx}", (0.92, 0.48, 0.28, 1.0))
     mat_white = create_clay_mat(f"m_deb_w_{frame_idx}", (0.98, 0.85, 0.45, 1.0))
+    mat_dark = create_clay_mat(f"m_deb_d_{frame_idx}", (0.55, 0.35, 0.22, 1.0))
 
-    dist = 0.25 + frame_idx * 0.35
-    scale_factor = max(0.2, 0.9 - frame_idx * 0.2)
+    dist = 0.18 + frame_idx * 0.25
+    scale_factor = max(0.18, 0.95 - frame_idx * 0.14)
 
-    for i in range(6):
-        ang = i * (2.0 * math.pi / 6.0) + frame_idx * 0.3
-        d = dist * (0.8 + (i % 3) * 0.2)
-        r = (0.16 if i % 2 == 0 else 0.12) * scale_factor
-        mat_curr = mat_clay if i % 2 == 0 else mat_white
+    mats = [mat_clay, mat_white, mat_dark]
+    for i in range(8):
+        ang = i * (2.0 * math.pi / 8.0) + frame_idx * 0.25
+        d = dist * (0.75 + (i % 3) * 0.25)
+        r = (0.16 if i % 2 == 0 else 0.11) * scale_factor
         bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(ang)*d, math.sin(ang)*d, 0))
         sp = bpy.context.active_object
-        sp.data.materials.append(mat_curr)
+        sp.data.materials.append(mats[i % 3])
         bpy.ops.object.shade_smooth()
         objs.append(sp)
 
@@ -90,10 +105,8 @@ def build_clay_debris(frame_idx):
 
 def build_shield_bubble(frame_idx):
     objs = []
-    mat_ring = create_clay_mat(f"m_sh_{frame_idx}", (0.28, 0.88, 0.78, 1.0), emission=(0.28, 0.88, 0.78, 1.0), emission_str=2.5)
-    # 珠子原本是近白色 (0.95,0.98,1.0), 三通道一起撞顶 → 12% 像素退化成纯白。
-    # 染成和护盾同调的青白, 红通道留出余量, 既不过曝也更统一。
-    mat_spark = create_clay_mat(f"m_sh_sp_{frame_idx}", (0.72, 0.98, 0.95, 1.0), emission=(0.72, 0.98, 0.95, 1.0), emission_str=3.0)
+    mat_ring = create_clay_mat(f"m_sh_{frame_idx}", (0.28, 0.88, 0.78, 1.0), emission=(0.28, 0.88, 0.78, 1.0), emission_str=2.0)
+    mat_spark = create_clay_mat(f"m_sh_sp_{frame_idx}", (0.72, 0.98, 0.95, 1.0), emission=(0.72, 0.98, 0.95, 1.0), emission_str=2.2)
 
     # 8-Frame Ultra-Smooth Rotational Pulse (45 degrees per step)
     pulse_scale = 1.25 + math.sin(frame_idx * (math.pi / 4.0)) * 0.08
@@ -117,37 +130,51 @@ def build_shield_bubble(frame_idx):
 
     return objs
 
-# ==================== 4. 等离子冲击波 (SHOCKWAVE 4 FRAMES) ====================
+# ==================== 4. 等离子冲击波 (SHOCKWAVE 6 FRAMES) ====================
 
 def build_shockwave(frame_idx):
     objs = []
-    mat_wave = create_clay_mat(f"m_sw_{frame_idx}", (0.35, 0.85, 1.0, 1.0), emission=(0.35, 0.85, 1.0, 1.0), emission_str=3.0)
-    rad = 0.45 + frame_idx * 0.35
-    thick = max(0.04, 0.16 - frame_idx * 0.035)
+    mat_wave = create_clay_mat(f"m_sw_{frame_idx}", (0.35, 0.85, 1.0, 1.0), emission=(0.35, 0.85, 1.0, 1.0), emission_str=2.2)
+    rad = 0.32 + frame_idx * 0.26
+    thick = max(0.03, 0.14 - frame_idx * 0.020)
 
     bpy.ops.mesh.primitive_torus_add(major_radius=rad, minor_radius=thick, location=(0, 0, 0))
     tor = bpy.context.active_object
     tor.data.materials.append(mat_wave)
     bpy.ops.object.shade_smooth()
     objs.append(tor)
+
+    # Secondary inner energy ring on early-to-mid frames
+    if 1 <= frame_idx <= 3:
+        mat_inner = create_clay_mat(f"m_sw_in_{frame_idx}", (0.75, 0.95, 1.0, 1.0), emission=(0.75, 0.95, 1.0, 1.0), emission_str=1.8)
+        bpy.ops.mesh.primitive_torus_add(major_radius=rad * 0.70, minor_radius=thick * 0.65, location=(0, 0, 0))
+        tor_in = bpy.context.active_object
+        tor_in.data.materials.append(mat_inner)
+        bpy.ops.object.shade_smooth()
+        objs.append(tor_in)
+
     return objs
 
-# ==================== 5. 砖块击碎尘埃烟团 (DUST PUFF 4 FRAMES) ====================
+# ==================== 5. 砖块击碎尘埃烟团 (DUST PUFF 6 FRAMES) ====================
 
 def build_dust_puff(frame_idx):
     objs = []
     mat_dust = create_clay_mat(f"m_dp_{frame_idx}", (0.85, 0.78, 0.72, 1.0))
-    scale_factor = 0.4 + frame_idx * 0.2
-    dist = 0.15 + frame_idx * 0.22
+    mat_dust_dark = create_clay_mat(f"m_dp_d_{frame_idx}", (0.65, 0.58, 0.52, 1.0))
+    scale_factor = 0.35 + frame_idx * 0.18
+    dist = 0.12 + frame_idx * 0.18
 
-    for i in range(5):
-        ang = i * (2.0 * math.pi / 5.0) + frame_idx * 0.2
-        r = 0.32 * scale_factor
+    num_spheres = 6
+    for i in range(num_spheres):
+        ang = i * (2.0 * math.pi / float(num_spheres)) + frame_idx * 0.18
+        r = (0.28 if i % 2 == 0 else 0.22) * scale_factor
+        mat_curr = mat_dust if i % 2 == 0 else mat_dust_dark
         bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(ang)*dist, math.sin(ang)*dist, 0))
         puff = bpy.context.active_object
-        puff.data.materials.append(mat_dust)
+        puff.data.materials.append(mat_curr)
         bpy.ops.object.shade_smooth()
         objs.append(puff)
+
     return objs
 
 # ==================== 6. 基地受损晕厥表情 (BASE DAMAGED) ====================
@@ -227,14 +254,14 @@ def main():
     setup_render_settings(rx=256, ry=256)
     create_lighting(ortho_scale=3.3)
 
-    print(">>> Rendering Sokpop Animations & VFX...")
-    # 1. Muzzle Flash
-    for i in range(3):
+    print(">>> Rendering Sokpop Animations & VFX (All 6+ Frames)...")
+    # 1. Muzzle Flash (6 frames)
+    for i in range(6):
         objs = build_muzzle_flash(i)
         render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"muzzle_flash_{i}.png"))
 
-    # 2. Clay Debris
-    for i in range(4):
+    # 2. Clay Debris (6 frames)
+    for i in range(6):
         objs = build_clay_debris(i)
         render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"clay_debris_{i}.png"))
 
@@ -243,13 +270,13 @@ def main():
         objs = build_shield_bubble(i)
         render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"shield_bubble_{i}.png"))
 
-    # 4. Shockwave
-    for i in range(4):
+    # 4. Shockwave (6 frames)
+    for i in range(6):
         objs = build_shockwave(i)
         render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"shockwave_{i}.png"))
 
-    # 5. Dust Puff
-    for i in range(4):
+    # 5. Dust Puff (6 frames)
+    for i in range(6):
         objs = build_dust_puff(i)
         render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"dust_puff_{i}.png"))
 

@@ -24,8 +24,7 @@ var change_dir_timer: float = 0.0
 var freeze_timer: float = 0.0
 
 var facing_direction: Vector2 = Vector2.DOWN
-var tex_f0: Texture2D
-var tex_f1: Texture2D
+var tank_frames: Array[Texture2D] = []
 var current_frame: int = 0
 
 @onready var sprite: Sprite2D = $Sprite2D
@@ -105,10 +104,13 @@ func _setup_tank_type() -> void:
 		score_value = int(score_value * floor_mult)
 
 	health = max_health
-	tex_f0 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f0.png" % prefix)
-	tex_f1 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f1.png" % prefix)
-	if tex_f0:
-		sprite.texture = tex_f0
+	tank_frames.clear()
+	for i in range(6):
+		var tex = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f%d.png" % [prefix, i])
+		if tex:
+			tank_frames.append(tex)
+	if tank_frames.size() > 0 and sprite:
+		sprite.texture = tank_frames[0]
 
 func freeze(duration: float) -> void:
 	freeze_timer = duration
@@ -149,10 +151,11 @@ func _physics_process(delta: float) -> void:
 	if collision:
 		_choose_new_direction()
 
-	if int(Time.get_ticks_msec() / 75) % 2 != current_frame:
-		current_frame = 1 - current_frame
-		if tex_f0 and tex_f1:
-			sprite.texture = tex_f1 if current_frame == 1 else tex_f0
+	if tank_frames.size() > 0:
+		var f_idx = int(Time.get_ticks_msec() / 65) % tank_frames.size()
+		if f_idx != current_frame:
+			current_frame = f_idx
+			sprite.texture = tank_frames[current_frame]
 
 func _choose_new_direction() -> void:
 	var dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]

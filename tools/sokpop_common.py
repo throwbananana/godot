@@ -57,7 +57,69 @@ def clear_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def setup_render_settings(rx=256, ry=256, samples=48):
+_STYLIZE_GROUP = "SokpopStylize"
+
+
+def setup_stylize_compositor(levels=0, pixelate=0):
+    """合成器风格化。levels = posterize 色阶数 (0 关闭), pixelate = 像素块边长 (0 关闭)。
+
+    为什么是量化而不是"烘焙光照到贴图再 unlit":
+    烘焙是为实时 3D 服务的 —— 本管线输出的是预渲染 PNG, 光照本来就固化在图里,
+    再走一遍 bake→unlit 会得到几乎相同的图。Sokpop 的手绘感差在明暗的"性质"上:
+    连续渐变 vs 分明色阶。posterize 直接作用在这一点上。
+
+    Blender 5.x 的合成器 API 与 4.x 不兼容:
+      - scene.node_tree 没了, 改成 scene.compositing_node_group 挂一个
+        CompositorNodeTree 节点组
+      - 组内仍用 CompositorNodeRLayers 取渲染结果作为源, 出口是 NodeGroupOutput
+        (不是已被移除的 CompositorNodeComposite)。接 NodeGroupInput 是错的 ——
+        它拿不到渲染结果, 输出会是一张 alpha 全 0 的空图。
+      - CompositorNodeMath 被统一成了 ShaderNodeMath; 而 posterize/pixelate
+        本身有原生节点, 不需要手搓通道量化链。
+    这里只实现 5.x 路径 —— 仓库锁定 Blender 5.2 LTS。
+    """
+    scene = bpy.context.scene
+
+    old = bpy.data.node_groups.get(_STYLIZE_GROUP)
+    if old is not None:
+        bpy.data.node_groups.remove(old)
+
+    if not levels and not pixelate:
+        scene.compositing_node_group = None
+        return
+
+    ng = bpy.data.node_groups.new(_STYLIZE_GROUP, "CompositorNodeTree")
+    ng.interface.new_socket("Image", in_out='OUTPUT', socket_type='NodeSocketColor')
+
+    rl = ng.nodes.new('CompositorNodeRLayers')
+    rl.location = (-400, 0)
+    go = ng.nodes.new('NodeGroupOutput')
+    go.location = (400, 0)
+
+    cursor = rl.outputs['Image']
+    x = -200
+
+    if pixelate:
+        pix = ng.nodes.new('CompositorNodePixelate')
+        pix.inputs['Size'].default_value = int(pixelate)
+        pix.location = (x, 0)
+        ng.links.new(cursor, pix.inputs['Color'])
+        cursor = pix.outputs['Color']
+        x += 200
+
+    if levels:
+        post = ng.nodes.new('CompositorNodePosterize')
+        post.inputs['Steps'].default_value = float(levels)
+        post.location = (x, 0)
+        ng.links.new(cursor, post.inputs['Image'])
+        cursor = post.outputs['Image']
+
+    ng.links.new(cursor, go.inputs[0])
+    scene.compositing_node_group = ng
+
+
+def setup_render_settings(rx=256, ry=256, samples=48,
+                          posterize_levels=0, pixelate=0):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     if hasattr(scene, 'cycles'):
@@ -80,13 +142,19 @@ def setup_render_settings(rx=256, ry=256, samples=48):
     scene.view_settings.exposure = 0.0
     scene.view_settings.gamma = 1.0
 
+    # 默认关闭 —— 已提交的资源就是不风格化的版本, 改这里会全量改变画风。
+    setup_stylize_compositor(posterize_levels, pixelate)
 
-def create_sokpop_lighting(ortho_scale=3.3, sun_energy=1.9,
-                           ambient_strength=0.36):
-    """正交顶视相机 + 标定过的暖阳/环境光/塑形补光。
 
-    亮度预算 (线性): sun 1.9 W/m² 打在 albedo 0.95 的面上约 0.57 radiance,
-    加环境 ~0.1 与补光 ~0.08, 峰值 ~0.75 → sRGB ~0.89, 留出不过曝的余量。
+def create_sokpop_lighting(ortho_scale=3.3, sun_energy=0.9,
+                           ambient_strength=0.85):
+    """正交顶视相机 + 压平光比的暖阳/环境光/塑形补光。
+
+    光比取向: 环境光为主 (0.85) + 弱主光 (0.9 W/m²)。
+    Sokpop 的形体靠轮廓和色块区分, 不靠明暗层次 —— 深光比会把饱和色的暗部一路
+    推过 橙→红→黑, 既脏又不像手绘。压平之后暗部仍在同一色相内, 颜色更干净。
+    这也是量化 (setup_stylize_compositor) 能不能用的前提: 直接量化一条深渐变
+    会切出错误色相的中间带, 压平之后才不会。
 
     幂等: 会先清掉已有的相机/灯光。clay_ui 的 main() 在同一场景里连调三次本函数
     换分辨率, 旧实现每次都新增一套, 到心形图标时已经有 9 盏灯在照 —— UI 资源
