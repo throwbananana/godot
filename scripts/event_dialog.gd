@@ -61,7 +61,7 @@ func _on_choice(idx: int) -> void:
 	SoundManager.play_hit_steel(get_tree())
 	if dialog_type == "rest":
 		match idx:
-			1: GameState.max_hp += 1
+			1: GameState.max_hp_lvl += 1
 			2: GameState.atk_bonus += 1
 			3: GameState.player_lives += 1
 	elif dialog_type == "shop":
@@ -73,7 +73,7 @@ func _on_choice(idx: int) -> void:
 			2:
 				if GameState.gold >= 60:
 					GameState.gold -= 60
-					GameState.max_hp += 2
+					GameState.max_hp_lvl += 2
 			3:
 				if GameState.gold >= 80:
 					GameState.gold -= 80
@@ -84,7 +84,7 @@ func _on_choice(idx: int) -> void:
 				GameState.gold += 80
 				GameState.player_xp += 50
 			2:
-				GameState.speed_bonus += 1
+				GameState.speed_lvl += 1
 			3:
 				GameState.player_tier = mini(GameState.player_tier + 1, 3)
 

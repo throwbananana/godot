@@ -17,10 +17,8 @@ static var player_xp: int = 0
 static var xp_to_next: int = 100
 static var player_tier: int = 0
 static var player_lives: int = 3
-static var max_hp: int = 1
 static var max_hp_lvl: int = 0
 static var atk_bonus: int = 0
-static var speed_bonus: int = 0
 static var speed_lvl: int = 0
 static var fire_rate_lvl: int = 0
 static var regen_lvl: int = 0
@@ -39,6 +37,9 @@ static var boss_enabled: bool = false
 static var spire_nodes: Dictionary = {}
 static var spire_connections: Array = []
 
+static func get_player_max_hp() -> int:
+	return 1 + max_hp_lvl
+
 static func reset_campaign(p_count: int = 1) -> void:
 	mode = GameMode.CAMPAIGN
 	player_count = p_count
@@ -53,10 +54,8 @@ static func reset_campaign(p_count: int = 1) -> void:
 	player_lives = 3
 	p2_tier = 0
 	p2_lives = 3
-	max_hp = 1
 	max_hp_lvl = 0
 	atk_bonus = 0
-	speed_bonus = 0
 	speed_lvl = 0
 	fire_rate_lvl = 0
 	regen_lvl = 0
@@ -184,10 +183,8 @@ static func save_campaign() -> void:
 		"player_lives": player_lives,
 		"p2_tier": p2_tier,
 		"p2_lives": p2_lives,
-		"max_hp": max_hp,
 		"max_hp_lvl": max_hp_lvl,
 		"atk_bonus": atk_bonus,
-		"speed_bonus": speed_bonus,
 		"speed_lvl": speed_lvl,
 		"fire_rate_lvl": fire_rate_lvl,
 		"regen_lvl": regen_lvl,
@@ -229,10 +226,8 @@ static func load_campaign() -> bool:
 	player_lives = int(d.get("player_lives", 3))
 	p2_tier = int(d.get("p2_tier", 0))
 	p2_lives = int(d.get("p2_lives", 3))
-	max_hp = int(d.get("max_hp", 1))
 	max_hp_lvl = int(d.get("max_hp_lvl", 0))
 	atk_bonus = int(d.get("atk_bonus", 0))
-	speed_bonus = int(d.get("speed_bonus", 0))
 	speed_lvl = int(d.get("speed_lvl", 0))
 	fire_rate_lvl = int(d.get("fire_rate_lvl", 0))
 	regen_lvl = int(d.get("regen_lvl", 0))
@@ -243,6 +238,10 @@ static func load_campaign() -> bool:
 		var n_data = spire_nodes[k]
 		if n_data.has("pos_ratio") and n_data["pos_ratio"] is Dictionary:
 			n_data["pos_ratio"] = Vector2(float(n_data["pos_ratio"].get("x", 0.0)), float(n_data["pos_ratio"].get("y", 0.0)))
+		if n_data.has("floor"):
+			n_data["floor"] = int(n_data["floor"])
+		if n_data.has("col"):
+			n_data["col"] = int(n_data["col"])
 	spire_connections = d.get("spire_connections", [])
 	return true
 

@@ -50,6 +50,7 @@ func sync_from_game_state() -> void:
 		level += 1
 		xp_to_next = int(100.0 * pow(1.22, level - 1))
 		_auto_level_bonus()
+		leveled_up.emit(level)
 	
 	stats_changed.emit()
 	gold_changed.emit(gold)
@@ -63,8 +64,6 @@ func sync_to_game_state() -> void:
 	GameState.fire_rate_lvl = fire_rate_lvl
 	GameState.speed_lvl = speed_lvl
 	GameState.max_hp_lvl = max_hp_lvl
-	GameState.max_hp = get_player_max_hp()
-	GameState.speed_bonus = speed_lvl
 	GameState.regen_lvl = regen_lvl
 	GameState.builder_lvl = builder_lvl
 

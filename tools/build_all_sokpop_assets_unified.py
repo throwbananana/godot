@@ -18,6 +18,10 @@ from sokpop_common import (  # noqa: E402
     apply_uniform_clay_bevel,
     reset_jitter_seed,
     render_and_clean,
+    ORTHO_SCALE_DEFAULT,
+    ORTHO_SCALE_TANK,
+    TILE_FULL_BLEED,
+    MAX_ASSET_RADIUS,
 )
 
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR) if os.path.basename(SCRIPT_DIR) == 'tools' else SCRIPT_DIR
@@ -355,28 +359,30 @@ def build_sokpop_brick():
     mat_clay = create_clay_mat("m_ub_c", (0.92, 0.48, 0.28, 1.0))
     mat_cream = create_clay_mat("m_ub_m", (0.94, 0.90, 0.82, 1.0))
 
+    # 1. Full-Bleed Mortar Base Plate (3.34 units -> 0px gap between adjacent tiles)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.1))
     base = bpy.context.active_object
-    base.scale = (2.85, 2.85, 0.2)
+    base.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.20)
     base.data.materials.append(mat_cream)
-    apply_uniform_clay_bevel(base, width=0.1, segments=3)
+    apply_uniform_clay_bevel(base, width=0.08, segments=3, jitter=0.0)
     objs.append(base)
 
+    # 2. 4 Rows of Clay Bricks spanning edge-to-edge
     row_configs = [
-        [(-0.72, 1.25), (0.72, 1.25)],
-        [(-1.18, 0.48), (0.0, 1.35), (1.18, 0.48)],
-        [(-0.72, 1.25), (0.72, 1.25)],
-        [(-1.18, 0.48), (0.0, 1.35), (1.18, 0.48)],
+        [(-0.84, 1.54), (0.84, 1.54)],
+        [(-1.26, 0.70), (0.0, 1.54), (1.26, 0.70)],
+        [(-0.84, 1.54), (0.84, 1.54)],
+        [(-1.26, 0.70), (0.0, 1.54), (1.26, 0.70)],
     ]
-    y_coords = [-0.95, -0.32, 0.32, 0.95]
+    y_coords = [-1.22, -0.41, 0.41, 1.22]
     for r_idx, row in enumerate(row_configs):
         y = y_coords[r_idx]
         for (x, w_size) in row:
             bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, 0.12))
             b = bpy.context.active_object
-            b.scale = (w_size, 0.52, 0.28)
+            b.scale = (w_size, 0.62, 0.28)
             b.data.materials.append(mat_clay)
-            apply_uniform_clay_bevel(b, width=0.10, segments=3)
+            apply_uniform_clay_bevel(b, width=0.08, segments=3, jitter=0.012)
             objs.append(b)
     return objs
 
@@ -386,30 +392,34 @@ def build_sokpop_steel():
     mat_gold = create_clay_mat("m_us_g", (0.95, 0.78, 0.22, 1.0))
     mat_stripe = create_clay_mat("m_us_s", (0.95, 0.72, 0.18, 1.0))
 
+    # 1. Full-Bleed Steel Base Plate
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     plate = bpy.context.active_object
-    plate.scale = (2.85, 2.85, 0.35)
+    plate.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.35)
     plate.data.materials.append(mat_plate)
-    apply_uniform_clay_bevel(plate, width=0.2, segments=4)
+    apply_uniform_clay_bevel(plate, width=0.12, segments=4, jitter=0.0)
     objs.append(plate)
 
-    for (sx, sy) in [(2.4, 0.4), (0.4, 2.4)]:
+    # 2. Reinforcement Cross Ribs
+    for (sx, sy) in [(TILE_FULL_BLEED, 0.46), (0.46, TILE_FULL_BLEED)]:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.18))
         rib = bpy.context.active_object
         rib.scale = (sx, sy, 0.12)
         rib.data.materials.append(mat_plate)
-        apply_uniform_clay_bevel(rib, width=0.06, segments=2)
+        apply_uniform_clay_bevel(rib, width=0.06, segments=2, jitter=0.0)
         objs.append(rib)
 
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.65, depth=0.16, vertices=16, location=(0, 0, 0.22))
+    # 3. Center Gold Insignia Boss
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.75, depth=0.18, vertices=16, location=(0, 0, 0.22))
     inner = bpy.context.active_object
     inner.data.materials.append(mat_stripe)
-    apply_uniform_clay_bevel(inner, width=0.08, segments=3)
+    apply_uniform_clay_bevel(inner, width=0.08, segments=3, jitter=0.0)
     objs.append(inner)
 
-    for rx in [-1.0, 1.0]:
-        for ry in [-1.0, 1.0]:
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.15, location=(rx, ry, 0.2))
+    # 4. Corner Rivet Bolts
+    for rx in [-1.25, 1.25]:
+        for ry in [-1.25, 1.25]:
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.16, location=(rx, ry, 0.20))
             bolt = bpy.context.active_object
             bolt.data.materials.append(mat_gold)
             bpy.ops.object.shade_smooth()
@@ -418,52 +428,51 @@ def build_sokpop_steel():
 
 def build_sokpop_water(frame=0):
     objs = []
-    # Rich clay water palette
     mat_deep_water   = create_clay_mat("m_uw_dw", (0.12, 0.40, 0.68, 1.0), roughness=0.18, sss_weight=0.22)
     mat_mid_water    = create_clay_mat("m_uw_mw", (0.22, 0.64, 0.88, 1.0), roughness=0.16, sss_weight=0.24)
     mat_light_water  = create_clay_mat("m_uw_lw", (0.46, 0.88, 0.98, 1.0), roughness=0.14, sss_weight=0.26)
     mat_foam         = create_clay_mat("m_uw_fm", (0.96, 0.98, 1.0, 1.0), roughness=0.40)
     mat_bubble       = create_clay_mat("m_uw_bub", (0.88, 0.96, 1.0, 1.0), roughness=0.10)
 
-    # 1. Main River Basin Deep Water Base Block
+    # 1. Full-Bleed Deep River Basin Base Block
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.06))
     base = bpy.context.active_object
-    base.scale = (2.96, 2.96, 0.32)
+    base.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.32)
     base.data.materials.append(mat_deep_water)
-    apply_uniform_clay_bevel(base, width=0.16, segments=4)
+    apply_uniform_clay_bevel(base, width=0.10, segments=3, jitter=0.0)
     objs.append(base)
 
-    # 2. 5-Tier Full-Tile Overlapping Seamless River Wave Ribbons
-    # Phase shift across 6 frames for continuous 360-degree looping river flow
+    # 2. 5-Tier Seamless Multi-Tile River Wave Ribbons
+    # Frequency is calibrated exactly to 2 full periods across ORTHO_SCALE_DEFAULT (3.30)
     frame_phase = frame * (2.0 * math.pi / 6.0)
+    tile_period = ORTHO_SCALE_DEFAULT  # 3.30
+    freq = (2.0 * math.pi * 2.0) / tile_period  # exactly 2 periods per tile width -> seamless across borders
 
-    # Tile width 2.88, exactly 2 full wave periods across tile width for seamless horizontal tiling
-    tile_w = 2.88
-    freq = (2.0 * math.pi * 2.0) / tile_w
+    half_span = TILE_FULL_BLEED * 0.5
 
     wave_tiers = [
         # (name, y_base, amp, phase_offset, width_y, height_z, z_base)
-        ("WaveRow0",  1.08, 0.13, 0.0,  0.46, 0.10, 0.08),
-        ("WaveRow1",  0.54, 0.16, 1.3,  0.50, 0.12, 0.10),
-        ("WaveRow2",  0.00, 0.18, 2.6,  0.52, 0.13, 0.11),
-        ("WaveRow3", -0.54, 0.16, 3.9,  0.50, 0.12, 0.10),
-        ("WaveRow4", -1.08, 0.13, 5.2,  0.46, 0.10, 0.08),
+        ("WaveRow0",  1.26, 0.15, 0.0,  0.54, 0.11, 0.08),
+        ("WaveRow1",  0.63, 0.18, 1.3,  0.58, 0.13, 0.10),
+        ("WaveRow2",  0.00, 0.20, 2.6,  0.60, 0.14, 0.11),
+        ("WaveRow3", -0.63, 0.18, 3.9,  0.58, 0.13, 0.10),
+        ("WaveRow4", -1.26, 0.15, 5.2,  0.54, 0.11, 0.08),
     ]
 
     for name, y_base, amp, row_phase, wy, hz, zb in wave_tiers:
         cur_phase = row_phase + frame_phase
 
-        # Main wave body ribbon spanning full tile width (seamless across tile borders)
+        # Main wave body ribbon spanning full tile width without tapering
         wv = create_wavy_ribbon(f"{name}_Body", y_base, amp, freq, cur_phase,
                                 width_y=wy, height_z=hz, z_base=zb,
-                                x_min=-tile_w * 0.5, x_max=tile_w * 0.5, steps=40, taper=False)
+                                x_min=-half_span, x_max=half_span, steps=44, taper=False)
         wv.data.materials.append(mat_mid_water)
         objs.append(wv)
 
         # Upper wave crest highlight ribbon
         wv_crest = create_wavy_ribbon(f"{name}_Crest", y_base, amp, freq, cur_phase,
                                       width_y=wy * 0.38, height_z=hz * 0.60, z_base=zb + hz * 0.32,
-                                      x_min=-tile_w * 0.5, x_max=tile_w * 0.5, steps=40, taper=False)
+                                      x_min=-half_span, x_max=half_span, steps=44, taper=False)
         wv_crest.data.materials.append(mat_light_water)
         objs.append(wv_crest)
 
@@ -471,13 +480,13 @@ def build_sokpop_water(frame=0):
         for peak_k in [0, 1]:
             target_ang = (0.5 + 2.0 * peak_k) * math.pi - cur_phase
             peak_x = target_ang / freq
-            while peak_x < -tile_w * 0.5: peak_x += tile_w
-            while peak_x > tile_w * 0.5:  peak_x -= tile_w
+            while peak_x < -half_span: peak_x += tile_period
+            while peak_x > half_span:  peak_x -= tile_period
 
-            flen = 0.50
-            if -1.15 <= peak_x <= 1.15:
+            flen = 0.52
+            if -1.30 <= peak_x <= 1.30:
                 fm = create_wavy_ribbon(f"{name}_Foam_{peak_k}", y_base, amp, freq, cur_phase,
-                                        width_y=0.06, height_z=0.04, z_base=zb + hz * 0.45,
+                                        width_y=0.065, height_z=0.04, z_base=zb + hz * 0.45,
                                         x_min=peak_x - flen * 0.5, x_max=peak_x + flen * 0.5, steps=16, taper=True)
                 fm.data.materials.append(mat_foam)
                 objs.append(fm)
@@ -501,24 +510,24 @@ def build_sokpop_trees():
     mat_berry = create_clay_mat("m_ut_b", (0.92, 0.30, 0.40, 1.0))
 
     # 1. Exposed Wooden Trunk/Stump Base
-    for (tx, ty) in [(-0.55, -0.55), (0.55, 0.55)]:
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.28, depth=0.45, vertices=12, location=(tx, ty, 0.08))
+    for (tx, ty) in [(-0.65, -0.65), (0.65, 0.65)]:
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.32, depth=0.45, vertices=12, location=(tx, ty, 0.08))
         trunk = bpy.context.active_object
         trunk.data.materials.append(mat_trunk)
         apply_uniform_clay_bevel(trunk, width=0.06, segments=2)
         objs.append(trunk)
 
-    # 2. Rich Layered Canopy Volumes
+    # 2. Rich Layered Canopy Volumes spanning full footprint
     spheres = [
         # Base canopy layer (dark matcha)
-        (-0.85, -0.85, 0.38, 0.82, mat_matcha), (0.85, -0.85, 0.38, 0.82, mat_matcha),
-        (-0.85, 0.85, 0.38, 0.82, mat_matcha), (0.85, 0.85, 0.38, 0.82, mat_matcha),
+        (-0.95, -0.95, 0.38, 0.88, mat_matcha), (0.95, -0.95, 0.38, 0.88, mat_matcha),
+        (-0.95, 0.95, 0.38, 0.88, mat_matcha), (0.95, 0.95, 0.38, 0.88, mat_matcha),
         # Mid-tier lush foliage (vibrant lime)
-        (-0.75, 0.0, 0.50, 0.80, mat_lime), (0.75, 0.0, 0.50, 0.80, mat_lime),
-        (0.0, -0.75, 0.50, 0.80, mat_lime), (0.0, 0.75, 0.50, 0.80, mat_lime),
+        (-0.85, 0.0, 0.50, 0.85, mat_lime), (0.85, 0.0, 0.50, 0.85, mat_lime),
+        (0.0, -0.85, 0.50, 0.85, mat_lime), (0.0, 0.85, 0.50, 0.85, mat_lime),
         # Crown summit dome
-        (0.0, 0.0, 0.82, 1.08, mat_lime),
-        (-0.25, 0.25, 1.12, 0.65, mat_matcha)
+        (0.0, 0.0, 0.82, 1.15, mat_lime),
+        (-0.25, 0.25, 1.12, 0.70, mat_matcha)
     ]
     for x, y, z, r, m in spheres:
         bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(x, y, z))
@@ -549,20 +558,20 @@ def build_sokpop_ice():
     mat_fracture = create_clay_mat("m_ui_fr", (0.60, 0.78, 0.88, 1.0))
     mat_sparkle = create_clay_mat("m_ui_sp", (0.95, 0.98, 1.0, 1.0))
 
-    # 1. Main Ice Block
+    # 1. Full-Bleed Main Ice Block
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     ice = bpy.context.active_object
-    ice.scale = (2.85, 2.85, 0.30)
+    ice.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.30)
     ice.data.materials.append(mat_sugar)
-    apply_uniform_clay_bevel(ice, width=0.22, segments=4)
+    apply_uniform_clay_bevel(ice, width=0.10, segments=3, jitter=0.0)
     objs.append(ice)
 
     # 2. Crystalline Fracture Veins
     fractures = [
-        (-0.55, -0.45, 0.85, 28),
-        (0.45, 0.52, 0.72, -35),
-        (-0.25, 0.68, 0.60, 55),
-        (0.60, -0.55, 0.50, -65)
+        (-0.65, -0.55, 1.05, 28),
+        (0.55, 0.62, 0.92, -35),
+        (-0.35, 0.78, 0.75, 55),
+        (0.70, -0.65, 0.65, -65)
     ]
     for (px, py, l, angle) in fractures:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(px, py, 0.16))
@@ -570,7 +579,7 @@ def build_sokpop_ice():
         s.scale = (l, 0.08, 0.04)
         s.rotation_euler = (0, 0, math.radians(angle))
         s.data.materials.append(mat_fracture)
-        apply_uniform_clay_bevel(s, width=0.02, segments=2)
+        apply_uniform_clay_bevel(s, width=0.02, segments=2, jitter=0.0)
         objs.append(s)
 
     # 3. Four-pointed Glint Sparkles
@@ -1780,15 +1789,15 @@ def build_sokpop_bullet(is_plasma=False):
 def main():
     clear_scene()
     setup_render_settings(rx=256, ry=256)
-    create_sokpop_lighting(ortho_scale=3.3)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
     reset_jitter_seed(1000)
 
-    print(">>> 1. Rendering Unified Sokpop Tanks (6-Frame Smooth Loop)...")
+    print(">>> 1. Rendering Unified Sokpop Tanks (6-Frame Smooth Loop, Ortho Scale 3.6)...")
     player_palettes = {
         "player_tier0": {"body": (0.98, 0.80, 0.22, 1.0), "turret": (1.0, 0.86, 0.35, 1.0), "trim": (0.38, 0.75, 0.45, 1.0), "b_cnt": 1, "blen": 0.95, "bthick": 0.19, "heavy": False, "plasma": False},
         "player_tier1": {"body": (0.98, 0.58, 0.26, 1.0), "turret": (1.0, 0.70, 0.36, 1.0), "trim": (0.98, 0.38, 0.48, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.20, "heavy": False, "plasma": False},
         "player_tier2": {"body": (0.38, 0.78, 0.45, 1.0), "turret": (0.48, 0.85, 0.55, 1.0), "trim": (0.98, 0.80, 0.25, 1.0), "b_cnt": 2, "blen": 1.08, "bthick": 0.16, "heavy": True, "plasma": False},
-        "player_tier3": {"body": (0.28, 0.62, 0.95, 1.0), "turret": (0.38, 0.72, 0.98, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.35, "bthick": 0.24, "heavy": True, "plasma": True},
+        "player_tier3": {"body": (0.28, 0.62, 0.95, 1.0), "turret": (0.38, 0.72, 0.98, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.25, "bthick": 0.24, "heavy": True, "plasma": True},
     }
     for name, cfg in player_palettes.items():
         for frame in range(6):
@@ -1802,7 +1811,7 @@ def main():
     enemies = {
         "enemy_basic": {"body": (0.75, 0.78, 0.84, 1.0), "turret": (0.84, 0.86, 0.90, 1.0), "trim": (0.95, 0.42, 0.52, 1.0), "b_cnt": 1, "blen": 0.92, "bthick": 0.16, "heavy": False},
         "enemy_fast": {"body": (0.26, 0.75, 0.88, 1.0), "turret": (0.42, 0.82, 0.95, 1.0), "trim": (0.98, 0.95, 0.95, 1.0), "b_cnt": 1, "blen": 1.15, "bthick": 0.15, "heavy": False},
-        "enemy_power": {"body": (0.92, 0.32, 0.38, 1.0), "turret": (0.98, 0.45, 0.48, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.38, "bthick": 0.22, "heavy": False},
+        "enemy_power": {"body": (0.92, 0.32, 0.38, 1.0), "turret": (0.98, 0.45, 0.48, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.25, "bthick": 0.22, "heavy": False},
         "enemy_armor": {"body": (0.28, 0.62, 0.38, 1.0), "turret": (0.38, 0.72, 0.48, 1.0), "trim": (0.90, 0.85, 0.35, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.24, "heavy": True},
     }
     for name, cfg in enemies.items():
@@ -1814,7 +1823,8 @@ def main():
             )
             render_and_clean(objs, os.path.join(SPRITES_TANKS, f"{name}_f{frame}.png"))
 
-    print(">>> 2. Rendering Unified Sokpop Tiles (6-Frame Water Flow)...")
+    print(">>> 2. Rendering Unified Sokpop Tiles (6-Frame Water Flow, Ortho Scale 3.3)...")
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
     tiles = {
         "tile_brick.png": build_sokpop_brick,
         "tile_steel.png": build_sokpop_steel,

@@ -19,6 +19,12 @@ import bpy
 import math
 import os
 
+# ---------------------------------------------------------------- 尺寸与画幅常量 (Dimensional Standards)
+ORTHO_SCALE_DEFAULT = 3.3       # 默认画幅宽度 (单位)
+ORTHO_SCALE_TANK    = 3.6       # 坦克画幅宽度 (单位, 彻底解决前伸炮管与消焰器顶部裁切)
+TILE_FULL_BLEED     = 3.34      # 瓦片底板满幅尺寸 (略超 3.30，消除相邻网格 6.4px 黑缝，实现 100% 满幅无缝拼接)
+MAX_ASSET_RADIUS    = 1.60      # 中心旋转资源的安全最大半径
+
 # ---------------------------------------------------------------- 色彩空间
 
 def _srgb_channel_to_linear(c):

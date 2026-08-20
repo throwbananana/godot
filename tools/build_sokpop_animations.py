@@ -135,8 +135,8 @@ def build_shield_bubble(frame_idx):
 def build_shockwave(frame_idx):
     objs = []
     mat_wave = create_clay_mat(f"m_sw_{frame_idx}", (0.35, 0.85, 1.0, 1.0), emission=(0.35, 0.85, 1.0, 1.0), emission_str=2.2)
-    rad = 0.32 + frame_idx * 0.26
-    thick = max(0.03, 0.14 - frame_idx * 0.020)
+    rad = 0.28 + frame_idx * 0.20
+    thick = max(0.025, 0.12 - frame_idx * 0.016)
 
     bpy.ops.mesh.primitive_torus_add(major_radius=rad, minor_radius=thick, location=(0, 0, 0))
     tor = bpy.context.active_object

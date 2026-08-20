@@ -12,7 +12,7 @@ motion_mode = 1
 script = ExtResource("1_player")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
-scale = Vector2(0.18, 0.18)
+scale = Vector2(0.196, 0.196)
 
 [node name="ShieldSprite" type="Sprite2D" parent="."]
 visible = false
