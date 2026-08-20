@@ -4,6 +4,7 @@ extends CharacterBody2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const PowerUp = preload("res://scripts/power_up.gd")
+const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 signal destroyed(pid: int)
 signal fired_bullet
@@ -31,8 +32,14 @@ var tex_f0: Texture2D
 var tex_f1: Texture2D
 var current_frame: int = 0
 
+var shield_textures: Array[Texture2D] = []
+var shield_frame: int = 0
+
 var bullet_scene: PackedScene
 var explosion_scene: PackedScene
+
+var hit_tween: Tween
+var recoil_tween: Tween
 
 func _ready() -> void:
 	add_to_group("player")
@@ -43,6 +50,16 @@ func _ready() -> void:
 
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
+	
+	for i in range(4):
+		var s_tex = TextureHelper.get_tex("res://assets/sprites/effects/shield_bubble_%d.png" % i)
+		if s_tex:
+			shield_textures.append(s_tex)
+	if shield_sprite:
+		shield_sprite.scale = Vector2(0.24, 0.24)
+		if shield_textures.size() > 0:
+			shield_sprite.texture = shield_textures[0]
+
 	_apply_rpg_stats()
 	_update_tier_appearance()
 	set_invulnerable(3.5)
@@ -64,7 +81,7 @@ func heal(amount: int) -> void:
 func _update_tier_appearance() -> void:
 	var tier_idx = upgrade_tier
 	if player_id == 2 and upgrade_tier == 0:
-		tier_idx = 2 # P2 初始为专属抹茶薄荷绿车体
+		tier_idx = 2
 	var prefix = "player_tier%d" % tier_idx
 	tex_f0 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f0.png" % prefix)
 	tex_f1 = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f1.png" % prefix)
@@ -78,6 +95,7 @@ func apply_powerup(type: PowerUp.Type) -> void:
 		PowerUp.Type.STAR:
 			upgrade_tier = mini(upgrade_tier + 1, 3)
 			_update_tier_appearance()
+			VFXAnimator.spawn_shockwave(get_parent(), global_position)
 			var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
 			powerup_collected.emit("[%s] STAR UPGRADE: %s!" % [p_name, rank_name])
 		PowerUp.Type.HELMET:
@@ -118,9 +136,10 @@ func _physics_process(delta: float) -> void:
 
 	if is_invulnerable:
 		invulnerable_timer -= delta
-		if shield_sprite:
-			shield_sprite.rotation += delta * 5.0
-			shield_sprite.modulate.a = 0.5 + sin(Time.get_ticks_msec() * 0.015) * 0.35
+		if shield_sprite and shield_textures.size() > 0:
+			shield_sprite.rotation += delta * 4.0
+			var s_idx = int(Time.get_ticks_msec() / 100) % shield_textures.size()
+			shield_sprite.texture = shield_textures[s_idx]
 		if invulnerable_timer <= 0.0:
 			is_invulnerable = false
 			if shield_sprite:
@@ -184,6 +203,18 @@ func _shoot() -> void:
 	var b_speed = 520.0 if upgrade_tier == 0 else 660.0
 	var dmg = 1 + (main.rpg_mgr.atk_bonus if (main and main.rpg_mgr) else 0)
 	
+	# 开炮后坐力动画与枪口火焰
+	if recoil_tween and recoil_tween.is_valid():
+		recoil_tween.kill()
+	recoil_tween = create_tween()
+	recoil_tween.tween_property(sprite, "position", Vector2(0, 4.0), 0.04)
+	recoil_tween.tween_property(sprite, "position", Vector2.ZERO, 0.08)
+
+	var muzzle_pos = global_position + facing_direction * 28.0
+	VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+	if is_plasma:
+		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+
 	if upgrade_tier == 2:
 		for offset_x in [-10.0, 10.0]:
 			var right_vec = facing_direction.rotated(PI / 2.0)
@@ -202,7 +233,7 @@ func _shoot() -> void:
 		bullet.speed = b_speed
 		bullet.damage = dmg
 		bullet.can_destroy_steel = can_break_steel
-		bullet.global_position = global_position + facing_direction * 28.0
+		bullet.global_position = muzzle_pos
 		bullet.shooter = self
 		bullet.shooter_type = "player"
 		get_parent().add_child(bullet)
@@ -215,9 +246,18 @@ func take_damage(amount: int) -> void:
 		return
 	current_health -= amount
 	health_changed.emit(player_id, current_health, max_health)
-	var tween = create_tween()
-	tween.tween_property(sprite, "modulate", Color(3.0, 0.5, 0.5), 0.08)
-	tween.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.08)
+
+	# 黏土受击挤压形变动画 + 碎屑飞溅
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+	if hit_tween and hit_tween.is_valid():
+		hit_tween.kill()
+	hit_tween = create_tween()
+	hit_tween.tween_property(sprite, "scale", Vector2(0.24, 0.12), 0.05).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	hit_tween.tween_property(sprite, "scale", Vector2(0.15, 0.22), 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	hit_tween.tween_property(sprite, "scale", Vector2(0.18, 0.18), 0.08).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	hit_tween.parallel().tween_property(sprite, "modulate", Color(2.8, 0.6, 0.6), 0.05)
+	hit_tween.chain().tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.08)
+
 	if current_health <= 0:
 		_die()
 
@@ -226,5 +266,6 @@ func _die() -> void:
 		var exp_inst = explosion_scene.instantiate()
 		exp_inst.global_position = global_position
 		get_parent().add_child(exp_inst)
+	VFXAnimator.spawn_shockwave(get_parent(), global_position)
 	destroyed.emit(player_id)
 	queue_free()

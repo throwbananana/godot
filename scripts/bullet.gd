@@ -2,6 +2,7 @@ class_name Bullet
 extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
+const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 signal hit_target(target: Node2D)
 
@@ -41,34 +42,39 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	if body.is_in_group("brick"):
+		VFXAnimator.spawn_dust_puff(get_parent(), body.global_position)
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		body.queue_free()
 		queue_free()
 		return
 	elif body.is_in_group("steel"):
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		if can_destroy_steel:
+			VFXAnimator.spawn_shockwave(get_parent(), body.global_position)
 			body.queue_free()
 		queue_free()
 		return
 	elif body.is_in_group("border"):
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		queue_free()
 		return
 	elif body.is_in_group("building"):
 		if shooter_type == "enemy":
 			if body.has_method("take_damage"):
 				body.take_damage(damage)
+			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 			queue_free()
 		return
 	elif body.is_in_group("enemy") and shooter_type == "player":
 		if body.has_method("take_damage"):
-			var pts = 100
-			if body.has_method("get_points"):
-				pts = body.get_points()
 			body.take_damage(damage)
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		queue_free()
 		return
 	elif (body.is_in_group("player") or body.is_in_group("p1") or body.is_in_group("p2")) and shooter_type == "enemy":
 		if body.has_method("take_damage"):
 			body.take_damage(damage)
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		queue_free()
 		return
 
@@ -77,16 +83,20 @@ func _on_area_entered(area: Area2D) -> void:
 		return
 	if area.is_in_group("bullet"):
 		if area.shooter_type != shooter_type:
+			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 			area.queue_free()
 			queue_free()
 		return
 	if area.is_in_group("base"):
 		if area.has_method("destroy"):
 			area.destroy()
+		elif area.has_method("take_damage_hit"):
+			area.take_damage_hit()
 		queue_free()
 		return
 	if area.is_in_group("building") and shooter_type == "enemy":
 		if area.has_method("take_damage"):
 			area.take_damage(damage)
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		queue_free()
 		return
