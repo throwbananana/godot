@@ -1,0 +1,16 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" fill="#1C2833"/>
+  <rect x="4" y="4" width="58" height="58" fill="#85929E" stroke="#BDC3C7" stroke-width="3" rx="4"/>
+  <rect x="66" y="4" width="58" height="58" fill="#85929E" stroke="#BDC3C7" stroke-width="3" rx="4"/>
+  <rect x="4" y="66" width="58" height="58" fill="#85929E" stroke="#BDC3C7" stroke-width="3" rx="4"/>
+  <rect x="66" y="66" width="58" height="58" fill="#85929E" stroke="#BDC3C7" stroke-width="3" rx="4"/>
+  <!-- Rivets -->
+  <circle cx="12" cy="12" r="3" fill="#EAEDED"/><circle cx="54" cy="12" r="3" fill="#EAEDED"/>
+  <circle cx="12" cy="54" r="3" fill="#EAEDED"/><circle cx="54" cy="54" r="3" fill="#EAEDED"/>
+  <circle cx="74" cy="12" r="3" fill="#EAEDED"/><circle cx="116" cy="12" r="3" fill="#EAEDED"/>
+  <circle cx="74" cy="54" r="3" fill="#EAEDED"/><circle cx="116" cy="54" r="3" fill="#EAEDED"/>
+  <circle cx="12" cy="74" r="3" fill="#EAEDED"/><circle cx="54" cy="74" r="3" fill="#EAEDED"/>
+  <circle cx="12" cy="116" r="3" fill="#EAEDED"/><circle cx="54" cy="116" r="3" fill="#EAEDED"/>
+  <circle cx="74" cy="74" r="3" fill="#EAEDED"/><circle cx="116" cy="74" r="3" fill="#EAEDED"/>
+  <circle cx="74" cy="116" r="3" fill="#EAEDED"/><circle cx="116" cy="116" r="3" fill="#EAEDED"/>
+</svg>

@@ -1,0 +1,17 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" fill="#2B1E17"/>
+  <!-- Row 1 -->
+  <rect x="2" y="2" width="60" height="28" fill="#C84B31" stroke="#D9534F" stroke-width="2" rx="2"/>
+  <rect x="66" y="2" width="60" height="28" fill="#C84B31" stroke="#D9534F" stroke-width="2" rx="2"/>
+  <!-- Row 2 -->
+  <rect x="2" y="34" width="28" height="28" fill="#B03A2E" stroke="#C84B31" stroke-width="2" rx="2"/>
+  <rect x="34" y="34" width="60" height="28" fill="#C84B31" stroke="#D9534F" stroke-width="2" rx="2"/>
+  <rect x="98" y="34" width="28" height="28" fill="#B03A2E" stroke="#C84B31" stroke-width="2" rx="2"/>
+  <!-- Row 3 -->
+  <rect x="2" y="66" width="60" height="28" fill="#C84B31" stroke="#D9534F" stroke-width="2" rx="2"/>
+  <rect x="66" y="66" width="60" height="28" fill="#C84B31" stroke="#D9534F" stroke-width="2" rx="2"/>
+  <!-- Row 4 -->
+  <rect x="2" y="98" width="28" height="28" fill="#B03A2E" stroke="#C84B31" stroke-width="2" rx="2"/>
+  <rect x="34" y="98" width="60" height="28" fill="#C84B31" stroke="#D9534F" stroke-width="2" rx="2"/>
+  <rect x="98" y="98" width="28" height="28" fill="#B03A2E" stroke="#C84B31" stroke-width="2" rx="2"/>
+</svg>

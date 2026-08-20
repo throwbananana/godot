@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://enm101scene04"]
+
+[ext_resource type="Script" path="res://scripts/enemy.gd" id="1_enm"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_enm"]
+size = Vector2(38, 38)
+
+[node name="Enemy" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 19
+script = ExtResource("1_enm")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.34, 0.34)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_enm")
