@@ -5,10 +5,14 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const PowerUp = preload("res://scripts/power_up.gd")
 const SpawnStar = preload("res://scripts/spawn_star.gd")
+const RPGManager = preload("res://scripts/rpg_manager.gd")
+const BuilderController = preload("res://scripts/builder_controller.gd")
 
 const TILE_SIZE: float = 48.0
 const GRID_W: int = 13
 const GRID_H: int = 13
+
+var rpg_mgr: RPGManager = RPGManager.new()
 
 var player_scene: PackedScene
 var enemy_scene: PackedScene
@@ -27,9 +31,16 @@ var tex_ice: Texture2D
 @onready var map_container: Node2D = $GameArea/MapContainer
 @onready var base_wall_container: Node2D = $GameArea/BaseWallContainer
 @onready var actors_container: Node2D = $GameArea/ActorsContainer
+@onready var builder_ctrl: Node2D = $GameArea/BuilderController
+
 @onready var hud_score: Label = $HUD/SidePanel/VBox/ScoreLabel
 @onready var hud_lives: Label = $HUD/SidePanel/VBox/LivesLabel
 @onready var hud_enemies: Label = $HUD/SidePanel/VBox/EnemiesLabel
+@onready var hud_rpg_level: Label = $HUD/SidePanel/VBox/RPGLevelLabel
+@onready var hud_rpg_xp: ProgressBar = $HUD/SidePanel/VBox/XPBar
+@onready var hud_gold: Label = $HUD/SidePanel/VBox/GoldLabel
+@onready var hud_hp: Label = $HUD/SidePanel/VBox/HPLabel
+@onready var hud_stats: Label = $HUD/SidePanel/VBox/StatsLabel
 @onready var hud_status: Label = $HUD/CenterMessage
 @onready var hud_toast: Label = $HUD/SidePanel/VBox/ToastLabel
 @onready var btn_restart: Button = $HUD/RestartButton
@@ -70,6 +81,10 @@ func _ready() -> void:
 	tex_trees = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
 	tex_ice = TextureHelper.get_tex("res://assets/sprites/tiles/tile_ice.png")
 
+	rpg_mgr.leveled_up.connect(_on_rpg_level_up)
+	rpg_mgr.stats_changed.connect(_update_rpg_hud)
+	rpg_mgr.gold_changed.connect(func(_g): _update_rpg_hud())
+
 	btn_restart.pressed.connect(restart_game)
 	btn_restart.visible = false
 	hud_status.visible = false
@@ -100,12 +115,25 @@ func start_game() -> void:
 	hud_status.visible = false
 	btn_restart.visible = false
 
+	rpg_mgr.reset()
+
 	_clear_all()
 	_build_map()
 	_spawn_base_and_walls(false)
 	_spawn_player()
 	_update_hud()
-	show_toast("STAGE 1 - BATTLE READY!")
+	_update_rpg_hud()
+	show_toast("RPG BATTLE TANK - STAGE 1 READY!")
+
+func add_gold(amount: int) -> void:
+	rpg_mgr.add_gold(amount)
+	show_toast("+%d GOLD!" % amount)
+
+func _on_rpg_level_up(new_lvl: int) -> void:
+	SoundManager.play_hit_steel(get_tree())
+	show_toast("★ LEVEL UP! LV.%d REACHED! ★" % new_lvl)
+	if player_instance and is_instance_valid(player_instance):
+		player_instance._apply_rpg_stats()
 
 func _clear_all() -> void:
 	water_sprites.clear()
@@ -275,11 +303,16 @@ func _spawn_player() -> void:
 	player_instance.position = player_spawn_point
 	player_instance.destroyed.connect(_on_player_destroyed)
 	player_instance.powerup_collected.connect(func(type_name): show_toast("GOT %s!" % type_name))
+	player_instance.health_changed.connect(_on_player_hp_changed)
 	actors_container.add_child(player_instance)
 	_update_hud()
+	_update_rpg_hud()
+
+func _on_player_hp_changed(curr: int, max_hp: int) -> void:
+	if hud_hp:
+		hud_hp.text = "TANK HP: %d / %d" % [curr, max_hp]
 
 func _process(delta: float) -> void:
-	# 水面波纹动画循环
 	water_anim_timer += delta
 	if water_anim_timer >= 0.35:
 		water_anim_timer = 0.0
@@ -399,6 +432,23 @@ func _update_hud() -> void:
 	hud_lives.text = "LIVES: %d" % player_lives
 	var remaining = total_enemies - enemies_spawned + enemies_alive
 	hud_enemies.text = "ENEMIES: %d" % remaining
+
+func _update_rpg_hud() -> void:
+	if hud_rpg_level:
+		hud_rpg_level.text = "LEVEL: LV.%d" % rpg_mgr.level
+	if hud_rpg_xp:
+		hud_rpg_xp.max_value = rpg_mgr.xp_to_next
+		hud_rpg_xp.value = rpg_mgr.current_xp
+	if hud_gold:
+		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
+	if hud_hp and player_instance and is_instance_valid(player_instance):
+		hud_hp.text = "TANK HP: %d / %d" % [player_instance.current_health, player_instance.max_health]
+	if hud_stats:
+		hud_stats.text = "ATK: +%d | SPD: +%d%%\nREGEN: +%.1f/s" % [
+			rpg_mgr.atk_bonus,
+			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
+			rpg_mgr.get_regen_rate()
+		]
 
 func restart_game() -> void:
 	start_game()

@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://lmn101scene01"]
+
+[ext_resource type="Script" path="res://scripts/buildings/landmine.gd" id="1_lmn"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_lmn"]
+radius = 20.0
+
+[node name="Landmine" type="Area2D"]
+collision_layer = 16
+collision_mask = 2
+script = ExtResource("1_lmn")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.35, 0.35)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_lmn")

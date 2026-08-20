@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://fwa101scene01"]
+
+[ext_resource type="Script" path="res://scripts/buildings/fortified_wall.gd" id="1_fwa"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_fwa"]
+size = Vector2(44, 44)
+
+[node name="FortifiedWall" type="StaticBody2D"]
+collision_layer = 16
+collision_mask = 7
+script = ExtResource("1_fwa")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.38, 0.38)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_fwa")

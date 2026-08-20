@@ -8,18 +8,20 @@ const PowerUp = preload("res://scripts/power_up.gd")
 signal destroyed
 signal fired_bullet
 signal powerup_collected(type_name: String)
+signal health_changed(curr: int, max_hp: int)
 
 @export var base_speed: float = 180.0
 @export var fire_cooldown: float = 0.28
-@export var max_health: int = 1
 
-var upgrade_tier: int = 0 # 0=基础黄, 1=强化黄, 2=突击双管绿, 3=终极等离子蓝金战列舰
+var upgrade_tier: int = 0
+var max_health: int = 1
 var current_health: int = 1
 var can_fire: bool = true
 var fire_timer: float = 0.0
 var facing_direction: Vector2 = Vector2.UP
 var is_invulnerable: bool = false
 var invulnerable_timer: float = 0.0
+var regen_accumulator: float = 0.0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shield_sprite: Sprite2D = $ShieldSprite
@@ -35,9 +37,23 @@ func _ready() -> void:
 	add_to_group("player")
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
+	_apply_rpg_stats()
 	_update_tier_appearance()
-	current_health = max_health
 	set_invulnerable(3.5)
+
+func _apply_rpg_stats() -> void:
+	var main = get_tree().current_scene
+	if main and main.rpg_mgr:
+		max_health = main.rpg_mgr.get_player_max_hp()
+		current_health = max_health
+		health_changed.emit(current_health, max_health)
+
+func heal(amount: int) -> void:
+	current_health = mini(current_health + amount, max_health)
+	health_changed.emit(current_health, max_health)
+	var tween = create_tween()
+	tween.tween_property(sprite, "modulate", Color(0.3, 2.2, 0.6), 0.1)
+	tween.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.1)
 
 func _update_tier_appearance() -> void:
 	var prefix = "player_tier%d" % upgrade_tier
@@ -81,6 +97,16 @@ func set_invulnerable(duration: float) -> void:
 		shield_sprite.visible = true
 
 func _physics_process(delta: float) -> void:
+	# 纳米自动回血
+	var main = get_tree().current_scene
+	if main and main.rpg_mgr:
+		var regen = main.rpg_mgr.get_regen_rate()
+		if regen > 0.0 and current_health < max_health:
+			regen_accumulator += regen * delta
+			if regen_accumulator >= 1.0:
+				regen_accumulator -= 1.0
+				heal(1)
+
 	if is_invulnerable:
 		invulnerable_timer -= delta
 		if shield_sprite:
@@ -106,7 +132,9 @@ func _physics_process(delta: float) -> void:
 	elif Input.is_action_pressed("move_right"):
 		input_vec = Vector2.RIGHT
 	
-	var speed_mult = 1.0 + float(upgrade_tier) * 0.12
+	var speed_mult = (1.0 + float(upgrade_tier) * 0.12)
+	if main and main.rpg_mgr:
+		speed_mult *= main.rpg_mgr.get_speed_multiplier()
 	var current_speed = base_speed * speed_mult
 
 	if input_vec != Vector2.ZERO:
@@ -114,7 +142,6 @@ func _physics_process(delta: float) -> void:
 		velocity = input_vec * current_speed
 		rotation = facing_direction.angle() + PI / 2.0
 		
-		# 履带动画
 		if int(Time.get_ticks_msec() / 65) % 2 != current_frame:
 			current_frame = 1 - current_frame
 			if tex_f0 and tex_f1:
@@ -130,21 +157,25 @@ func _physics_process(delta: float) -> void:
 func _shoot() -> void:
 	if not bullet_scene:
 		return
+	var main = get_tree().current_scene
 	var cd = fire_cooldown * (0.65 if upgrade_tier >= 1 else 1.0)
+	if main and main.rpg_mgr:
+		cd *= main.rpg_mgr.get_fire_cooldown_mult()
 	can_fire = false
 	fire_timer = cd
 	
 	var is_plasma = (upgrade_tier >= 3)
 	var can_break_steel = is_plasma
 	var b_speed = 520.0 if upgrade_tier == 0 else 660.0
+	var dmg = 1 + (main.rpg_mgr.atk_bonus if (main and main.rpg_mgr) else 0)
 	
 	if upgrade_tier == 2:
-		# 双联装双管开火
 		for offset_x in [-10.0, 10.0]:
 			var right_vec = facing_direction.rotated(PI / 2.0)
 			var bullet = bullet_scene.instantiate()
 			bullet.direction = facing_direction
 			bullet.speed = b_speed
+			bullet.damage = dmg
 			bullet.can_destroy_steel = can_break_steel
 			bullet.global_position = global_position + facing_direction * 28.0 + right_vec * offset_x
 			bullet.shooter = self
@@ -154,6 +185,7 @@ func _shoot() -> void:
 		var bullet = bullet_scene.instantiate()
 		bullet.direction = facing_direction
 		bullet.speed = b_speed
+		bullet.damage = dmg
 		bullet.can_destroy_steel = can_break_steel
 		bullet.global_position = global_position + facing_direction * 28.0
 		bullet.shooter = self
@@ -167,6 +199,10 @@ func take_damage(amount: int) -> void:
 	if is_invulnerable:
 		return
 	current_health -= amount
+	health_changed.emit(current_health, max_health)
+	var tween = create_tween()
+	tween.tween_property(sprite, "modulate", Color(3.0, 0.5, 0.5), 0.08)
+	tween.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.08)
 	if current_health <= 0:
 		_die()
 
