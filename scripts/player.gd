@@ -247,6 +247,8 @@ func _shoot() -> void:
 
 func take_damage(amount: int) -> void:
 	if is_invulnerable:
+		SoundManager.play_shield_hit(get_tree())
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 		return
 	current_health -= amount
 	health_changed.emit(player_id, current_health, max_health)

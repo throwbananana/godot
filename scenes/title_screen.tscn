@@ -66,6 +66,13 @@ layout_mode = 2
 theme_override_constants/separation = 12
 alignment = 1
 
+[node name="ContinueButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
+custom_minimum_size = Vector2(360, 48)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.88, 0.35, 1)
+theme_override_font_sizes/font_size = 18
+text = "▶ CONTINUE CAMPAIGN (继续战役)"
+
 [node name="Campaign1PButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
 custom_minimum_size = Vector2(360, 46)
 layout_mode = 2

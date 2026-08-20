@@ -73,6 +73,21 @@ var water_sprites: Array[Sprite2D] = []
 var water_anim_timer: float = 0.0
 var water_frame: int = 0
 
+# Screen Shake & Hit-stop (Game Juice)
+var trauma: float = 0.0
+var base_game_area_pos: Vector2 = Vector2(48.0, 48.0)
+var max_shake_offset: Vector2 = Vector2(10.0, 10.0)
+var trauma_decay: float = 2.4
+
+func add_trauma(amount: float) -> void:
+	trauma = clampf(trauma + amount, 0.0, 1.0)
+
+func hit_stop(duration_sec: float = 0.05) -> void:
+	Engine.time_scale = 0.05
+	get_tree().create_timer(duration_sec * 0.05, true, false, true).timeout.connect(func():
+		Engine.time_scale = 1.0
+	)
+
 func _ready() -> void:
 	player_scene = load("res://scenes/player.tscn")
 	enemy_scene = load("res://scenes/enemy.tscn")
@@ -168,7 +183,8 @@ func add_gold(amount: int) -> void:
 	show_toast("+%d GOLD!" % amount)
 
 func _on_rpg_level_up(new_lvl: int) -> void:
-	SoundManager.play_hit_steel(get_tree())
+	SoundManager.play_level_up(get_tree())
+	add_trauma(0.30)
 	show_toast("★ LEVEL UP! LV.%d REACHED! ★" % new_lvl)
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		rpg_mgr.sync_to_game_state()
@@ -375,6 +391,18 @@ func _on_player_hp_changed(pid: int, curr: int, max_hp: int) -> void:
 		hud_p2_hp.text = "P2 [GRN] HP: %d / %d" % [curr, max_hp]
 
 func _process(delta: float) -> void:
+	# Trauma Screen Shake
+	if trauma > 0.0:
+		var shake = trauma * trauma
+		var offset = Vector2(
+			randf_range(-1.0, 1.0) * max_shake_offset.x * shake,
+			randf_range(-1.0, 1.0) * max_shake_offset.y * shake
+		)
+		game_area.position = base_game_area_pos + offset
+		trauma = max(0.0, trauma - trauma_decay * delta)
+	else:
+		game_area.position = base_game_area_pos
+
 	water_anim_timer += delta
 	if water_anim_timer >= 0.12:
 		water_anim_timer = 0.0
@@ -449,6 +477,11 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 	score += points
 	enemies_alive -= 1
 	SoundManager.play_explosion(get_tree())
+	if is_bonus or GameState.battle_type != "battle":
+		add_trauma(0.40)
+		hit_stop(0.04)
+	else:
+		add_trauma(0.20)
 	_update_hud()
 
 	if is_bonus and powerup_scene:
@@ -465,6 +498,8 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 
 func _on_player_destroyed(pid: int) -> void:
 	SoundManager.play_explosion(get_tree())
+	add_trauma(0.60)
+	hit_stop(0.06)
 	if pid == 1:
 		p1_lives -= 1
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
@@ -492,6 +527,8 @@ func _check_defeat_condition() -> void:
 			_game_over(false)
 
 func _on_base_destroyed() -> void:
+	add_trauma(0.85)
+	hit_stop(0.08)
 	_game_over(false)
 
 func _game_over(victory: bool) -> void:
@@ -509,11 +546,14 @@ func _game_over(victory: bool) -> void:
 
 	if victory:
 		is_victory = true
+		SoundManager.play_victory(get_tree())
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			GameState.save_campaign()
 			if GameState.battle_type == "boss":
 				hud_status.text = "👑 VICTORY! 👑\nSPIRE CONQUERED!"
 				hud_status.modulate = Color(0.98, 0.82, 0.35)
 				btn_restart.text = "RETURN TO TITLE"
+				GameState.delete_saved_game()
 			else:
 				hud_status.text = "VICTORY!\nSECTOR SECURED"
 				hud_status.modulate = Color(0.58, 0.86, 0.6)
@@ -524,6 +564,9 @@ func _game_over(victory: bool) -> void:
 			btn_restart.text = "PLAY AGAIN"
 	else:
 		is_game_over = true
+		SoundManager.play_game_over(get_tree())
+		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			GameState.delete_saved_game()
 		hud_status.text = "GAME OVER\nBASE DESTROYED"
 		hud_status.modulate = Color(0.88, 0.42, 0.4)
 		btn_restart.text = "RETURN TO MENU"

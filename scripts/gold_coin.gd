@@ -42,5 +42,5 @@ func _on_body_entered(body: Node2D) -> void:
 		var main = get_tree().current_scene
 		if main and main.has_method("add_gold"):
 			main.add_gold(value)
-		SoundManager.play_hit_steel(get_tree())
+		SoundManager.play_pickup(get_tree())
 		queue_free()

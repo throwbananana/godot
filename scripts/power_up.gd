@@ -59,5 +59,5 @@ func _on_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"):
 		if body.has_method("apply_powerup"):
 			body.apply_powerup(power_up_type)
-		SoundManager.play_hit_steel(get_tree())
+		SoundManager.play_pickup(get_tree())
 		queue_free()

@@ -161,6 +161,6 @@ func _try_place_current() -> void:
 	if new_struct:
 		new_struct.global_position = place_pos
 		main.actors_container.add_child(new_struct)
-		SoundManager.play_hit_steel(get_tree())
+		SoundManager.play_build(get_tree())
 		if main.has_method("show_toast"):
 			main.show_toast("PLACED %s (-%dG)" % [name_str, cost])

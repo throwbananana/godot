@@ -143,5 +143,6 @@ func _on_node_clicked(node_id: String) -> void:
 		event_dialog.setup(n_type)
 
 func _on_event_closed() -> void:
+	GameState.save_campaign()
 	_update_top_bar()
 	_build_spire_ui()

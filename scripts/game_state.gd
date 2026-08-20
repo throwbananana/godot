@@ -152,3 +152,100 @@ static func visit_node(node_id: String) -> void:
 	if spire_nodes.has(node_id):
 		spire_nodes[node_id]["status"] = "visited"
 		current_floor = spire_nodes[node_id]["floor"]
+	save_campaign()
+
+# ==================== CAMPAIGN SAVE / LOAD SYSTEM ====================
+
+const SAVE_PATH = "user://campaign_save.json"
+
+static func has_saved_game() -> bool:
+	return FileAccess.file_exists(SAVE_PATH)
+
+static func save_campaign() -> void:
+	# Serialize spire_nodes ensuring pos_ratio is saved as dict
+	var nodes_copy = {}
+	for k in spire_nodes.keys():
+		var node = spire_nodes[k].duplicate()
+		if node.has("pos_ratio") and node["pos_ratio"] is Vector2:
+			node["pos_ratio"] = {"x": node["pos_ratio"].x, "y": node["pos_ratio"].y}
+		nodes_copy[k] = node
+
+	var save_dict = {
+		"mode": int(mode),
+		"player_count": player_count,
+		"current_floor": current_floor,
+		"current_node_id": current_node_id,
+		"visited_node_ids": visited_node_ids,
+		"gold": gold,
+		"player_level": player_level,
+		"player_xp": player_xp,
+		"xp_to_next": xp_to_next,
+		"player_tier": player_tier,
+		"player_lives": player_lives,
+		"p2_tier": p2_tier,
+		"p2_lives": p2_lives,
+		"max_hp": max_hp,
+		"max_hp_lvl": max_hp_lvl,
+		"atk_bonus": atk_bonus,
+		"speed_bonus": speed_bonus,
+		"speed_lvl": speed_lvl,
+		"fire_rate_lvl": fire_rate_lvl,
+		"regen_lvl": regen_lvl,
+		"builder_lvl": builder_lvl,
+		"battle_type": battle_type,
+		"spire_nodes": nodes_copy,
+		"spire_connections": spire_connections
+	}
+	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(JSON.stringify(save_dict, "\t"))
+		file.close()
+
+static func load_campaign() -> bool:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if not file:
+		return false
+	var json_str = file.get_as_text()
+	file.close()
+	var json = JSON.new()
+	var err = json.parse(json_str)
+	if err != OK or not (json.data is Dictionary):
+		return false
+	var d: Dictionary = json.data
+	mode = int(d.get("mode", GameMode.CAMPAIGN)) as GameMode
+	player_count = int(d.get("player_count", 1))
+	current_floor = int(d.get("current_floor", 0))
+	current_node_id = str(d.get("current_node_id", ""))
+	visited_node_ids.clear()
+	for v in d.get("visited_node_ids", []):
+		visited_node_ids.append(str(v))
+	gold = int(d.get("gold", 150))
+	player_level = int(d.get("player_level", 1))
+	player_xp = int(d.get("player_xp", 0))
+	xp_to_next = int(d.get("xp_to_next", 100))
+	player_tier = int(d.get("player_tier", 0))
+	player_lives = int(d.get("player_lives", 3))
+	p2_tier = int(d.get("p2_tier", 0))
+	p2_lives = int(d.get("p2_lives", 3))
+	max_hp = int(d.get("max_hp", 1))
+	max_hp_lvl = int(d.get("max_hp_lvl", 0))
+	atk_bonus = int(d.get("atk_bonus", 0))
+	speed_bonus = int(d.get("speed_bonus", 0))
+	speed_lvl = int(d.get("speed_lvl", 0))
+	fire_rate_lvl = int(d.get("fire_rate_lvl", 0))
+	regen_lvl = int(d.get("regen_lvl", 0))
+	builder_lvl = int(d.get("builder_lvl", 0))
+	battle_type = str(d.get("battle_type", "battle"))
+	spire_nodes = d.get("spire_nodes", {})
+	for k in spire_nodes.keys():
+		var n_data = spire_nodes[k]
+		if n_data.has("pos_ratio") and n_data["pos_ratio"] is Dictionary:
+			n_data["pos_ratio"] = Vector2(float(n_data["pos_ratio"].get("x", 0.0)), float(n_data["pos_ratio"].get("y", 0.0)))
+	spire_connections = d.get("spire_connections", [])
+	return true
+
+static func delete_saved_game() -> void:
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.remove_absolute(SAVE_PATH)
