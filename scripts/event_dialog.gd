@@ -4,6 +4,7 @@ extends PanelContainer
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
+const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
 signal closed
 
@@ -14,9 +15,13 @@ signal closed
 @onready var btn_2: Button = $VBox/Button2
 @onready var btn_3: Button = $VBox/Button3
 
-var dialog_type: String = "rest" # "rest", "shop", "event"
+var dialog_type: String = "rest"
 
 func _ready() -> void:
+	UIThemeHelper.apply_clay_button(btn_1)
+	UIThemeHelper.apply_clay_button(btn_2)
+	UIThemeHelper.apply_clay_button(btn_3)
+
 	btn_1.pressed.connect(func(): _on_choice(1))
 	btn_2.pressed.connect(func(): _on_choice(2))
 	btn_3.pressed.connect(func(): _on_choice(3))
@@ -56,12 +61,9 @@ func _on_choice(idx: int) -> void:
 	SoundManager.play_hit_steel(get_tree())
 	if dialog_type == "rest":
 		match idx:
-			1:
-				GameState.max_hp += 1
-			2:
-				GameState.atk_bonus += 1
-			3:
-				GameState.player_lives += 1
+			1: GameState.max_hp += 1
+			2: GameState.atk_bonus += 1
+			3: GameState.player_lives += 1
 	elif dialog_type == "shop":
 		match idx:
 			1:

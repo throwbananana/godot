@@ -5,6 +5,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const EventDialog = preload("res://scripts/event_dialog.gd")
+const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
 @onready var map_canvas: Control = $MapArea/MapCanvas
 @onready var lines_draw: Control = $MapArea/LinesDraw
@@ -18,6 +19,7 @@ const EventDialog = preload("res://scripts/event_dialog.gd")
 var node_buttons: Dictionary = {}
 
 func _ready() -> void:
+	UIThemeHelper.apply_clay_button(btn_back)
 	btn_back.pressed.connect(_on_back_to_menu)
 	event_dialog.closed.connect(_on_event_closed)
 	event_dialog.visible = false
@@ -32,7 +34,10 @@ func _on_back_to_menu() -> void:
 func _update_top_bar() -> void:
 	hud_floor.text = "FLOOR: %d / %d" % [GameState.current_floor + 1, GameState.max_floors]
 	hud_gold.text = "GOLD: %d G" % GameState.gold
-	hud_lives.text = "LIVES: %d" % GameState.player_lives
+	if GameState.player_count == 1:
+		hud_lives.text = "LIVES: %d" % GameState.player_lives
+	else:
+		hud_lives.text = "LIVES: P1:%d | P2:%d" % [GameState.player_lives, GameState.p2_lives]
 	var tier_names = ["SCOUT", "STRIKER", "TWIN-GUN", "PLASMA DREAD"]
 	hud_tier.text = "TANK: %s" % tier_names[GameState.player_tier]
 
@@ -73,21 +78,20 @@ func _build_spire_ui() -> void:
 		var is_visited = GameState.visited_node_ids.has(node_id)
 
 		if is_visited:
-			btn.modulate = Color(0.35, 0.38, 0.42, 0.7)
+			btn.modulate = Color(0.42, 0.45, 0.50, 0.7)
 			btn.disabled = true
 		elif is_available:
 			btn.modulate = Color(1.0, 1.0, 1.0, 1.0)
 			btn.disabled = false
-			# 增加发光呼吸外框
 			var ring = Sprite2D.new()
 			var r_tex = TextureHelper.get_tex("res://assets/sprites/map/node_active_ring.png")
 			if r_tex: ring.texture = r_tex
 			ring.position = Vector2(32, 32)
 			ring.scale = Vector2(0.35, 0.35)
-			ring.modulate = Color(0.2, 1.0, 0.5, 0.85)
+			ring.modulate = Color(0.3, 1.0, 0.55, 0.9)
 			btn.add_child(ring)
 		else:
-			btn.modulate = Color(0.4, 0.45, 0.5, 0.45)
+			btn.modulate = Color(0.45, 0.48, 0.55, 0.45)
 			btn.disabled = true
 
 		btn.pressed.connect(func(): _on_node_clicked(node_id))
@@ -108,7 +112,7 @@ func _on_draw_lines() -> void:
 			var p2 = Vector2(n_to["pos_ratio"].x * map_size.x, n_to["pos_ratio"].y * map_size.y)
 			
 			var is_active_path = (GameState.current_node_id == conn["from"] and GameState.is_node_available(conn["to"]))
-			var col = Color(0.1, 0.8, 1.0, 0.8) if is_active_path else Color(0.25, 0.3, 0.35, 0.5)
+			var col = Color(0.2, 0.85, 1.0, 0.85) if is_active_path else Color(0.3, 0.35, 0.42, 0.5)
 			var width = 3.5 if is_active_path else 1.8
 			lines_draw.draw_line(p1, p2, col, width, true)
 

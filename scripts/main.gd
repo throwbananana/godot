@@ -8,6 +8,7 @@ const SpawnStar = preload("res://scripts/spawn_star.gd")
 const RPGManager = preload("res://scripts/rpg_manager.gd")
 const BuilderController = preload("res://scripts/builder_controller.gd")
 const GameState = preload("res://scripts/game_state.gd")
+const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
 const TILE_SIZE: float = 48.0
 const GRID_W: int = 13
@@ -90,6 +91,7 @@ func _ready() -> void:
 	rpg_mgr.stats_changed.connect(_update_rpg_hud)
 	rpg_mgr.gold_changed.connect(func(_g): _update_rpg_hud())
 
+	UIThemeHelper.apply_clay_button(btn_restart)
 	btn_restart.pressed.connect(_on_button_action)
 	btn_restart.visible = false
 	hud_status.visible = false
@@ -567,3 +569,4 @@ func _update_rpg_hud() -> void:
 			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
 			rpg_mgr.get_regen_rate()
 		]
+
