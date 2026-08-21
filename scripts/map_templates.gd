@@ -26,6 +26,9 @@ extends RefCounted
 # 21 = Conveyor Belt RIGHT (Accelerates RIGHT)
 # 22 = Jump Pad / Super Ejector (Launches units across obstacles with parabolic jump arc)
 # 23 = Moving Platform Horizontal, Leftward (Same as 10, patrols LEFT instead of RIGHT)
+# 24 = Street Lamp (Illumination beacon, reveals area in Night Mode)
+# 25 = Electric Wall (High-voltage barrier: shocks & damages any tank touching it)
+# 26 = Explosive Oil Barrel (Volatile fuel drum: explodes when hit, destroys 3x3 surrounding tiles & units)
 
 # 1. 经典十字交叉防线 (Classic Crossroad - with Reinforced Hard Clay Chokepoints)
 const TEMPLATE_CLASSIC = [
@@ -639,6 +642,176 @@ const TEMPLATE_APEX_TRI_ARMOR_CITADEL = [
 	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]
 
+# 37. 夜幕电网与路灯公路 (Night Electric Highway)
+const TEMPLATE_NIGHT_HIGHWAY = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[25, 0, 24, 0, 8, 8, 13, 8, 8, 0, 24, 0, 25],
+	[25, 0, 0, 0, 8, 8, 0, 8, 8, 0, 0, 0, 25],
+	[0, 26, 0, 2, 2, 25, 0, 25, 2, 2, 0, 26, 0],
+	[8, 8, 0, 2, 2, 8, 24, 8, 2, 2, 0, 8, 8],
+	[8, 8, 24, 0, 26, 8, 13, 8, 26, 0, 24, 8, 8],
+	[25, 0, 22, 25, 25, 13, 2, 13, 25, 25, 22, 0, 25],
+	[8, 8, 24, 0, 26, 8, 13, 8, 26, 0, 24, 8, 8],
+	[8, 8, 0, 2, 2, 8, 24, 8, 2, 2, 0, 8, 8],
+	[0, 26, 0, 2, 2, 25, 0, 25, 2, 2, 0, 26, 0],
+	[25, 0, 0, 0, 8, 8, 0, 8, 8, 0, 0, 0, 25],
+	[25, 0, 24, 0, 8, 0, 0, 0, 8, 0, 24, 0, 25],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 38. 炼油厂油桶连锁爆破阵列 (Refinery Chain Detonation Arena)
+const TEMPLATE_OIL_REFINERY = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[2, 26, 26, 0, 8, 8, 24, 8, 8, 0, 26, 26, 2],
+	[0, 26, 26, 0, 8, 8, 0, 8, 8, 0, 26, 26, 0],
+	[0, 1, 1, 2, 2, 26, 0, 26, 2, 2, 1, 1, 0],
+	[8, 8, 0, 2, 2, 8, 26, 8, 2, 2, 0, 8, 8],
+	[8, 8, 24, 18, 0, 8, 13, 8, 0, 19, 24, 8, 8],
+	[26, 0, 22, 21, 21, 26, 2, 26, 20, 20, 22, 0, 26],
+	[8, 8, 24, 18, 0, 8, 13, 8, 0, 19, 24, 8, 8],
+	[8, 8, 0, 2, 2, 8, 26, 8, 2, 2, 0, 8, 8],
+	[0, 1, 1, 2, 2, 26, 0, 26, 2, 2, 1, 1, 0],
+	[0, 26, 26, 0, 8, 8, 0, 8, 8, 0, 26, 26, 0],
+	[2, 26, 26, 0, 8, 0, 0, 0, 8, 0, 26, 26, 2],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 39. 极地特斯拉电网要塞 (Glacier Tesla Fortress - Ice + Electric Walls + Lamps + Jump Pads)
+const TEMPLATE_GLACIER_TESLA = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[25, 9, 9, 24, 8, 8, 13, 8, 8, 24, 9, 9, 25],
+	[25, 9, 9, 0, 25, 8, 0, 8, 25, 0, 9, 9, 25],
+	[0, 22, 0, 2, 2, 9, 9, 9, 2, 2, 0, 22, 0],
+	[8, 8, 0, 2, 2, 25, 24, 25, 2, 2, 0, 8, 8],
+	[9, 9, 24, 9, 26, 8, 13, 8, 26, 9, 24, 9, 9],
+	[25, 9, 22, 25, 25, 9, 2, 9, 25, 25, 22, 9, 25],
+	[9, 9, 24, 9, 26, 8, 13, 8, 26, 9, 24, 9, 9],
+	[8, 8, 0, 2, 2, 25, 24, 25, 2, 2, 0, 8, 8],
+	[0, 22, 0, 2, 2, 9, 9, 9, 2, 2, 0, 22, 0],
+	[25, 9, 9, 0, 25, 8, 0, 8, 25, 0, 9, 9, 25],
+	[25, 9, 9, 24, 8, 0, 0, 0, 8, 24, 9, 9, 25],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 40. 烈焰风暴炼油总厂 (Inferno Cyclone Refinery - Wind Blowers + Oil Barrels + Conveyors + Jump Pads)
+const TEMPLATE_INFERNO_REFINERY = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[2, 26, 14, 18, 8, 8, 24, 8, 8, 18, 14, 26, 2],
+	[0, 26, 0, 18, 8, 8, 0, 8, 8, 18, 0, 26, 0],
+	[0, 22, 26, 2, 2, 17, 26, 16, 2, 2, 26, 22, 0],
+	[8, 8, 0, 2, 2, 8, 22, 8, 2, 2, 0, 8, 8],
+	[17, 26, 24, 21, 21, 8, 13, 8, 20, 20, 24, 26, 16],
+	[14, 0, 22, 2, 26, 26, 2, 26, 26, 2, 22, 0, 14],
+	[17, 26, 24, 21, 21, 8, 13, 8, 20, 20, 24, 26, 16],
+	[8, 8, 0, 2, 2, 8, 22, 8, 2, 2, 0, 8, 8],
+	[0, 22, 26, 2, 2, 17, 26, 16, 2, 2, 26, 22, 0],
+	[0, 26, 0, 19, 8, 8, 0, 8, 8, 19, 0, 26, 0],
+	[2, 26, 15, 19, 8, 0, 0, 0, 8, 19, 15, 26, 2],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 41. 暗夜虫洞迷雾古堡 (Nightshade Warp Citadel - Night Fog + Wormholes + Lamps + Electric Walls + Camo)
+const TEMPLATE_NIGHTSHADE_WARP = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[25, 4, 12, 4, 8, 8, 24, 8, 8, 4, 12, 4, 25],
+	[25, 4, 4, 0, 25, 8, 0, 8, 25, 0, 4, 4, 25],
+	[0, 24, 0, 2, 2, 4, 12, 4, 2, 2, 0, 24, 0],
+	[8, 8, 0, 2, 2, 8, 24, 8, 2, 2, 0, 8, 8],
+	[4, 12, 24, 0, 26, 8, 13, 8, 26, 0, 24, 12, 4],
+	[25, 4, 22, 25, 25, 4, 2, 4, 25, 25, 22, 4, 25],
+	[4, 12, 24, 0, 26, 8, 13, 8, 26, 0, 24, 12, 4],
+	[8, 8, 0, 2, 2, 8, 24, 8, 2, 2, 0, 8, 8],
+	[0, 24, 0, 2, 2, 4, 12, 4, 2, 2, 0, 24, 0],
+	[25, 4, 4, 0, 25, 8, 0, 8, 25, 0, 4, 4, 25],
+	[25, 4, 12, 4, 8, 0, 0, 0, 8, 4, 12, 4, 25],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 42. 浮岛浮桥磁暴空港 (Magnetic Void Archipelago - Water + Hover Platforms + Jump Pads + Electric Barriers + Barrels)
+const TEMPLATE_MAGNETIC_ARCHIPELAGO = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[2, 3, 3, 24, 8, 8, 13, 8, 8, 24, 3, 3, 2],
+	[0, 3, 3, 0, 8, 8, 0, 8, 8, 0, 3, 3, 0],
+	[0, 10, 0, 2, 2, 3, 11, 3, 2, 2, 0, 23, 0],
+	[8, 8, 22, 2, 2, 8, 24, 8, 2, 2, 22, 8, 8],
+	[3, 3, 25, 3, 26, 8, 13, 8, 26, 3, 25, 3, 3],
+	[3, 3, 22, 10, 2, 26, 2, 26, 2, 23, 22, 3, 3],
+	[3, 3, 25, 3, 26, 8, 13, 8, 26, 3, 25, 3, 3],
+	[8, 8, 22, 2, 2, 8, 24, 8, 2, 2, 22, 8, 8],
+	[0, 10, 0, 2, 2, 3, 11, 3, 2, 2, 0, 23, 0],
+	[0, 3, 3, 0, 8, 8, 0, 8, 8, 0, 3, 3, 0],
+	[2, 3, 3, 24, 8, 0, 0, 0, 8, 24, 3, 3, 2],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 43. 流沙风洞兵工厂 (Desert Quicksand Foundry - Quicksand + Sand Dunes + Wind Turbines + Conveyors + Oil Barrels)
+const TEMPLATE_QUICKSAND_FOUNDRY = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[2, 6, 7, 18, 8, 8, 13, 8, 8, 18, 7, 6, 2],
+	[0, 6, 6, 18, 8, 8, 0, 8, 8, 18, 6, 6, 0],
+	[0, 22, 26, 2, 2, 17, 7, 16, 2, 2, 26, 22, 0],
+	[8, 8, 0, 2, 2, 6, 24, 6, 2, 2, 0, 8, 8],
+	[17, 26, 24, 21, 21, 6, 13, 6, 20, 20, 24, 26, 16],
+	[14, 7, 22, 2, 26, 6, 2, 6, 26, 2, 22, 7, 14],
+	[17, 26, 24, 21, 21, 6, 13, 6, 20, 20, 24, 26, 16],
+	[8, 8, 0, 2, 2, 6, 24, 6, 2, 2, 0, 8, 8],
+	[0, 22, 26, 2, 2, 17, 7, 16, 2, 2, 26, 22, 0],
+	[0, 6, 6, 19, 8, 8, 0, 8, 8, 19, 6, 6, 0],
+	[2, 6, 7, 19, 8, 0, 0, 0, 8, 19, 7, 6, 2],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 44. 超频弹射弹珠矩阵 (Hyperdrive Pinball Matrix - 4-way Jump Pads + Conveyor Loops + Electric Walls + Lamps)
+const TEMPLATE_HYPERDRIVE_PINBALL = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[25, 22, 18, 18, 24, 8, 13, 8, 24, 18, 18, 22, 25],
+	[25, 21, 0, 0, 25, 8, 0, 8, 25, 0, 0, 20, 25],
+	[0, 21, 22, 2, 2, 25, 22, 25, 2, 2, 22, 20, 0],
+	[8, 24, 0, 2, 2, 8, 24, 8, 2, 2, 0, 24, 8],
+	[18, 18, 24, 22, 26, 8, 13, 8, 26, 22, 24, 18, 18],
+	[25, 0, 22, 25, 25, 22, 2, 22, 25, 25, 22, 0, 25],
+	[19, 19, 24, 22, 26, 8, 13, 8, 26, 22, 24, 19, 19],
+	[8, 24, 0, 2, 2, 8, 24, 8, 2, 2, 0, 24, 8],
+	[0, 21, 22, 2, 2, 25, 22, 25, 2, 2, 22, 20, 0],
+	[25, 21, 0, 0, 25, 8, 0, 8, 25, 0, 0, 20, 25],
+	[25, 22, 19, 19, 24, 0, 0, 0, 24, 19, 19, 22, 25],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 45. 三栖生化危机防线 (Tri-Domain Biohazard Perimeter - Water + Ice + Quicksand + Electric Walls + Oil Barrels + Hover)
+const TEMPLATE_TRI_DOMAIN_BIOHAZARD = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[25, 9, 9, 3, 3, 8, 13, 8, 3, 3, 6, 6, 25],
+	[25, 9, 9, 3, 3, 8, 0, 8, 3, 3, 6, 6, 25],
+	[0, 22, 26, 2, 2, 3, 10, 3, 2, 2, 26, 22, 0],
+	[8, 8, 0, 2, 12, 8, 24, 8, 12, 2, 0, 8, 8],
+	[9, 9, 24, 0, 26, 8, 13, 8, 26, 0, 24, 6, 6],
+	[25, 9, 22, 25, 25, 2, 13, 2, 25, 25, 22, 6, 25],
+	[9, 9, 24, 0, 26, 8, 13, 8, 26, 0, 24, 6, 6],
+	[8, 8, 0, 2, 12, 8, 24, 8, 12, 2, 0, 8, 8],
+	[0, 22, 26, 2, 2, 3, 10, 3, 2, 2, 26, 22, 0],
+	[25, 9, 9, 3, 3, 8, 0, 8, 3, 3, 6, 6, 25],
+	[25, 9, 9, 3, 3, 0, 0, 0, 3, 3, 6, 6, 25],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 46. 太阳神泰坦终极神殿 (Solar Titan Apex Sanctum - Grand Multi-Element Boss Apex Map)
+const TEMPLATE_SOLAR_TITAN_SANCTUM = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[25, 18, 24, 3, 3, 8, 13, 8, 3, 3, 24, 19, 25],
+	[25, 18, 4, 3, 3, 8, 0, 8, 3, 3, 4, 19, 25],
+	[0, 21, 21, 2, 2, 25, 10, 25, 2, 2, 20, 20, 0],
+	[4, 24, 26, 2, 12, 8, 22, 8, 12, 2, 26, 24, 4],
+	[3, 3, 13, 0, 25, 8, 13, 8, 25, 0, 13, 3, 3],
+	[3, 3, 22, 3, 10, 2, 13, 2, 23, 3, 22, 3, 3],
+	[3, 3, 13, 0, 25, 8, 13, 8, 25, 0, 13, 3, 3],
+	[4, 24, 26, 2, 12, 8, 22, 8, 12, 2, 26, 24, 4],
+	[0, 21, 21, 2, 2, 25, 10, 25, 2, 2, 20, 20, 0],
+	[25, 18, 4, 3, 3, 8, 0, 8, 3, 3, 4, 19, 25],
+	[25, 18, 24, 3, 3, 0, 0, 0, 3, 3, 24, 19, 25],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
 static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int = -1, allow_procgen: bool = true) -> Array:
 	var current_act = GameState.current_act if act == -1 else act
 	
@@ -650,44 +823,44 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 		match current_act:
 			1: return TEMPLATE_BOSS_ARENA
 			2: return TEMPLATE_SPEEDWAY
-			3: return TEMPLATE_APEX_TRI_ARMOR_CITADEL
+			3: return TEMPLATE_SOLAR_TITAN_SANCTUM
 			_: return TEMPLATE_APEX_TRI_ARMOR_CITADEL
 	elif battle_type == "challenge":
 		match current_act:
 			1:
-				var pc1 = [TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CONVEYOR_PINBALL]
+				var pc1 = [TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_HYPERDRIVE_PINBALL]
 				return pc1[floor_idx % pc1.size()]
 			2:
-				var pc2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_WIND_TEMPEST]
+				var pc2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_WIND_TEMPEST, TEMPLATE_INFERNO_REFINERY]
 				return pc2[floor_idx % pc2.size()]
 			3:
-				var pc3 = [TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_APEX_TRI_ARMOR_CITADEL]
+				var pc3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_OIL_REFINERY, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL]
 				return pc3[floor_idx % pc3.size()]
 			_:
 				return TEMPLATE_SHIELD_OUTPOST
 	elif battle_type == "elite":
 		match current_act:
 			1:
-				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY]
+				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL]
 				return p1[floor_idx % p1.size()]
 			2:
-				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO]
+				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO]
 				return p2[floor_idx % p2.size()]
 			3:
-				var p3 = [TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY]
+				var p3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY]
 				return p3[floor_idx % p3.size()]
 			_:
 				return TEMPLATE_CITADEL
 	else:
 		match current_act:
 			1:
-				var act1_pool = [TEMPLATE_CLASSIC, TEMPLATE_RIVERS, TEMPLATE_JUNGLE, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CHECKERBOARD, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_CITADEL]
+				var act1_pool = [TEMPLATE_CLASSIC, TEMPLATE_RIVERS, TEMPLATE_JUNGLE, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CHECKERBOARD, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_CITADEL]
 				return act1_pool[floor_idx % act1_pool.size()]
 			2:
-				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO]
+				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO]
 				return act2_pool[floor_idx % act2_pool.size()]
 			3:
-				var act3_pool = [TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_ELITE_CITADEL]
+				var act3_pool = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_ELITE_CITADEL]
 				return act3_pool[floor_idx % act3_pool.size()]
 			_:
 				return TEMPLATE_CLASSIC

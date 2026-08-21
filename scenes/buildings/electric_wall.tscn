@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://electricwall001"]
+
+[ext_resource type="Script" path="res://scripts/buildings/electric_wall.gd" id="1_elec"]
+
+[node name="ElectricWall" type="StaticBody2D" groups=["electric_wall", "hazard", "steel"]]
+z_index = 5
+script = ExtResource("1_elec")

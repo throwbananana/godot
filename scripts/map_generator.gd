@@ -68,36 +68,42 @@ static func _generate_tile_for_biome(biome: Biome, r: int, c: int, rng: RandomNu
 
 	match biome:
 		Biome.PLAINS_FORTRESS:
-			# Focus: Brick, Hard Clay, Rivers, Foliage, Conveyors
-			if roll < 0.35: return 0 # Empty
-			elif roll < 0.52: return 1 # Brick Wall
-			elif roll < 0.64: return 8 # Hard Clay Block (3HP)
-			elif roll < 0.72: return 2 # Steel Wall
-			elif roll < 0.80: return 3 # River Water
-			elif roll < 0.88: return 4 # Foliage
-			elif roll < 0.94: return 18 # Conveyor UP
+			# Focus: Brick, Hard Clay, Rivers, Foliage, Conveyors, Oil Barrels, Electric Walls
+			if roll < 0.32: return 0 # Empty
+			elif roll < 0.48: return 1 # Brick Wall
+			elif roll < 0.58: return 8 # Hard Clay Block (3HP)
+			elif roll < 0.65: return 2 # Steel Wall
+			elif roll < 0.72: return 3 # River Water
+			elif roll < 0.78: return 4 # Foliage
+			elif roll < 0.84: return 26 # Explosive Oil Barrel
+			elif roll < 0.90: return 25 # Electric Wall
+			elif roll < 0.95: return 18 # Conveyor UP
 			else: return 21 # Conveyor RIGHT
 
 		Biome.DESERT_DUNES:
-			# Focus: Quicksand, Sand Dunes, Hard Clay, Wind Blowers, Jump Pads
-			if roll < 0.32: return 0 # Empty
-			elif roll < 0.48: return 6 # Quicksand Ground
-			elif roll < 0.62: return 7 # Sand Dune Block
-			elif roll < 0.74: return 8 # Hard Clay Block
-			elif roll < 0.82: return 2 # Steel Wall
-			elif roll < 0.89: return 14 # Wind Blower UP
-			elif roll < 0.95: return 22 # Jump Pad
+			# Focus: Quicksand, Sand Dunes, Hard Clay, Wind Blowers, Jump Pads, Oil Barrels
+			if roll < 0.30: return 0 # Empty
+			elif roll < 0.45: return 6 # Quicksand Ground
+			elif roll < 0.58: return 7 # Sand Dune Block
+			elif roll < 0.68: return 8 # Hard Clay Block
+			elif roll < 0.74: return 2 # Steel Wall
+			elif roll < 0.80: return 26 # Explosive Oil Barrel
+			elif roll < 0.86: return 14 # Wind Blower UP
+			elif roll < 0.92: return 22 # Jump Pad
+			elif roll < 0.96: return 25 # Electric Wall
 			else: return 17 # Wind Blower RIGHT
 
 		Biome.GLACIAL_VOID:
-			# Focus: Glacial Ice, Wormholes, Moving Platforms, Wind Turbines, Shield Stations
-			if roll < 0.30: return 0 # Empty
-			elif roll < 0.48: return 9 # Glacial Ice
-			elif roll < 0.60: return 8 # Hard Clay
-			elif roll < 0.70: return 2 # Steel Wall
-			elif roll < 0.78: return 3 # Void River
-			elif roll < 0.86: return 12 # Cosmic Wormhole
-			elif roll < 0.93: return 22 # Jump Pad
+			# Focus: Glacial Ice, Wormholes, Moving Platforms, Electric Walls, Street Lamps, Shield Stations
+			if roll < 0.28: return 0 # Empty
+			elif roll < 0.44: return 9 # Glacial Ice
+			elif roll < 0.54: return 8 # Hard Clay
+			elif roll < 0.62: return 2 # Steel Wall
+			elif roll < 0.70: return 25 # Electric Wall
+			elif roll < 0.76: return 3 # Void River
+			elif roll < 0.84: return 12 # Cosmic Wormhole
+			elif roll < 0.90: return 22 # Jump Pad
+			elif roll < 0.95: return 24 # Street Lamp
 			else: return 10 # Moving Platform
 
 	return 0
@@ -141,7 +147,7 @@ static func _carve_critical_paths(grid: Array) -> void:
 
 	# Keep vertical central corridor partially open (Col 6)
 	for r in [2, 3, 7, 8, 9]:
-		if grid[r][6] == 2: # Replace blocking steel with empty or passable
+		if grid[r][6] == 2 or grid[r][6] == 25: # Replace blocking steel or electric wall with empty or passable
 			grid[r][6] = 0
 
 static func _sprinkle_tactical_features(grid: Array, biome: Biome, rng: RandomNumberGenerator) -> void:
@@ -152,14 +158,28 @@ static func _sprinkle_tactical_features(grid: Array, biome: Biome, rng: RandomNu
 	grid[int(sc.y)][int(sc.x)] = 13 # Shield Station
 	grid[int(sc.y)][12 - int(sc.x)] = 13
 
-	# Place Jump Pads or Wormholes
+	# Place Street Lamps at key crossroads
+	grid[2][2] = 24 # Street Lamp Top-Left
+	grid[2][10] = 24 # Street Lamp Top-Right
+	grid[8][2] = 24 # Street Lamp Bottom-Left
+	grid[8][10] = 24 # Street Lamp Bottom-Right
+
+	# Place Tactical Biome-specific Features
 	if biome == Biome.GLACIAL_VOID:
 		grid[3][3] = 12 # Wormhole
 		grid[3][9] = 12
 		grid[9][3] = 12
 		grid[9][9] = 12
+		grid[6][1] = 25 # Electric Wall flank
+		grid[6][11] = 25
 	elif biome == Biome.DESERT_DUNES:
 		grid[4][2] = 22 # Jump Pad
 		grid[4][10] = 22
-		grid[8][2] = 22
-		grid[8][10] = 22
+		grid[8][4] = 26 # Oil Barrel
+		grid[8][8] = 26
+		grid[6][6] = 22 # Central Jump Pad
+	elif biome == Biome.PLAINS_FORTRESS:
+		grid[4][3] = 26 # Oil Barrel
+		grid[4][9] = 26
+		grid[7][3] = 22 # Jump Pad
+		grid[7][9] = 22

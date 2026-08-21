@@ -174,6 +174,7 @@ func _on_mission_started(node_id: String) -> void:
 	GameState.visit_node(node_id)
 	var node_data = GameState.spire_nodes[node_id]
 	GameState.battle_type = node_data["type"]
+	GameState.challenge_mode = str(node_data.get("challenge_mode", ""))
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 func _on_event_closed() -> void:

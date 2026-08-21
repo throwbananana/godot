@@ -146,7 +146,7 @@ static func apply_clay_progressbar(bar: ProgressBar, fill_color: Color = Color(0
 	fill.corner_radius_bottom_right = 5
 	bar.add_theme_stylebox_override("fill", fill)
 
-static func create_hotbar_ui(parent: Control) -> Control:
+static func create_hotbar_ui(parent: Node) -> Control:
 	var dock = PanelContainer.new()
 	dock.name = "TacticalHotbar"
 	dock.custom_minimum_size = Vector2(580, 72)
@@ -235,7 +235,7 @@ static func update_hotbar_selection(dock: Control, active_idx: int) -> void:
 			slot_p.add_theme_stylebox_override("panel", sbt)
 			slot_p.modulate = Color(1.3, 1.3, 1.1) if (i == active_idx) else Color(1.0, 1.0, 1.0)
 
-static func create_boss_bar(parent: Control) -> Dictionary:
+static func create_boss_bar(parent: Node) -> Dictionary:
 	var root = Control.new()
 	root.name = "BossHealthBar"
 	root.custom_minimum_size = Vector2(480, 56)
@@ -254,11 +254,10 @@ static func create_boss_bar(parent: Control) -> Dictionary:
 	prog.custom_minimum_size = Vector2(480, 48)
 	prog.position = Vector2(0, 8)
 	prog.nine_patch_stretch = true
-	prog.stretch_mode = TextureProgressBar.STRETCH_SCALE
-	prog.texture_margin_left = 24
-	prog.texture_margin_right = 24
-	prog.texture_margin_top = 8
-	prog.texture_margin_bottom = 8
+	prog.stretch_margin_left = 24
+	prog.stretch_margin_right = 24
+	prog.stretch_margin_top = 8
+	prog.stretch_margin_bottom = 8
 	root.add_child(prog)
 
 	var lbl = Label.new()

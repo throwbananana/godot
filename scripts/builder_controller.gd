@@ -4,11 +4,14 @@ extends Node2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 
-enum StructureType { NONE, TURRET, FORTIFIED_WALL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB }
+enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB }
 
 var costs = {
 	StructureType.TURRET: 80,
 	StructureType.FORTIFIED_WALL: 25,
+	StructureType.ELECTRIC_WALL: 50,
+	StructureType.STREET_LAMP: 45,
+	StructureType.OIL_BARREL: 55,
 	StructureType.LANDMINE: 40,
 	StructureType.REPAIR_STATION: 120,
 	StructureType.SHIELD_STATION: 100,
@@ -22,6 +25,9 @@ var preview_sprite_p2: Sprite2D
 
 var turret_scene: PackedScene
 var wall_scene: PackedScene
+var electric_wall_scene: PackedScene
+var street_lamp_scene: PackedScene
+var oil_barrel_scene: PackedScene
 var mine_scene: PackedScene
 var repair_scene: PackedScene
 var shield_scene: PackedScene
@@ -36,6 +42,9 @@ var index_by_pid: Dictionary = {1: -1, 2: -1} # -1 = NONE
 var structure_list: Array[StructureType] = [
 	StructureType.TURRET,
 	StructureType.FORTIFIED_WALL,
+	StructureType.ELECTRIC_WALL,
+	StructureType.STREET_LAMP,
+	StructureType.OIL_BARREL,
 	StructureType.LANDMINE,
 	StructureType.REPAIR_STATION,
 	StructureType.SHIELD_STATION,
@@ -47,6 +56,9 @@ var structure_list: Array[StructureType] = [
 var structure_names = {
 	StructureType.TURRET: "🔫 DEFENSE TURRET",
 	StructureType.FORTIFIED_WALL: "🧱 FORTIFIED WALL",
+	StructureType.ELECTRIC_WALL: "⚡ ELECTRIC WALL",
+	StructureType.STREET_LAMP: "💡 STREET LAMP",
+	StructureType.OIL_BARREL: "🛢️ OIL BARREL",
 	StructureType.LANDMINE: "💣 EMP LANDMINE",
 	StructureType.REPAIR_STATION: "🔧 REPAIR BEACON",
 	StructureType.SHIELD_STATION: "🛡️ SHIELD RECHARGER",
@@ -58,6 +70,9 @@ var structure_names = {
 func _ready() -> void:
 	turret_scene = load("res://scenes/buildings/defense_turret.tscn")
 	wall_scene = load("res://scenes/buildings/fortified_wall.tscn")
+	electric_wall_scene = load("res://scenes/buildings/electric_wall.tscn")
+	street_lamp_scene = load("res://scenes/buildings/street_lamp.tscn")
+	oil_barrel_scene = load("res://scenes/buildings/oil_barrel.tscn")
 	mine_scene = load("res://scenes/buildings/landmine.tscn")
 	repair_scene = load("res://scenes/buildings/repair_station.tscn")
 	shield_scene = load("res://scenes/buildings/shield_station.tscn")
@@ -123,6 +138,9 @@ func select_structure(type: StructureType, pid: int = 1) -> void:
 	match type:
 		StructureType.TURRET: tex_path = "res://assets/sprites/buildings/turret_gun.png"
 		StructureType.FORTIFIED_WALL: tex_path = "res://assets/sprites/buildings/fortified_wall.png"
+		StructureType.ELECTRIC_WALL: tex_path = "res://assets/sprites/tiles/tile_electric_wall_f0.png"
+		StructureType.STREET_LAMP: tex_path = "res://assets/sprites/buildings/street_lamp.png"
+		StructureType.OIL_BARREL: tex_path = "res://assets/sprites/buildings/oil_barrel.png"
 		StructureType.LANDMINE: tex_path = "res://assets/sprites/buildings/landmine.png"
 		StructureType.REPAIR_STATION: tex_path = "res://assets/sprites/buildings/repair_station.png"
 		StructureType.SHIELD_STATION: tex_path = "res://assets/sprites/buildings/shield_station.png"
@@ -289,6 +307,15 @@ func _try_place_current(pid: int) -> void:
 		StructureType.FORTIFIED_WALL:
 			new_struct = wall_scene.instantiate()
 			name_str = "FORTIFIED WALL"
+		StructureType.ELECTRIC_WALL:
+			new_struct = electric_wall_scene.instantiate()
+			name_str = "ELECTRIC WALL"
+		StructureType.STREET_LAMP:
+			new_struct = street_lamp_scene.instantiate()
+			name_str = "STREET LAMP"
+		StructureType.OIL_BARREL:
+			new_struct = oil_barrel_scene.instantiate()
+			name_str = "OIL BARREL"
 		StructureType.LANDMINE:
 			new_struct = mine_scene.instantiate()
 			name_str = "EMP LANDMINE"

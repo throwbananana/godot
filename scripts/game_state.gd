@@ -40,6 +40,7 @@ static var p2_unlocked_perks: Array[String] = []
 
 # Battle Configuration
 static var battle_type: String = "battle"
+static var challenge_mode: String = "" # "", "bomb_rain", "night_ops", "vault", "night_bombs"
 static var total_enemies_override: int = 15
 static var boss_enabled: bool = false
 
@@ -91,6 +92,7 @@ static func reset_campaign(p_count: int = 1) -> void:
 	regen_lvl = 0
 	builder_lvl = 0
 	battle_type = "battle"
+	challenge_mode = ""
 	_generate_spire_map()
 
 static func advance_to_next_act() -> void:
@@ -139,11 +141,23 @@ static func _generate_spire_map() -> void:
 			var x_ratio = (c_idx + 1.0) / (count + 1.0)
 			var y_ratio = 1.0 - (f_idx / float(floor_types.size() - 1)) * 0.78 - 0.11
 			
+			var c_mode = ""
+			if types[c_idx] == "challenge":
+				var c_modes = ["bomb_rain", "night_ops", "vault", "night_bombs"]
+				if current_act == 1:
+					c_modes = ["bomb_rain", "night_ops", "vault"]
+				elif current_act == 2:
+					c_modes = ["night_ops", "bomb_rain", "night_bombs"]
+				else:
+					c_modes = ["night_bombs", "bomb_rain", "night_ops"]
+				c_mode = c_modes[randi() % c_modes.size()]
+
 			spire_nodes[node_id] = {
 				"id": node_id,
 				"floor": f_idx,
 				"col": c_idx,
 				"type": types[c_idx],
+				"challenge_mode": c_mode,
 				"pos_ratio": Vector2(x_ratio, y_ratio),
 				"status": "locked"
 			}
@@ -196,6 +210,7 @@ static func visit_node(node_id: String) -> void:
 	if spire_nodes.has(node_id):
 		spire_nodes[node_id]["status"] = "visited"
 		current_floor = spire_nodes[node_id]["floor"]
+		challenge_mode = str(spire_nodes[node_id].get("challenge_mode", ""))
 	save_campaign()
 
 # ==================== CAMPAIGN SAVE / LOAD SYSTEM ====================
@@ -242,6 +257,7 @@ static func save_campaign() -> void:
 		"regen_lvl": regen_lvl,
 		"builder_lvl": builder_lvl,
 		"battle_type": battle_type,
+		"challenge_mode": challenge_mode,
 		"spire_nodes": nodes_copy,
 		"spire_connections": spire_connections
 	}
@@ -296,6 +312,7 @@ static func load_campaign() -> bool:
 	regen_lvl = int(d.get("regen_lvl", 0))
 	builder_lvl = int(d.get("builder_lvl", 0))
 	battle_type = str(d.get("battle_type", "battle"))
+	challenge_mode = str(d.get("challenge_mode", ""))
 	spire_nodes = d.get("spire_nodes", {})
 	for k in spire_nodes.keys():
 		var n_data = spire_nodes[k]

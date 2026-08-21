@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://oilbarrel001"]
+
+[ext_resource type="Script" path="res://scripts/buildings/oil_barrel.gd" id="1_oil"]
+
+[node name="OilBarrel" type="StaticBody2D" groups=["destructible", "obstacle", "oil_barrel"]]
+z_index = 6
+script = ExtResource("1_oil")

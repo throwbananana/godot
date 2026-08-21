@@ -20,6 +20,11 @@ func _ready() -> void:
 		sprite.texture = textures[0]
 	SoundManager.play_explosion(get_tree())
 
+	var main = get_tree().current_scene
+	if main and "darkness_fog_instance" in main and main.darkness_fog_instance and is_instance_valid(main.darkness_fog_instance):
+		var local_p = global_position - main.game_area.global_position
+		main.darkness_fog_instance.add_flash(local_p, 200.0, 0.4)
+
 func _process(delta: float) -> void:
 	frame_timer += delta
 	if frame_timer >= frame_duration:

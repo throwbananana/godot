@@ -51,6 +51,15 @@ static func create_anim(tree_parent: Node, pos: Vector2, paths: Array[String], s
 	node.global_position = pos
 	return node
 
+static func _notify_darkness_flash(parent: Node, pos: Vector2, radius: float = 140.0, duration: float = 0.25) -> void:
+	if not parent or not is_instance_valid(parent): return
+	var tree = parent.get_tree()
+	if not tree: return
+	var main = tree.current_scene
+	if main and "darkness_fog_instance" in main and main.darkness_fog_instance and is_instance_valid(main.darkness_fog_instance):
+		var local_p = pos - main.game_area.global_position
+		main.darkness_fog_instance.add_flash(local_p, radius, duration)
+
 static func spawn_muzzle_flash(parent: Node, pos: Vector2, rot: float) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/muzzle_flash_0.png",
@@ -61,6 +70,7 @@ static func spawn_muzzle_flash(parent: Node, pos: Vector2, rot: float) -> void:
 		"res://assets/sprites/effects/muzzle_flash_5.png"
 	]
 	create_anim(parent, pos, paths, 0.1875, 24.0, rot)
+	_notify_darkness_flash(parent, pos, 90.0, 0.15)
 
 static func spawn_clay_debris(parent: Node, pos: Vector2) -> void:
 	var paths: Array[String] = [
@@ -94,6 +104,7 @@ static func spawn_shockwave(parent: Node, pos: Vector2) -> void:
 		"res://assets/sprites/effects/shockwave_5.png"
 	]
 	create_anim(parent, pos, paths, 0.25, 16.0)
+	_notify_darkness_flash(parent, pos, 180.0, 0.35)
 
 static func spawn_teleport_burst(parent: Node, pos: Vector2) -> void:
 	if not parent or not is_instance_valid(parent):

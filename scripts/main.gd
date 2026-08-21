@@ -10,6 +10,8 @@ const BuilderController = preload("res://scripts/builder_controller.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const MapTemplates = preload("res://scripts/map_templates.gd")
+const DarknessFog = preload("res://scripts/darkness_fog.gd")
+const FallingBombHazard = preload("res://scripts/falling_bomb_hazard.gd")
 
 const TILE_SIZE: float = 48.0
 const TILE_SCALE: float = TILE_SIZE / 256.0
@@ -43,6 +45,9 @@ var jump_pad_scene: PackedScene
 var treasure_chest_scene: PackedScene
 var treasure_key_scene: PackedScene
 var diamond_gem_scene: PackedScene
+var street_lamp_scene: PackedScene
+var electric_wall_scene: PackedScene
+var oil_barrel_scene: PackedScene
 var has_treasure_key: bool = false
 var key_has_dropped: bool = false
 var key_hidden_target_type: String = "block" # "block" or "enemy"
@@ -67,6 +72,12 @@ var is_victory: bool = false
 
 var shovel_timer: float = 0.0
 var is_shovel_active: bool = false
+
+var darkness_fog_instance: DarknessFog = null
+var is_night_mode_active: bool = false
+var is_bomb_rain_active: bool = false
+var bomb_rain_timer: float = 0.0
+var bomb_rain_interval: float = 4.5
 
 var enemy_spawn_points: Array[Vector2] = [
 	Vector2(0.5 * TILE_SIZE, 0.5 * TILE_SIZE),
@@ -127,7 +138,6 @@ var hud_boss_label: Label = null
 var active_boss_instance: Node2D = null
 
 func _ready() -> void:
-	GameState.sync_subsystems()
 	player_scene = load("res://scenes/player.tscn")
 	enemy_scene = load("res://scenes/enemy.tscn")
 	base_scene = load("res://scenes/base_eagle.tscn")
@@ -143,6 +153,9 @@ func _ready() -> void:
 	treasure_chest_scene = load("res://scenes/treasure_chest.tscn")
 	treasure_key_scene = load("res://scenes/treasure_key.tscn")
 	diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
+	street_lamp_scene = load("res://scenes/buildings/street_lamp.tscn")
+	electric_wall_scene = load("res://scenes/buildings/electric_wall.tscn")
+	oil_barrel_scene = load("res://scenes/buildings/oil_barrel.tscn")
 
 	var upg_scene = load("res://scenes/upgrade_selection_dialog.tscn")
 	if upg_scene:
@@ -231,6 +244,10 @@ func start_game() -> void:
 	hud_status.visible = false
 	btn_restart.visible = false
 
+	is_night_mode_active = false
+	is_bomb_rain_active = false
+	bomb_rain_timer = 0.0
+
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		p1_lives = GameState.player_lives
 		p2_lives = GameState.p2_lives
@@ -244,6 +261,25 @@ func start_game() -> void:
 			total_enemies = 24
 			spawn_interval = 1.6
 			show_toast("👑 BOSS BATTLE: REGIONAL COMMANDER FORTRESS!")
+		elif GameState.battle_type == "challenge":
+			total_enemies = 14
+			spawn_interval = 2.4
+			if GameState.challenge_mode == "bomb_rain":
+				is_bomb_rain_active = true
+				bomb_rain_timer = 2.0
+				bomb_rain_interval = 4.5
+				show_toast("💣 空投炸弹雨挑战：小心天降高爆定时炸弹！")
+			elif GameState.challenge_mode == "night_ops":
+				is_night_mode_active = true
+				show_toast("🌙 黑夜突袭战术挑战：全图漆黑，保持车灯与基地视野！")
+			elif GameState.challenge_mode == "night_bombs":
+				is_night_mode_active = true
+				is_bomb_rain_active = true
+				bomb_rain_timer = 2.0
+				bomb_rain_interval = 4.5
+				show_toast("💀 暗夜空投极限防守：在漆黑夜幕中躲避定时炸弹并歼灭敌军！")
+			else:
+				show_toast("🏆 隐秘宝藏挑战：击破隐藏地块或消灭敌军寻找【金钥匙】！")
 		else:
 			total_enemies = 12
 			spawn_interval = 2.5
@@ -264,6 +300,11 @@ func start_game() -> void:
 		hud_p2_hp.visible = true
 	else:
 		hud_p2_hp.visible = false
+
+	if is_night_mode_active:
+		darkness_fog_instance = DarknessFog.new()
+		darkness_fog_instance.setup_trackers(p1_instance, p2_instance, base_instance)
+		game_area.add_child(darkness_fog_instance)
 
 	_setup_challenge_treasure()
 	_update_hud()
@@ -314,6 +355,9 @@ func _on_upgrade_option_selected(opt: Dictionary, player_id: int) -> void:
 
 func _clear_all() -> void:
 	water_sprites.clear()
+	if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
+		darkness_fog_instance.queue_free()
+		darkness_fog_instance = null
 	for child in map_container.get_children():
 		child.queue_free()
 	for child in base_wall_container.get_children():
@@ -385,6 +429,12 @@ func _build_map() -> void:
 				_spawn_jump_pad(pos)
 			elif tile_type == 23:
 				_spawn_moving_platform(pos, Vector2.LEFT, 144.0, 48.0)
+			elif tile_type == 24:
+				_spawn_street_lamp(pos)
+			elif tile_type == 25:
+				_spawn_electric_wall(pos)
+			elif tile_type == 26:
+				_spawn_oil_barrel(pos)
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters)
 	if (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
@@ -656,6 +706,30 @@ func _spawn_jump_pad(pos: Vector2) -> void:
 		var jp = jump_pad_scene.instantiate()
 		jp.position = pos
 		map_container.add_child(jp)
+
+func _spawn_street_lamp(pos: Vector2) -> void:
+	if not street_lamp_scene:
+		street_lamp_scene = load("res://scenes/buildings/street_lamp.tscn")
+	if street_lamp_scene:
+		var lamp = street_lamp_scene.instantiate()
+		lamp.position = pos
+		actors_container.add_child(lamp)
+
+func _spawn_electric_wall(pos: Vector2) -> void:
+	if not electric_wall_scene:
+		electric_wall_scene = load("res://scenes/buildings/electric_wall.tscn")
+	if electric_wall_scene:
+		var ew = electric_wall_scene.instantiate()
+		ew.position = pos
+		map_container.add_child(ew)
+
+func _spawn_oil_barrel(pos: Vector2) -> void:
+	if not oil_barrel_scene:
+		oil_barrel_scene = load("res://scenes/buildings/oil_barrel.tscn")
+	if oil_barrel_scene:
+		var barrel = oil_barrel_scene.instantiate()
+		barrel.position = pos
+		actors_container.add_child(barrel)
 
 func _setup_challenge_treasure() -> void:
 	has_treasure_key = false
@@ -931,11 +1005,28 @@ func _process(delta: float) -> void:
 			_on_button_action()
 		return
 
+	if is_bomb_rain_active:
+		bomb_rain_timer += delta
+		if bomb_rain_timer >= bomb_rain_interval:
+			bomb_rain_timer = 0.0
+			bomb_rain_interval = randf_range(3.8, 6.0)
+			_spawn_falling_bomb()
+
 	if enemies_spawned < total_enemies and enemies_alive < 4:
 		spawn_timer += delta
 		if spawn_timer >= spawn_interval:
 			spawn_timer = 0.0
 			_request_spawn_enemy()
+
+func _spawn_falling_bomb() -> void:
+	var col = randi_range(1, 11)
+	var row = randi_range(1, 10)
+	if row >= 10 and col >= 4 and col <= 8:
+		row = randi_range(1, 8)
+	var target_pos = Vector2((col + 0.5) * TILE_SIZE, (row + 0.5) * TILE_SIZE)
+	var bomb_hazard = FallingBombHazard.new()
+	bomb_hazard.position = target_pos
+	actors_container.add_child(bomb_hazard)
 
 func _request_spawn_enemy() -> void:
 	if enemies_spawned >= total_enemies or enemy_spawn_points.is_empty():
@@ -1176,6 +1267,13 @@ func _game_over(victory: bool) -> void:
 					hud_status.modulate = Color(0.98, 0.82, 0.35)
 					btn_restart.text = "RETURN TO TITLE"
 					GameState.delete_saved_game()
+			elif GameState.battle_type == "challenge":
+				add_gold(150)
+				rpg_mgr.add_xp(100)
+				hud_status.text = "🏆 CHALLENGE COMPLETE! 🏆\n+150G & +100XP BONUS AWARDED!"
+				hud_status.modulate = Color(0.98, 0.82, 0.35)
+				btn_restart.text = "CONTINUE CLIMBING"
+				GameState.save_campaign()
 			else:
 				hud_status.text = "VICTORY!\nSECTOR SECURED"
 				hud_status.modulate = Color(0.58, 0.86, 0.6)
