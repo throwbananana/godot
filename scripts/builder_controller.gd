@@ -106,12 +106,18 @@ func _notify_selection(pid: int) -> void:
 func select_structure(type: StructureType, pid: int = 1) -> void:
 	selection_by_pid[pid] = type
 	var preview_sprite = _preview_sprite(pid)
+	var main_scene = get_tree().current_scene
 	if type == StructureType.NONE:
 		index_by_pid[pid] = -1
 		preview_sprite.visible = false
+		if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and pid == 1:
+			UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, -1)
 		return
 
 	index_by_pid[pid] = structure_list.find(type)
+	if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and pid == 1:
+		UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, index_by_pid[pid])
+
 	preview_sprite.visible = true
 	var tex_path = ""
 	match type:

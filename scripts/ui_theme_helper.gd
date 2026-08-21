@@ -88,6 +88,21 @@ static func apply_clay_button(btn: Button, dark_text: bool = true) -> void:
 
 static func apply_clay_panel(panel: Control, bg_color: Color = Color(0.18, 0.15, 0.20, 0.92), corner_radius: int = 14) -> void:
 	if not panel: return
+	var tex_panel = TextureHelper.get_tex("res://assets/sprites/ui/ui_panel_bg.png")
+	if tex_panel:
+		var sbt = StyleBoxTexture.new()
+		sbt.texture = tex_panel
+		sbt.texture_margin_left = 22
+		sbt.texture_margin_right = 22
+		sbt.texture_margin_top = 22
+		sbt.texture_margin_bottom = 22
+		sbt.content_margin_left = 16
+		sbt.content_margin_right = 16
+		sbt.content_margin_top = 14
+		sbt.content_margin_bottom = 14
+		panel.add_theme_stylebox_override("panel", sbt)
+		return
+
 	var sb = StyleBoxFlat.new()
 	sb.bg_color = bg_color
 	sb.corner_radius_top_left = corner_radius
@@ -130,3 +145,131 @@ static func apply_clay_progressbar(bar: ProgressBar, fill_color: Color = Color(0
 	fill.corner_radius_bottom_left = 5
 	fill.corner_radius_bottom_right = 5
 	bar.add_theme_stylebox_override("fill", fill)
+
+static func create_hotbar_ui(parent: Control) -> Control:
+	var dock = PanelContainer.new()
+	dock.name = "TacticalHotbar"
+	dock.custom_minimum_size = Vector2(580, 72)
+	dock.anchors_preset = Control.PRESET_BOTTOM_LEFT
+	dock.position = Vector2(72, 680)
+	apply_clay_panel(dock, Color(0.12, 0.10, 0.14, 0.95), 10)
+	parent.add_child(dock)
+
+	var hbox = HBoxContainer.new()
+	hbox.name = "SlotContainer"
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 8)
+	dock.add_child(hbox)
+
+	var slot_tex_norm = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot.png")
+	var slot_tex_act = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot_active.png")
+
+	var items = [
+		{"name": "TURRET", "cost": "80G", "icon": "res://assets/sprites/buildings/turret_gun.png"},
+		{"name": "WALL", "cost": "25G", "icon": "res://assets/sprites/buildings/fortified_wall.png"},
+		{"name": "MINE", "cost": "40G", "icon": "res://assets/sprites/buildings/landmine.png"},
+		{"name": "REPAIR", "cost": "120G", "icon": "res://assets/sprites/buildings/repair_station.png"},
+		{"name": "SHIELD", "cost": "100G", "icon": "res://assets/sprites/buildings/shield_station.png"},
+		{"name": "WIND", "cost": "70G", "icon": "res://assets/sprites/buildings/wind_blower.png"},
+		{"name": "MISSILE", "cost": "90G", "icon": "res://assets/sprites/powerups/missile_strike.png"},
+		{"name": "BOMB", "cost": "60G", "icon": "res://assets/sprites/buildings/prop_timed_bomb.png"}
+	]
+
+	for i in range(items.size()):
+		var item = items[i]
+		var slot_panel = PanelContainer.new()
+		slot_panel.custom_minimum_size = Vector2(56, 56)
+		slot_panel.name = "Slot_%d" % i
+
+		var sbt = StyleBoxTexture.new()
+		sbt.texture = slot_tex_norm if slot_tex_norm else null
+		sbt.texture_margin_left = 6
+		sbt.texture_margin_right = 6
+		sbt.texture_margin_top = 6
+		sbt.texture_margin_bottom = 6
+		slot_panel.add_theme_stylebox_override("panel", sbt)
+
+		var v_inner = VBoxContainer.new()
+		v_inner.alignment = BoxContainer.ALIGNMENT_CENTER
+		v_inner.add_theme_constant_override("separation", 2)
+		slot_panel.add_child(v_inner)
+
+		var icon_tex = TextureHelper.get_tex(item["icon"])
+		if icon_tex:
+			var icon_rect = TextureRect.new()
+			icon_rect.texture = icon_tex
+			icon_rect.custom_minimum_size = Vector2(28, 28)
+			icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			v_inner.add_child(icon_rect)
+
+		var cost_lbl = Label.new()
+		cost_lbl.text = item["cost"]
+		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cost_lbl.add_theme_font_size_override("font_size", 9)
+		cost_lbl.add_theme_color_override("font_color", Color(0.98, 0.85, 0.35, 1.0))
+		v_inner.add_child(cost_lbl)
+
+		hbox.add_child(slot_panel)
+
+	return dock
+
+static func update_hotbar_selection(dock: Control, active_idx: int) -> void:
+	if not dock: return
+	var hbox = dock.get_node_or_null("SlotContainer")
+	if not hbox: return
+
+	var slot_tex_norm = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot.png")
+	var slot_tex_act = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot_active.png")
+
+	var slots = hbox.get_children()
+	for i in range(slots.size()):
+		var slot_p = slots[i]
+		if slot_p is PanelContainer:
+			var sbt = StyleBoxTexture.new()
+			sbt.texture = slot_tex_act if (i == active_idx) else slot_tex_norm
+			sbt.texture_margin_left = 8 if (i == active_idx) else 6
+			sbt.texture_margin_right = 8 if (i == active_idx) else 6
+			sbt.texture_margin_top = 8 if (i == active_idx) else 6
+			sbt.texture_margin_bottom = 8 if (i == active_idx) else 6
+			slot_p.add_theme_stylebox_override("panel", sbt)
+			slot_p.modulate = Color(1.3, 1.3, 1.1) if (i == active_idx) else Color(1.0, 1.0, 1.0)
+
+static func create_boss_bar(parent: Control) -> Dictionary:
+	var root = Control.new()
+	root.name = "BossHealthBar"
+	root.custom_minimum_size = Vector2(480, 56)
+	root.anchors_preset = Control.PRESET_TOP_WIDE
+	root.position = Vector2(120, 18)
+	root.visible = false
+	parent.add_child(root)
+
+	var frame_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_boss_bar_frame.png")
+	var fill_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_boss_bar_fill.png")
+
+	var prog = TextureProgressBar.new()
+	prog.name = "Progress"
+	prog.texture_over = frame_tex
+	prog.texture_progress = fill_tex
+	prog.custom_minimum_size = Vector2(480, 48)
+	prog.position = Vector2(0, 8)
+	prog.nine_patch_stretch = true
+	prog.stretch_mode = TextureProgressBar.STRETCH_SCALE
+	prog.texture_margin_left = 24
+	prog.texture_margin_right = 24
+	prog.texture_margin_top = 8
+	prog.texture_margin_bottom = 8
+	root.add_child(prog)
+
+	var lbl = Label.new()
+	lbl.name = "BossName"
+	lbl.text = "👑 BOSS"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.position = Vector2(0, -14)
+	lbl.custom_minimum_size = Vector2(480, 20)
+	lbl.add_theme_font_size_override("font_size", 13)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35, 1.0))
+	lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	root.add_child(lbl)
+
+	return {"root": root, "prog": prog, "label": lbl}

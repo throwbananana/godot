@@ -120,14 +120,29 @@ func hit_stop(duration_sec: float = 0.05) -> void:
 
 var upgrade_dialog: UpgradeSelectionDialog
 var pending_upgrade_players: Array[int] = []
+var hud_hotbar: Control = null
+var hud_boss_bar: Control = null
+var hud_boss_fill: TextureProgressBar = null
+var hud_boss_label: Label = null
+var active_boss_instance: Node2D = null
 
 func _ready() -> void:
+	GameState.sync_subsystems()
 	player_scene = load("res://scenes/player.tscn")
 	enemy_scene = load("res://scenes/enemy.tscn")
 	base_scene = load("res://scenes/base_eagle.tscn")
 	powerup_scene = load("res://scenes/power_up.tscn")
 	spawnstar_scene = load("res://scenes/spawn_star.tscn")
 	landmine_hazard_scene = load("res://scenes/landmine_hazard.tscn")
+	moving_platform_scene = load("res://scenes/moving_platform.tscn")
+	wormhole_scene = load("res://scenes/wormhole.tscn")
+	shield_station_scene = load("res://scenes/buildings/shield_station.tscn")
+	wind_blower_scene = load("res://scenes/buildings/wind_blower.tscn")
+	conveyor_belt_scene = load("res://scenes/conveyor_belt.tscn")
+	jump_pad_scene = load("res://scenes/jump_pad.tscn")
+	treasure_chest_scene = load("res://scenes/treasure_chest.tscn")
+	treasure_key_scene = load("res://scenes/treasure_key.tscn")
+	diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
 
 	var upg_scene = load("res://scenes/upgrade_selection_dialog.tscn")
 	if upg_scene:
@@ -143,15 +158,6 @@ func _ready() -> void:
 	tex_hard_clay = TextureHelper.get_tex("res://assets/sprites/tiles/tile_hard_clay.png")
 	tex_ice = TextureHelper.get_tex("res://assets/sprites/tiles/tile_ice.png")
 	tex_wormhole = TextureHelper.get_tex("res://assets/sprites/tiles/tile_wormhole.png")
-	moving_platform_scene = load("res://scenes/moving_platform.tscn")
-	wormhole_scene = load("res://scenes/wormhole.tscn")
-	shield_station_scene = load("res://scenes/buildings/shield_station.tscn")
-	wind_blower_scene = load("res://scenes/buildings/wind_blower.tscn")
-	conveyor_belt_scene = load("res://scenes/conveyor_belt.tscn")
-	jump_pad_scene = load("res://scenes/jump_pad.tscn")
-	treasure_chest_scene = load("res://scenes/treasure_chest.tscn")
-	treasure_key_scene = load("res://scenes/treasure_key.tscn")
-	diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
 
 	tex_water_frames.clear()
 	for i in range(6):
@@ -166,6 +172,12 @@ func _ready() -> void:
 	UIThemeHelper.apply_clay_panel($HUD/SidePanel)
 	UIThemeHelper.apply_clay_panel(pause_menu)
 	UIThemeHelper.apply_clay_progressbar(hud_rpg_xp)
+	hud_hotbar = UIThemeHelper.create_hotbar_ui($HUD)
+
+	var boss_dict = UIThemeHelper.create_boss_bar($HUD)
+	hud_boss_bar = boss_dict["root"]
+	hud_boss_fill = boss_dict["prog"]
+	hud_boss_label = boss_dict["label"]
 
 	UIThemeHelper.apply_clay_button(btn_restart)
 	btn_restart.pressed.connect(_on_button_action)
@@ -900,6 +912,20 @@ func _process(delta: float) -> void:
 			_spawn_base_and_walls(false)
 			show_toast("BASE STEEL EXPIRED")
 
+	# Boss Health Bar Realtime Sync & Smooth Fade
+	if active_boss_instance:
+		if is_instance_valid(active_boss_instance) and hud_boss_fill:
+			hud_boss_fill.value = active_boss_instance.health
+		else:
+			active_boss_instance = null
+			if hud_boss_bar and hud_boss_bar.visible:
+				var tw = create_tween()
+				tw.tween_property(hud_boss_bar, "modulate:a", 0.0, 0.45)
+				tw.tween_callback(func():
+					hud_boss_bar.visible = false
+					hud_boss_bar.modulate.a = 1.0
+				)
+
 	if is_game_over or is_victory:
 		if Input.is_action_just_pressed("restart"):
 			_on_button_action()
@@ -1023,6 +1049,16 @@ func _instantiate_enemy(pos: Vector2, type: EnemyTank.EnemyType, is_bonus: bool,
 		_on_enemy_destroyed(pts, bonus, drop_p)
 	)
 	actors_container.add_child(enemy)
+
+	if type in [EnemyTank.EnemyType.BOSS, EnemyTank.EnemyType.TRAIN_BOSS]:
+		active_boss_instance = enemy
+		if hud_boss_bar and hud_boss_fill and hud_boss_label:
+			hud_boss_bar.visible = true
+			hud_boss_bar.modulate.a = 1.0
+			var b_name = "👑 SUMMIT COLOSSUS FORTRESS" if type == EnemyTank.EnemyType.BOSS else "🚂 ARMORED TRAIN FORTRESS"
+			hud_boss_label.text = b_name
+			hud_boss_fill.max_value = enemy.max_health
+			hud_boss_fill.value = enemy.health
 
 func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void:
 	score += points
