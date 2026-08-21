@@ -136,6 +136,8 @@ def setup_render_settings(rx=256, ry=256, samples=48,
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = 'PNG'
     scene.render.image_settings.color_mode = 'RGBA'
+    scene.render.image_settings.color_depth = '8'
+    scene.render.image_settings.compression = 90
     scene.render.film_transparent = True
 
     # Standard 而不是 AgX: 黏土要的是饱和大色块, 不是写实胶片曲线。

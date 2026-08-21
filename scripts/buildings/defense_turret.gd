@@ -67,11 +67,11 @@ func _shoot(dir: Vector2) -> void:
 	var bullet = bullet_scene.instantiate()
 	bullet.direction = dir
 	bullet.speed = 520.0
-	var muzzle_pos = global_position + dir * 26.0
-	bullet.global_position = muzzle_pos
 	bullet.shooter = self
 	bullet.shooter_type = "player"
 	get_parent().add_child(bullet)
+	var muzzle_pos = global_position + dir * 26.0
+	bullet.global_position = muzzle_pos
 	SoundManager.play_shot(get_tree())
 
 	# 枪口后坐力与火花
@@ -97,6 +97,6 @@ func take_damage(amount: int) -> void:
 func _destroy() -> void:
 	if explosion_scene:
 		var exp_inst = explosion_scene.instantiate()
-		exp_inst.global_position = global_position
 		get_parent().add_child(exp_inst)
+		exp_inst.global_position = global_position
 	queue_free()

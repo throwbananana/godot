@@ -5,9 +5,11 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
+const LaserPiercer = preload("res://scripts/laser_piercer.gd")
+
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, BOSS }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT }
 
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
@@ -22,6 +24,8 @@ var fire_interval: float = 1.2
 var fire_timer: float = 0.0
 var change_dir_timer: float = 0.0
 var freeze_timer: float = 0.0
+var is_on_sand: bool = false
+var sand_overlap_count: int = 0
 
 var facing_direction: Vector2 = Vector2.DOWN
 var tank_frames: Array[Texture2D] = []
@@ -44,7 +48,7 @@ func _ready() -> void:
 	_setup_tank_type()
 	rotation = facing_direction.angle() + PI / 2.0
 	change_dir_timer = randf_range(1.0, 2.5)
-	fire_timer = randf_range(0.3, 1.2)
+	fire_timer = randf_range(1.2, 2.5)
 
 func _setup_tank_type() -> void:
 	var prefix = "enemy_basic"
@@ -56,7 +60,7 @@ func _setup_tank_type() -> void:
 			score_value = 100
 			xp_value = 25
 			gold_value = 15
-			fire_interval = 1.4
+			fire_interval = 2.8
 		EnemyType.FAST:
 			prefix = "enemy_fast"
 			speed = 185.0
@@ -64,7 +68,7 @@ func _setup_tank_type() -> void:
 			score_value = 200
 			xp_value = 40
 			gold_value = 25
-			fire_interval = 1.1
+			fire_interval = 2.2
 		EnemyType.POWER:
 			prefix = "enemy_power"
 			speed = 120.0
@@ -72,7 +76,7 @@ func _setup_tank_type() -> void:
 			score_value = 300
 			xp_value = 55
 			gold_value = 35
-			fire_interval = 0.75
+			fire_interval = 1.6
 		EnemyType.ARMOR:
 			prefix = "enemy_armor"
 			speed = 90.0
@@ -80,7 +84,23 @@ func _setup_tank_type() -> void:
 			score_value = 400
 			xp_value = 80
 			gold_value = 50
-			fire_interval = 1.0
+			fire_interval = 2.2
+		EnemyType.MISSILE:
+			prefix = "enemy_missile"
+			speed = 100.0
+			max_health = 3
+			score_value = 500
+			xp_value = 95
+			gold_value = 60
+			fire_interval = 3.2
+		EnemyType.LASER:
+			prefix = "enemy_laser"
+			speed = 105.0
+			max_health = 3
+			score_value = 600
+			xp_value = 110
+			gold_value = 75
+			fire_interval = 3.8
 		EnemyType.BOSS:
 			prefix = "enemy_boss"
 			speed = 75.0
@@ -88,7 +108,15 @@ func _setup_tank_type() -> void:
 			score_value = 1500
 			xp_value = 250
 			gold_value = 180
-			fire_interval = 0.65
+			fire_interval = 2.0
+		EnemyType.DESERT:
+			prefix = "tank_desert"
+			speed = 145.0
+			max_health = 2
+			score_value = 450
+			xp_value = 85
+			gold_value = 55
+			fire_interval = 2.0
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * 0.08
@@ -157,7 +185,14 @@ func _physics_process(delta: float) -> void:
 		_shoot()
 		fire_timer = randf_range(fire_interval * 0.8, fire_interval * 1.3)
 
-	velocity = facing_direction * speed
+	var move_speed = speed
+	if is_on_sand:
+		if enemy_type == EnemyType.DESERT:
+			move_speed *= 1.45 # 沙漠坦克在沙地上获得45%速度增幅！
+		else:
+			move_speed *= 0.50 # 普通敌人在沙地上减速50%
+
+	velocity = facing_direction * move_speed
 	var collision = move_and_collide(velocity * delta)
 	if collision:
 		_choose_new_direction()
@@ -188,6 +223,8 @@ func _shoot() -> void:
 	if not bullet_scene:
 		return
 
+	var muzzle_pos = global_position + facing_direction * 26.0
+
 	if enemy_type == EnemyType.BOSS:
 		# Twin Super Siege Cannons Firing
 		var right_vec = facing_direction.rotated(PI / 2.0)
@@ -197,23 +234,57 @@ func _shoot() -> void:
 			b.speed = 460.0
 			b.damage = 1
 			b.can_destroy_steel = true
-			var m_pos = global_position + facing_direction * 30.0 + right_vec * (side * 8.0)
-			b.global_position = m_pos
 			b.shooter = self
 			b.shooter_type = "enemy"
 			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 30.0 + right_vec * (side * 8.0)
+			b.global_position = m_pos
 			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+		
+		# Boss occasional homing missile barrage
+		if randf() < 0.35:
+			var target = _find_target()
+			if target:
+				var mb = bullet_scene.instantiate()
+				mb.direction = facing_direction
+				mb.speed = 320.0
+				mb.damage = 2
+				mb.is_homing = true
+				mb.target = target
+				mb.shooter = self
+				mb.shooter_type = "enemy"
+				get_parent().add_child(mb)
+				mb.global_position = global_position + facing_direction * 32.0
+	elif enemy_type == EnemyType.MISSILE:
+		var target = _find_target()
+		var mb = bullet_scene.instantiate()
+		mb.direction = facing_direction
+		mb.speed = 330.0
+		mb.damage = 2
+		mb.is_homing = true
+		mb.target = target
+		mb.shooter = self
+		mb.shooter_type = "enemy"
+		get_parent().add_child(mb)
+		mb.global_position = muzzle_pos
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+	elif enemy_type == EnemyType.LASER:
+		var tw = create_tween()
+		tw.tween_property(sprite, "modulate", Color(0.2, 2.5, 3.0), 0.12)
+		tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.12)
+		LaserPiercer.fire_linear_laser(get_parent(), muzzle_pos, facing_direction, self, "enemy", 2)
+		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
 	else:
 		var bullet = bullet_scene.instantiate()
 		bullet.direction = facing_direction
 		bullet.speed = 360.0 if enemy_type != EnemyType.POWER else 480.0
 		bullet.damage = 1
 		bullet.can_destroy_steel = false
-		var muzzle_pos = global_position + facing_direction * 26.0
-		bullet.global_position = muzzle_pos
 		bullet.shooter = self
 		bullet.shooter_type = "enemy"
 		get_parent().add_child(bullet)
+		bullet.global_position = muzzle_pos
 		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 
 	# 枪口后坐力与火花
@@ -222,6 +293,21 @@ func _shoot() -> void:
 	recoil_tween = create_tween()
 	recoil_tween.tween_property(sprite, "position", Vector2(0, 4.0), 0.04)
 	recoil_tween.tween_property(sprite, "position", Vector2.ZERO, 0.08)
+
+func _find_target() -> Node2D:
+	var candidates: Array[Node2D] = []
+	for p in get_tree().get_nodes_in_group("player"):
+		if is_instance_valid(p):
+			candidates.append(p)
+	for b in get_tree().get_nodes_in_group("base_eagle"):
+		if is_instance_valid(b) and not b.is_destroyed:
+			candidates.append(b)
+
+	if candidates.is_empty():
+		return null
+
+	candidates.sort_custom(func(a, b): return global_position.distance_squared_to(a.global_position) < global_position.distance_squared_to(b.global_position))
+	return candidates[0]
 
 func take_damage(amount: int) -> void:
 	health -= amount
@@ -251,8 +337,8 @@ func take_damage(amount: int) -> void:
 func _die() -> void:
 	if explosion_scene:
 		var exp_inst = explosion_scene.instantiate()
-		exp_inst.global_position = global_position
 		get_parent().add_child(exp_inst)
+		exp_inst.global_position = global_position
 
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
@@ -266,9 +352,10 @@ func _die() -> void:
 
 	if coin_scene and randf() < 0.4:
 		var coin = coin_scene.instantiate()
-		coin.global_position = global_position
-		coin.gold_amount = gold_value
-		get_parent().call_deferred("add_child", coin)
+		var spawn_parent = get_parent()
+		coin.position = spawn_parent.to_local(global_position)
+		coin.value = gold_value
+		spawn_parent.call_deferred("add_child", coin)
 
 	enemy_destroyed.emit(score_value, is_bonus, global_position)
 	queue_free()
@@ -281,3 +368,11 @@ func get_xp() -> int:
 
 func get_gold() -> int:
 	return gold_value
+
+func on_enter_sand() -> void:
+	sand_overlap_count += 1
+	is_on_sand = true
+
+func on_exit_sand() -> void:
+	sand_overlap_count = max(0, sand_overlap_count - 1)
+	is_on_sand = (sand_overlap_count > 0)

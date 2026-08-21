@@ -36,6 +36,14 @@ static func play_shield_hit(tree: SceneTree = null) -> void:
 	# Resonant energy deflection hum
 	_play_synth_sound(0.15, 1200.0, 300.0, "sine", 0.35, tree)
 
+static func play_laser(tree: SceneTree = null) -> void:
+	# High-tech piercing laser sweep
+	_play_synth_sound(0.22, 1800.0, 320.0, "sawtooth", 0.45, tree)
+
+static func play_missile(tree: SceneTree = null) -> void:
+	# Rocket propulsion whoosh
+	_play_synth_sound(0.28, 280.0, 750.0, "triangle", 0.35, tree)
+
 static func _play_arpeggio(freqs: Array, note_duration: float, wave_type: String, volume: float, tree: SceneTree = null) -> void:
 	var root = _get_root(tree)
 	if not root: return

@@ -1,0 +1,110 @@
+[gd_scene format=3 uid="uid://stg101prev01"]
+
+[ext_resource type="Script" path="res://scripts/stage_preview_dialog.gd" id="1_spd"]
+
+[node name="StagePreviewDialog" type="PanelContainer"]
+custom_minimum_size = Vector2(680, 430)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -340.0
+offset_top = -215.0
+offset_right = 340.0
+offset_bottom = 215.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_spd")
+
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="TitleLabel" type="Label" parent="VBox/Header"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 17
+text = "⚔️ TACTICAL ENGAGEMENT: OUTSKIRTS PATROL"
+horizontal_alignment = 1
+
+[node name="SubTitleLabel" type="Label" parent="VBox/Header"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.78, 0.45, 1)
+theme_override_font_sizes/font_size = 12
+text = "THREAT LEVEL: ★☆☆☆☆ | ENEMY BATTALION: 12 UNITS"
+horizontal_alignment = 1
+
+[node name="HSeparator1" type="HSeparator" parent="VBox"]
+layout_mode = 2
+
+[node name="Sections" type="VBoxContainer" parent="VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 6
+
+[node name="TerrainSection" type="VBoxContainer" parent="VBox/Sections"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Label" type="Label" parent="VBox/Sections/TerrainSection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.85, 0.95, 1)
+theme_override_font_sizes/font_size = 11
+text = "🗺️ 战场地形环境 (TERRAIN & HAZARDS):"
+
+[node name="TerrainList" type="HBoxContainer" parent="VBox/Sections/TerrainSection"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EnemySection" type="VBoxContainer" parent="VBox/Sections"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Label" type="Label" parent="VBox/Sections/EnemySection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.55, 0.55, 1)
+theme_override_font_sizes/font_size = 11
+text = "🎯 侦察敌军阵容 (ENEMY RECONNAISSANCE):"
+
+[node name="EnemyList" type="HBoxContainer" parent="VBox/Sections/EnemySection"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="DropSection" type="VBoxContainer" parent="VBox/Sections"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="Label" type="Label" parent="VBox/Sections/DropSection"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.85, 0.45, 1)
+theme_override_font_sizes/font_size = 11
+text = "🎁 战场空投与战利品 (POTENTIAL DROPS & REWARDS):"
+
+[node name="DropList" type="HBoxContainer" parent="VBox/Sections/DropSection"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HSeparator2" type="HSeparator" parent="VBox"]
+layout_mode = 2
+
+[node name="Actions" type="HBoxContainer" parent="VBox"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="StartButton" type="Button" parent="VBox/Actions"]
+custom_minimum_size = Vector2(180, 36)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3, 1.2, 0.4, 1)
+theme_override_font_sizes/font_size = 14
+text = "⚔️ 出击 (START MISSION)"
+
+[node name="CancelButton" type="Button" parent="VBox/Actions"]
+custom_minimum_size = Vector2(120, 36)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "✕ 返回 (BACK)"

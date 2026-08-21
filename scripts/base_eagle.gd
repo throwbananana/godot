@@ -41,8 +41,8 @@ func destroy() -> void:
 		sprite.texture = tex_destroyed
 	if explosion_scene:
 		var exp_inst = explosion_scene.instantiate()
-		exp_inst.global_position = global_position
 		get_parent().add_child(exp_inst)
+		exp_inst.global_position = global_position
 	VFXAnimator.spawn_shockwave(get_parent(), global_position)
 	SoundManager.play_game_over(get_tree())
 	destroyed.emit()

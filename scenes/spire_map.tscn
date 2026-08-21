@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" path="res://scripts/spire_map.gd" id="1_spm"]
 [ext_resource type="PackedScene" path="res://scenes/event_dialog.tscn" id="2_evd"]
+[ext_resource type="PackedScene" path="res://scenes/stage_preview_dialog.tscn" id="3_spd"]
+[ext_resource type="PackedScene" path="res://scenes/shop_dialog.tscn" id="4_shpd"]
 
 [node name="SpireMap" type="Control"]
 layout_mode = 3
@@ -92,3 +94,13 @@ grow_vertical = 2
 [node name="EventDialog" parent="." instance=ExtResource("2_evd")]
 visible = false
 layout_mode = 1
+
+[node name="StagePreviewDialog" parent="." instance=ExtResource("3_spd")]
+visible = false
+layout_mode = 1
+
+[node name="ShopDialog" parent="." instance=ExtResource("4_shpd")]
+visible = false
+layout_mode = 1
+
+

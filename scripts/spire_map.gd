@@ -10,6 +10,8 @@ const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 @onready var map_canvas: Control = $MapArea/MapCanvas
 @onready var lines_draw: Control = $MapArea/LinesDraw
 @onready var event_dialog: PanelContainer = $EventDialog
+@onready var stage_preview_dialog: PanelContainer = $StagePreviewDialog
+@onready var shop_dialog: PanelContainer = $ShopDialog
 @onready var top_bar: PanelContainer = $TopBar
 @onready var hud_floor: Label = $TopBar/HBox/FloorLabel
 @onready var hud_gold: Label = $TopBar/HBox/GoldLabel
@@ -26,6 +28,12 @@ func _ready() -> void:
 	btn_back.pressed.connect(_on_back_to_menu)
 	event_dialog.closed.connect(_on_event_closed)
 	event_dialog.visible = false
+	
+	stage_preview_dialog.mission_started.connect(_on_mission_started)
+	stage_preview_dialog.visible = false
+
+	shop_dialog.closed.connect(_on_event_closed)
+	shop_dialog.visible = false
 	
 	lines_draw.draw.connect(_on_draw_lines)
 	_build_spire_ui()
@@ -132,17 +140,25 @@ func _on_node_clicked(node_id: String) -> void:
 	if not GameState.is_node_available(node_id):
 		return
 
-	GameState.visit_node(node_id)
 	var node_data = GameState.spire_nodes[node_id]
 	var n_type = node_data["type"]
 
 	SoundManager.play_hit_steel(get_tree())
 
 	if n_type in ["battle", "elite", "boss"]:
-		GameState.battle_type = n_type
-		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		stage_preview_dialog.setup_preview(node_id)
+	elif n_type == "shop":
+		GameState.visit_node(node_id)
+		shop_dialog.setup_shop()
 	else:
+		GameState.visit_node(node_id)
 		event_dialog.setup(n_type)
+
+func _on_mission_started(node_id: String) -> void:
+	GameState.visit_node(node_id)
+	var node_data = GameState.spire_nodes[node_id]
+	GameState.battle_type = node_data["type"]
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 func _on_event_closed() -> void:
 	GameState.save_campaign()

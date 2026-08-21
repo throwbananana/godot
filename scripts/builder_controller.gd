@@ -115,12 +115,15 @@ func _is_placement_valid(pos: Vector2) -> bool:
 		return false
 
 	var space_state = get_world_2d().direct_space_state
-	var query = PhysicsPointQueryParameters2D.new()
-	query.position = pos
+	var query = PhysicsShapeQueryParameters2D.new()
+	var shape = RectangleShape2D.new()
+	shape.size = Vector2(40.0, 40.0)
+	query.shape = shape
+	query.transform = Transform2D(0.0, pos)
 	query.collision_mask = 1 | 16 # Walls, terrain, border, buildings, base eagle
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
-	var hits = space_state.intersect_point(query, 4)
+	var hits = space_state.intersect_shape(query, 4)
 	return hits.is_empty()
 
 func _try_place_current() -> void:
@@ -159,8 +162,8 @@ func _try_place_current() -> void:
 			name_str = "REPAIR BEACON"
 
 	if new_struct:
-		new_struct.global_position = place_pos
 		main.actors_container.add_child(new_struct)
+		new_struct.global_position = place_pos
 		SoundManager.play_build(get_tree())
 		if main.has_method("show_toast"):
 			main.show_toast("PLACED %s (-%dG)" % [name_str, cost])

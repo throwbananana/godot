@@ -13,7 +13,7 @@ signal health_changed(pid: int, curr: int, max_hp: int)
 
 @export var player_id: int = 1 # 1=P1 (Yellow/Gold), 2=P2 (Green/Mint)
 @export var base_speed: float = 180.0
-@export var fire_cooldown: float = 0.28
+@export var fire_cooldown: float = 0.65
 
 var upgrade_tier: int = 0
 var max_health: int = 1
@@ -24,6 +24,8 @@ var facing_direction: Vector2 = Vector2.UP
 var is_invulnerable: bool = false
 var invulnerable_timer: float = 0.0
 var regen_accumulator: float = 0.0
+var is_on_sand: bool = false
+var sand_overlap_count: int = 0
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shield_sprite: Sprite2D = $ShieldSprite
@@ -172,6 +174,8 @@ func _physics_process(delta: float) -> void:
 	var speed_mult = (1.0 + float(upgrade_tier) * 0.12)
 	if main and main.rpg_mgr:
 		speed_mult *= main.rpg_mgr.get_speed_multiplier()
+	if is_on_sand:
+		speed_mult *= 0.50 # 沙漠流沙阻力：降低50%移速
 	var current_speed = base_speed * speed_mult
 
 	if input_vec != Vector2.ZERO:
@@ -196,9 +200,11 @@ func _shoot() -> void:
 	if not bullet_scene:
 		return
 	var main = get_tree().current_scene
-	var cd = fire_cooldown * (0.65 if upgrade_tier >= 1 else 1.0)
+	var tier_mults = [1.0, 0.88, 0.78, 0.70]
+	var cd = fire_cooldown * tier_mults[clamp(upgrade_tier, 0, 3)]
 	if main and main.rpg_mgr:
 		cd *= main.rpg_mgr.get_fire_cooldown_mult()
+	cd = maxf(0.32, cd)
 	can_fire = false
 	fire_timer = cd
 	
@@ -227,20 +233,20 @@ func _shoot() -> void:
 			bullet.speed = b_speed
 			bullet.damage = dmg
 			bullet.can_destroy_steel = can_break_steel
-			bullet.global_position = global_position + facing_direction * 28.0 + right_vec * offset_x
 			bullet.shooter = self
 			bullet.shooter_type = "player"
 			get_parent().add_child(bullet)
+			bullet.global_position = global_position + facing_direction * 28.0 + right_vec * offset_x
 	else:
 		var bullet = bullet_scene.instantiate()
 		bullet.direction = facing_direction
 		bullet.speed = b_speed
 		bullet.damage = dmg
 		bullet.can_destroy_steel = can_break_steel
-		bullet.global_position = muzzle_pos
 		bullet.shooter = self
 		bullet.shooter_type = "player"
 		get_parent().add_child(bullet)
+		bullet.global_position = muzzle_pos
 	
 	SoundManager.play_shot(get_tree())
 	fired_bullet.emit()
@@ -270,8 +276,17 @@ func take_damage(amount: int) -> void:
 func _die() -> void:
 	if explosion_scene:
 		var exp_inst = explosion_scene.instantiate()
-		exp_inst.global_position = global_position
 		get_parent().add_child(exp_inst)
+		exp_inst.global_position = global_position
 	VFXAnimator.spawn_shockwave(get_parent(), global_position)
 	destroyed.emit(player_id)
 	queue_free()
+
+func on_enter_sand() -> void:
+	sand_overlap_count += 1
+	is_on_sand = true
+
+func on_exit_sand() -> void:
+	sand_overlap_count = max(0, sand_overlap_count - 1)
+	is_on_sand = (sand_overlap_count > 0)
+
