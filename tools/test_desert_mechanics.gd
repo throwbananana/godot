@@ -67,11 +67,11 @@ func test_desert_tank_sand_speedup() -> void:
 	basic_enemy.enemy_type = EnemyTank.EnemyType.BASIC
 	root.add_child(basic_enemy)
 	basic_enemy._setup_tank_type()
-	assert(basic_enemy.speed == 110.0, "Basic enemy base speed should be 110.0")
+	assert(basic_enemy.speed == 75.0, "Basic enemy base speed should be 75.0")
 
 	basic_enemy.on_enter_sand()
 	assert(basic_enemy.is_on_sand, "Basic enemy is on sand")
-	# On sand standard speed is scaled by 0.50 -> 55.0
+	# On sand standard speed is scaled by 0.50 -> 37.5
 	basic_enemy.queue_free()
 
 	# 2. Desert Specialist Tank
@@ -79,7 +79,7 @@ func test_desert_tank_sand_speedup() -> void:
 	desert_enemy.enemy_type = EnemyTank.EnemyType.DESERT
 	root.add_child(desert_enemy)
 	desert_enemy._setup_tank_type()
-	assert(desert_enemy.speed == 145.0, "Desert tank base speed should be 145.0")
+	assert(desert_enemy.speed == 95.0, "Desert tank base speed should be 95.0")
 	assert(desert_enemy.tank_frames.size() == 6, "Desert tank should have 6 animation frames")
 
 	desert_enemy.on_enter_sand()

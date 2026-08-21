@@ -9,7 +9,7 @@ const LaserPiercer = preload("res://scripts/laser_piercer.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT }
 
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
@@ -26,6 +26,15 @@ var change_dir_timer: float = 0.0
 var freeze_timer: float = 0.0
 var is_on_sand: bool = false
 var sand_overlap_count: int = 0
+var is_on_ice: bool = false
+var ice_overlap_count: int = 0
+
+var is_camouflaged: bool = false
+var still_timer: float = 0.0
+var tree_tex: Texture2D = null
+var is_suicide_detonated: bool = false
+var plane_shadow: Sprite2D = null
+var wake_timer: float = 0.0
 
 var facing_direction: Vector2 = Vector2.DOWN
 var tank_frames: Array[Texture2D] = []
@@ -36,6 +45,8 @@ var current_frame: int = 0
 var bullet_scene: PackedScene
 var explosion_scene: PackedScene
 var coin_scene: PackedScene
+var carriage_scene: PackedScene
+var attached_wagons: Array[Node2D] = []
 
 var hit_tween: Tween
 var recoil_tween: Tween
@@ -45,17 +56,31 @@ func _ready() -> void:
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
 	coin_scene = load("res://scenes/gold_coin.tscn")
+	carriage_scene = load("res://scenes/train_carriage.tscn")
+	tree_tex = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
 	_setup_tank_type()
 	rotation = facing_direction.angle() + PI / 2.0
 	change_dir_timer = randf_range(1.0, 2.5)
 	fire_timer = randf_range(1.2, 2.5)
+	if enemy_type == EnemyType.TRAIN_BOSS:
+		call_deferred("_spawn_train_wagons")
+	elif enemy_type == EnemyType.AIRCRAFT:
+		z_index = 60
+		collision_mask = 16 # Fly freely over walls/terrain
+		var shd_tex = TextureHelper.get_tex("res://assets/sprites/effects/vfx_plane_shadow.png")
+		if shd_tex:
+			plane_shadow = Sprite2D.new()
+			plane_shadow.texture = shd_tex
+			plane_shadow.scale = Vector2(0.20, 0.20)
+			plane_shadow.z_index = 5
+			get_parent().call_deferred("add_child", plane_shadow)
 
 func _setup_tank_type() -> void:
 	var prefix = "enemy_basic"
 	match enemy_type:
 		EnemyType.BASIC:
 			prefix = "enemy_basic"
-			speed = 110.0
+			speed = 75.0
 			max_health = 1
 			score_value = 100
 			xp_value = 25
@@ -63,7 +88,7 @@ func _setup_tank_type() -> void:
 			fire_interval = 2.8
 		EnemyType.FAST:
 			prefix = "enemy_fast"
-			speed = 185.0
+			speed = 120.0
 			max_health = 1
 			score_value = 200
 			xp_value = 40
@@ -71,7 +96,7 @@ func _setup_tank_type() -> void:
 			fire_interval = 2.2
 		EnemyType.POWER:
 			prefix = "enemy_power"
-			speed = 120.0
+			speed = 85.0
 			max_health = 2
 			score_value = 300
 			xp_value = 55
@@ -79,7 +104,7 @@ func _setup_tank_type() -> void:
 			fire_interval = 1.6
 		EnemyType.ARMOR:
 			prefix = "enemy_armor"
-			speed = 90.0
+			speed = 60.0
 			max_health = 4
 			score_value = 400
 			xp_value = 80
@@ -87,7 +112,7 @@ func _setup_tank_type() -> void:
 			fire_interval = 2.2
 		EnemyType.MISSILE:
 			prefix = "enemy_missile"
-			speed = 100.0
+			speed = 70.0
 			max_health = 3
 			score_value = 500
 			xp_value = 95
@@ -95,7 +120,7 @@ func _setup_tank_type() -> void:
 			fire_interval = 3.2
 		EnemyType.LASER:
 			prefix = "enemy_laser"
-			speed = 105.0
+			speed = 75.0
 			max_health = 3
 			score_value = 600
 			xp_value = 110
@@ -103,7 +128,7 @@ func _setup_tank_type() -> void:
 			fire_interval = 3.8
 		EnemyType.BOSS:
 			prefix = "enemy_boss"
-			speed = 75.0
+			speed = 55.0
 			max_health = 10
 			score_value = 1500
 			xp_value = 250
@@ -111,18 +136,66 @@ func _setup_tank_type() -> void:
 			fire_interval = 2.0
 		EnemyType.DESERT:
 			prefix = "tank_desert"
-			speed = 145.0
+			speed = 95.0
 			max_health = 2
 			score_value = 450
 			xp_value = 85
 			gold_value = 55
 			fire_interval = 2.0
+		EnemyType.TRAIN_BOSS:
+			prefix = "enemy_train_loco"
+			speed = 55.0
+			max_health = 14
+			score_value = 2500
+			xp_value = 400
+			gold_value = 260
+			fire_interval = 1.8
+		EnemyType.BOMBER:
+			prefix = "enemy_bomber"
+			speed = 80.0
+			max_health = 3
+			score_value = 550
+			xp_value = 100
+			gold_value = 65
+			fire_interval = 2.8
+		EnemyType.SUICIDE:
+			prefix = "enemy_suicide"
+			speed = 155.0
+			max_health = 2
+			score_value = 450
+			xp_value = 85
+			gold_value = 50
+			fire_interval = 999.0
+		EnemyType.MIRAGE:
+			prefix = "enemy_mirage"
+			speed = 85.0
+			max_health = 3
+			score_value = 600
+			xp_value = 115
+			gold_value = 75
+			fire_interval = 2.5
+		EnemyType.BATTLESHIP:
+			prefix = "enemy_battleship"
+			speed = 65.0
+			max_health = 6
+			score_value = 750
+			xp_value = 150
+			gold_value = 90
+			fire_interval = 2.4
+		EnemyType.AIRCRAFT:
+			prefix = "enemy_aircraft"
+			speed = 160.0
+			max_health = 2
+			score_value = 500
+			xp_value = 100
+			gold_value = 60
+			fire_interval = 1.6
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * 0.08
 	if GameState.battle_type == "elite":
 		max_health = int(ceil(max_health * 1.5))
-		speed = speed * 1.10
+		speed = speed * 1.08
 		xp_value = int(xp_value * 1.6)
 		gold_value = int(gold_value * 1.5)
 		score_value = int(score_value * 1.5)
@@ -130,7 +203,7 @@ func _setup_tank_type() -> void:
 	elif GameState.battle_type == "boss":
 		if enemy_type != EnemyType.BOSS:
 			max_health = int(ceil(max_health * 1.6))
-		speed = speed * 1.12
+		speed = speed * 1.08
 		xp_value = int(xp_value * 1.8)
 		gold_value = int(gold_value * 1.8)
 		score_value = int(score_value * 1.8)
@@ -172,13 +245,82 @@ func _physics_process(delta: float) -> void:
 			sprite.modulate = Color(1.5, 0.4, 0.4)
 		else:
 			sprite.modulate = Color(1.0, 1.0, 1.0)
+	elif enemy_type == EnemyType.SUICIDE:
+		pass
 	else:
 		sprite.modulate = Color(1.0, 1.0, 1.0)
 
-	change_dir_timer -= delta
-	if change_dir_timer <= 0.0:
-		_choose_new_direction()
-		change_dir_timer = randf_range(1.5, 3.5)
+	# 1. Suicide Truck Dedicated High-Speed Intercept AI
+	if enemy_type == EnemyType.SUICIDE:
+		var target = _find_target()
+		if target and is_instance_valid(target):
+			var to_target = target.global_position - global_position
+			var dist = to_target.length()
+			if dist <= 42.0:
+				_suicide_detonate()
+				return
+
+			if abs(to_target.x) > abs(to_target.y):
+				facing_direction = Vector2.RIGHT if to_target.x > 0 else Vector2.LEFT
+			else:
+				facing_direction = Vector2.DOWN if to_target.y > 0 else Vector2.UP
+			rotation = facing_direction.angle() + PI / 2.0
+
+			var flash_spd = clampf(600.0 / max(40.0, dist), 8.0, 36.0)
+			sprite.modulate = Color(2.5, 0.4, 0.4, 1.0) if int(Time.get_ticks_msec() * 0.001 * flash_spd) % 2 == 0 else Color(1.0, 1.0, 1.0, 1.0)
+	else:
+		change_dir_timer -= delta
+		if change_dir_timer <= 0.0:
+			_choose_new_direction()
+			change_dir_timer = randf_range(1.5, 3.5)
+
+	# 2. Mirage Tank Optical Camouflage State Machine
+	if enemy_type == EnemyType.MIRAGE:
+		if velocity.length_squared() < 10.0:
+			still_timer += delta
+			if still_timer >= 0.45 and not is_camouflaged:
+				is_camouflaged = true
+				_spawn_mirage_shimmer()
+				if tree_tex:
+					sprite.texture = tree_tex
+					sprite.scale = Vector2(0.1875, 0.1875)
+				rotation = 0.0
+		else:
+			if is_camouflaged:
+				is_camouflaged = false
+				still_timer = 0.0
+				_spawn_mirage_shimmer()
+				sprite.scale = Vector2(0.196, 0.196)
+				rotation = facing_direction.angle() + PI / 2.0
+				if tank_frames.size() > 0:
+					sprite.texture = tank_frames[current_frame]
+
+	# 3. Aircraft High-Altitude Flight & Shadow Tracking
+	if enemy_type == EnemyType.AIRCRAFT:
+		if is_instance_valid(plane_shadow):
+			plane_shadow.global_position = global_position + Vector2(18.0, 26.0)
+			plane_shadow.rotation = rotation
+
+		# Screen boundary patrol bounce
+		if global_position.x < 48.0 and facing_direction == Vector2.LEFT:
+			facing_direction = Vector2.RIGHT if randf() < 0.5 else Vector2.DOWN
+			rotation = facing_direction.angle() + PI / 2.0
+		elif global_position.x > 576.0 and facing_direction == Vector2.RIGHT:
+			facing_direction = Vector2.LEFT if randf() < 0.5 else Vector2.DOWN
+			rotation = facing_direction.angle() + PI / 2.0
+		elif global_position.y < 48.0 and facing_direction == Vector2.UP:
+			facing_direction = Vector2.DOWN
+			rotation = facing_direction.angle() + PI / 2.0
+		elif global_position.y > 576.0 and facing_direction == Vector2.DOWN:
+			facing_direction = Vector2.UP if randf() < 0.5 else (Vector2.LEFT if randf() < 0.5 else Vector2.RIGHT)
+			rotation = facing_direction.angle() + PI / 2.0
+
+	# 4. Battleship Water Foam Wake Generation
+	elif enemy_type == EnemyType.BATTLESHIP:
+		wake_timer += delta
+		if wake_timer >= 0.14:
+			wake_timer = 0.0
+			_spawn_water_wake()
 
 	fire_timer -= delta
 	if fire_timer <= 0.0:
@@ -186,7 +328,9 @@ func _physics_process(delta: float) -> void:
 		fire_timer = randf_range(fire_interval * 0.8, fire_interval * 1.3)
 
 	var move_speed = speed
-	if is_on_sand:
+	if is_on_ice:
+		move_speed *= 1.35 # Enemies slide fast across ice
+	elif is_on_sand:
 		if enemy_type == EnemyType.DESERT:
 			move_speed *= 1.45 # 沙漠坦克在沙地上获得45%速度增幅！
 		else:
@@ -195,9 +339,14 @@ func _physics_process(delta: float) -> void:
 	velocity = facing_direction * move_speed
 	var collision = move_and_collide(velocity * delta)
 	if collision:
+		if enemy_type == EnemyType.SUICIDE:
+			var col_node = collision.get_collider()
+			if col_node and (col_node.is_in_group("player") or col_node.is_in_group("base_eagle") or col_node.is_in_group("buildings")):
+				_suicide_detonate()
+				return
 		_choose_new_direction()
 
-	if tank_frames.size() > 0:
+	if tank_frames.size() > 0 and not is_camouflaged:
 		var f_idx = int(Time.get_ticks_msec() / 65) % tank_frames.size()
 		if f_idx != current_frame:
 			current_frame = f_idx
@@ -257,18 +406,83 @@ func _shoot() -> void:
 				mb.global_position = global_position + facing_direction * 32.0
 	elif enemy_type == EnemyType.MISSILE:
 		var target = _find_target()
-		var mb = bullet_scene.instantiate()
-		mb.direction = facing_direction
-		mb.speed = 330.0
-		mb.damage = 2
-		mb.is_homing = true
-		mb.target = target
-		mb.shooter = self
-		mb.shooter_type = "enemy"
-		get_parent().add_child(mb)
-		mb.global_position = muzzle_pos
+		var target_pos = target.global_position if target else (global_position + facing_direction * 180.0)
+		var strike_scene = load("res://scenes/missile_strike.tscn")
+		if strike_scene:
+			var strike = strike_scene.instantiate()
+			strike.team = "enemy"
+			strike.aim_duration = 1.8 # 1.8s telegraph with shrinking reticle gives players time to dodge!
+			strike.damage = 2
+			get_parent().add_child(strike)
+			strike.global_position = target_pos
 		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+	elif enemy_type == EnemyType.BOMBER:
+		var bomb_scene = load("res://scenes/timed_bomb.tscn")
+		if bomb_scene:
+			var bomb = bomb_scene.instantiate()
+			bomb.team = "enemy"
+			bomb.countdown = 2.4
+			bomb.blast_range = 3
+			bomb.damage = 3
+			get_parent().add_child(bomb)
+			bomb.global_position = global_position - facing_direction * 24.0
+		SoundManager.play_build(get_tree())
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	elif enemy_type == EnemyType.SUICIDE:
+		# Suicide trucks don't shoot, they ram and explode!
+		return
+	elif enemy_type == EnemyType.MIRAGE:
+		# Fires high-powered thermal laser from tree or tank form!
+		LaserPiercer.fire_linear_laser(get_parent(), muzzle_pos, facing_direction, self, "enemy", 2)
+		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+		if is_camouflaged:
+			VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+	elif enemy_type == EnemyType.BATTLESHIP:
+		# Dual Heavy Naval Gun Turrets Firing AoE Explosive Shells
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-10.0, 10.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = facing_direction
+			b.speed = 420.0
+			b.damage = 2
+			b.is_aoe = true
+			b.aoe_radius = 42.0
+			b.can_destroy_steel = false
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 32.0 + right_vec * side
+			b.global_position = m_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	elif enemy_type == EnemyType.AIRCRAFT:
+		# Dual Forward High-Velocity Machine Guns
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-12.0, 12.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = facing_direction
+			b.speed = 520.0
+			b.damage = 1
+			b.can_destroy_steel = false
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 24.0 + right_vec * side
+			b.global_position = m_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+		
+		# 40% chance to drop bomb while strafing
+		if randf() < 0.40:
+			var bomb_scene = load("res://scenes/timed_bomb.tscn")
+			if bomb_scene:
+				var bomb = bomb_scene.instantiate()
+				bomb.team = "enemy"
+				bomb.countdown = 1.5
+				bomb.blast_range = 2
+				bomb.damage = 3
+				get_parent().add_child(bomb)
+				bomb.global_position = global_position
 	elif enemy_type == EnemyType.LASER:
 		var tw = create_tween()
 		tw.tween_property(sprite, "modulate", Color(0.2, 2.5, 3.0), 0.12)
@@ -334,7 +548,119 @@ func take_damage(amount: int) -> void:
 	if health <= 0:
 		_die()
 
+func _spawn_train_wagons() -> void:
+	if not carriage_scene or not is_inside_tree():
+		return
+	var w1 = carriage_scene.instantiate()
+	get_parent().add_child(w1)
+	w1.setup(self, "enemy_gunner", true)
+	
+	var w2 = carriage_scene.instantiate()
+	get_parent().add_child(w2)
+	w2.setup(w1, "armor", true)
+	
+	attached_wagons = [w1, w2]
+
+func _spawn_mirage_shimmer() -> void:
+	var shim_tex = TextureHelper.get_tex("res://assets/sprites/effects/vfx_mirage_shimmer.png")
+	if shim_tex:
+		var shim_spr = Sprite2D.new()
+		shim_spr.texture = shim_tex
+		shim_spr.scale = Vector2(0.25, 0.25)
+		shim_spr.z_index = 48
+		get_parent().add_child(shim_spr)
+		shim_spr.global_position = global_position
+		var tw = shim_spr.create_tween()
+		tw.tween_property(shim_spr, "scale", Vector2(0.40, 0.40), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(shim_spr, "modulate:a", 0.0, 0.20)
+		tw.tween_callback(shim_spr.queue_free)
+
+func _suicide_detonate() -> void:
+	if is_suicide_detonated:
+		return
+	is_suicide_detonated = true
+
+	for w in attached_wagons:
+		if is_instance_valid(w):
+			if w.has_method("take_damage"):
+				w.take_damage(999)
+	attached_wagons.clear()
+
+	# 1. Toxic Mushroom Explosion VFX
+	var exp_scene = load("res://scenes/explosion.tscn")
+	if exp_scene:
+		var exp_inst = exp_scene.instantiate()
+		get_parent().add_child(exp_inst)
+		exp_inst.global_position = global_position
+
+	var blast_tex = TextureHelper.get_tex("res://assets/sprites/effects/vfx_suicide_blast.png")
+	if blast_tex:
+		var b_spr = Sprite2D.new()
+		b_spr.texture = blast_tex
+		b_spr.scale = Vector2(0.35, 0.35)
+		b_spr.z_index = 50
+		get_parent().add_child(b_spr)
+		b_spr.global_position = global_position
+		var tw = b_spr.create_tween()
+		tw.tween_property(b_spr, "scale", Vector2(0.85, 0.85), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(b_spr, "modulate:a", 0.0, 0.40)
+		tw.tween_callback(b_spr.queue_free)
+
+	SoundManager.play_explosion(get_tree())
+	VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+
+	var main = get_tree().current_scene
+	if main and main.has_method("add_trauma"):
+		main.add_trauma(0.80)
+
+	# 2. AoE 84px Blast Damage
+	var radius = 84.0
+	for p in get_tree().get_nodes_in_group("player"):
+		if is_instance_valid(p) and p is Node2D and global_position.distance_to(p.global_position) <= radius:
+			if p.has_method("take_damage"):
+				p.take_damage(3)
+	for be in get_tree().get_nodes_in_group("base_eagle"):
+		if is_instance_valid(be) and not be.is_destroyed and global_position.distance_to(be.global_position) <= radius:
+			be.take_damage(3)
+	for b in get_tree().get_nodes_in_group("brick"):
+		if is_instance_valid(b) and b is Node2D and global_position.distance_to(b.global_position) <= radius:
+			if main and main.has_method("check_key_drop"):
+				main.check_key_drop(b, b.global_position)
+			b.queue_free()
+
+	enemy_destroyed.emit(score_value, is_bonus, global_position)
+	queue_free()
+
+func _spawn_water_wake() -> void:
+	var wake_tex = TextureHelper.get_tex("res://assets/sprites/effects/vfx_water_wake.png")
+	if wake_tex:
+		var w_spr = Sprite2D.new()
+		w_spr.texture = wake_tex
+		w_spr.rotation = rotation
+		w_spr.scale = Vector2(0.20, 0.20)
+		w_spr.z_index = 6
+		get_parent().add_child(w_spr)
+		w_spr.global_position = global_position - facing_direction * 22.0
+		var tw = w_spr.create_tween()
+		tw.tween_property(w_spr, "scale", Vector2(0.32, 0.32), 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(w_spr, "modulate:a", 0.0, 0.25)
+		tw.tween_callback(w_spr.queue_free)
+
 func _die() -> void:
+	if is_instance_valid(plane_shadow):
+		plane_shadow.queue_free()
+
+	if enemy_type == EnemyType.SUICIDE:
+		_suicide_detonate()
+		return
+
+	for w in attached_wagons:
+		if is_instance_valid(w):
+			if w.has_method("take_damage"):
+				w.take_damage(999)
+	attached_wagons.clear()
+
 	if explosion_scene:
 		var exp_inst = explosion_scene.instantiate()
 		get_parent().add_child(exp_inst)
@@ -342,7 +668,7 @@ func _die() -> void:
 
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
-	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.POWER:
+	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.POWER or enemy_type == EnemyType.TRAIN_BOSS:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 		# Delayed second shockwave for dramatic heavy-tank destruction
 		get_tree().create_timer(0.15).timeout.connect(func():
@@ -376,3 +702,11 @@ func on_enter_sand() -> void:
 func on_exit_sand() -> void:
 	sand_overlap_count = max(0, sand_overlap_count - 1)
 	is_on_sand = (sand_overlap_count > 0)
+
+func on_enter_ice() -> void:
+	ice_overlap_count += 1
+	is_on_ice = true
+
+func on_exit_ice() -> void:
+	ice_overlap_count = max(0, ice_overlap_count - 1)
+	is_on_ice = (ice_overlap_count > 0)

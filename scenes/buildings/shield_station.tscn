@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://bld101shld01"]
+
+[ext_resource type="Script" path="res://scripts/buildings/shield_station.gd" id="1_shld"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_shld"]
+size = Vector2(46, 46)
+
+[node name="ShieldStation" type="Area2D" groups=["building", "shield_station"]]
+script = ExtResource("1_shld")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_shld")

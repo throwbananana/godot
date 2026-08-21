@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://item101dia01"]
+
+[ext_resource type="Script" path="res://scripts/diamond_gem.gd" id="1_dia"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_dia"]
+radius = 22.0
+
+[node name="DiamondGem" type="Area2D" groups=["collectibles", "diamond_gem"]]
+script = ExtResource("1_dia")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_dia")

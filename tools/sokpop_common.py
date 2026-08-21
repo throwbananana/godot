@@ -61,6 +61,7 @@ def srgb_to_linear(col):
 
 def clear_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    clear_material_cache()
 
 
 _STYLIZE_GROUP = "SokpopStylize"
@@ -124,13 +125,26 @@ def setup_stylize_compositor(levels=0, pixelate=0):
     scene.compositing_node_group = ng
 
 
-def setup_render_settings(rx=256, ry=256, samples=48,
+def setup_render_settings(rx=256, ry=256, samples=28,
                           posterize_levels=0, pixelate=0):
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     if hasattr(scene, 'cycles'):
         scene.cycles.samples = samples
-        scene.cycles.adaptive_threshold = 0.02
+        scene.cycles.adaptive_threshold = 0.025
+        # 优化光线弹射深度 (Light Bounces Pruning) —— 2D正交精灵无玻璃折射与体积雾
+        scene.cycles.max_bounces = 4
+        scene.cycles.diffuse_bounces = 2
+        scene.cycles.glossy_bounces = 2
+        scene.cycles.transmission_bounces = 0
+        scene.cycles.volume_bounces = 0
+        scene.cycles.transparent_max_bounces = 6
+        try:
+            scene.cycles.use_denoising = True
+            scene.cycles.denoiser = 'OPENIMAGEDENOISE'
+        except Exception:
+            pass
+
     scene.render.resolution_x = rx
     scene.render.resolution_y = ry
     scene.render.resolution_percentage = 100
@@ -141,7 +155,6 @@ def setup_render_settings(rx=256, ry=256, samples=48,
     scene.render.film_transparent = True
 
     # Standard 而不是 AgX: 黏土要的是饱和大色块, 不是写实胶片曲线。
-    # 过曝靠下面的灯光标定压住, 不靠 tonemapper 洗色度。
     scene.view_settings.view_transform = 'Standard'
     try:
         scene.view_settings.look = 'None'
@@ -150,7 +163,6 @@ def setup_render_settings(rx=256, ry=256, samples=48,
     scene.view_settings.exposure = 0.0
     scene.view_settings.gamma = 1.0
 
-    # 默认关闭 —— 已提交的资源就是不风格化的版本, 改这里会全量改变画风。
     setup_stylize_compositor(posterize_levels, pixelate)
 
 
@@ -172,68 +184,72 @@ def create_sokpop_lighting(ortho_scale=3.3, sun_energy=0.9,
         if obj.type in {'CAMERA', 'LIGHT'}:
             bpy.data.objects.remove(obj, do_unlink=True)
 
-    cam_data = bpy.data.cameras.new(name='TopDownCam')
+    cam_data = bpy.data.cameras.new('OrthoCam')
     cam_data.type = 'ORTHO'
     cam_data.ortho_scale = ortho_scale
-    cam_obj = bpy.data.objects.new('TopDownCam', cam_data)
+    cam_data.clip_start = 0.1
+    cam_data.clip_end = 100.0
+
+    cam_obj = bpy.data.objects.new('Camera', cam_data)
     bpy.context.collection.objects.link(cam_obj)
-    cam_obj.location = (0, 0, 10)
     bpy.context.scene.camera = cam_obj
+    cam_obj.location = (0, 0, 10)
+    cam_obj.rotation_euler = (0, 0, 0)
 
-    # 1. 暖阳主灯
-    sun_data = bpy.data.lights.new(name='SunKey', type='SUN')
+    # 1. 暖调主日光
+    sun_data = bpy.data.lights.new('Sun', 'SUN')
     sun_data.energy = sun_energy
-    sun_data.color = srgb_to_linear((1.0, 0.95, 0.88))[:3]
-    sun_data.angle = math.radians(12.0)  # 软一点的影, 黏土不要刀切边
-    sun_obj = bpy.data.objects.new('SunKey', sun_data)
+    sun_data.color = srgb_to_linear((1.0, 0.96, 0.88))[:3]
+    sun_obj = bpy.data.objects.new('SunLight', sun_data)
     bpy.context.collection.objects.link(sun_obj)
-    sun_obj.location = (3, -3, 8)
-    sun_obj.rotation_euler = (math.radians(38), math.radians(18), math.radians(-32))
+    sun_obj.rotation_euler = (math.radians(35), math.radians(20), math.radians(-35))
 
-    # 2. World 环境光 —— 抬暗部, 避免背光面死黑。
-    #    film_transparent 只影响相机直接看到的背景, 不影响它参与照明。
-    world = bpy.data.worlds.new("SokpopAmbient")
+    # 2. 漫反射环境光
+    world = bpy.context.scene.world
+    if world is None:
+        world = bpy.data.worlds.new("SokpopWorld")
+        bpy.context.scene.world = world
     world.use_nodes = True
     bg = world.node_tree.nodes.get('Background')
-    if bg is not None:
-        # 偏冷但别太蓝 —— 太蓝会把黏土暗部染成脏紫色。
+    if bg:
+        # 偏冷但别太蓝 —— 太蓝会把黏土暗部染成脏紫色
         bg.inputs['Color'].default_value = srgb_to_linear((0.70, 0.72, 0.78, 1.0))
         bg.inputs['Strength'].default_value = ambient_strength
-    bpy.context.scene.world = world
 
-    # 3. 冷调塑形补光 (能量按平方反比标定过, 旧版 16W 在这个距离等于没开灯)
-    fill_data = bpy.data.lights.new(name='FillLight', type='POINT')
-    fill_data.energy = 110.0
-    fill_data.color = srgb_to_linear((0.90, 0.90, 1.0))[:3]
-    fill_data.shadow_soft_size = 2.5
-    fill_obj = bpy.data.objects.new('FillLight', fill_data)
-    bpy.context.collection.objects.link(fill_obj)
-    fill_obj.location = (-4, 4, 6)
+    # 3. 柔和正面塑形补光 (Key Fill)
+    key_data = bpy.data.lights.new('KeyFill', 'POINT')
+    key_data.energy = 110.0
+    key_data.color = srgb_to_linear((1.0, 0.97, 0.93))[:3]
+    key_data.shadow_soft_size = 2.0
+    key_obj = bpy.data.objects.new('KeyLight', key_data)
+    bpy.context.collection.objects.link(key_obj)
+    key_obj.location = (-2.5, -4.0, 5.0)
 
-    # 4. 背侧轮廓光
-    rim_data = bpy.data.lights.new(name='RimLight', type='POINT')
+    # 4. 背面浅冷色轮廓光 (Rim Light)
+    rim_data = bpy.data.lights.new('RimFill', 'POINT')
     rim_data.energy = 70.0
-    rim_data.color = srgb_to_linear((1.0, 0.97, 0.92))[:3]
+    rim_data.color = srgb_to_linear((0.95, 0.97, 1.0))[:3]
     rim_data.shadow_soft_size = 2.0
     rim_obj = bpy.data.objects.new('RimLight', rim_data)
     bpy.context.collection.objects.link(rim_obj)
     rim_obj.location = (0, 5, 4.5)
 
 
-# ---------------------------------------------------------------- 材质
+# ---------------------------------------------------------------- 材质缓存与构造
+
+_material_cache = {}
+
+def clear_material_cache():
+    _material_cache.clear()
 
 def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
                     emission=None, emission_str=0.0,
-                    bump_strength=0.30, mottle=0.08, emission_peak=0.85):
-    """黏土材质。col / emission 按 sRGB 书写, 内部转 linear。
+                    bump_strength=0.28, mottle=0.08, emission_peak=0.85):
+    """黏土材质（带 Material Data-Block 缓存复用与微观指纹印记）。"""
+    cache_key = f"{name}_{col}_{roughness}_{sss_weight}_{emission}_{emission_str}_{bump_strength}_{mottle}_{emission_peak}"
+    if cache_key in _material_cache and _material_cache[cache_key].name in bpy.data.materials:
+        return _material_cache[cache_key]
 
-    bump_strength: noise→bump 微凹凸, 模拟指纹与捏痕。0 表示关掉。
-    mottle:        大尺度色斑强度, 模拟手工调色不均。0 表示关掉。
-    emission_peak: 自发光最亮通道的线性上限, 超了就等比压 emission_str。
-                   之前 AgX 会把溢出的自发光"接住"压回白色, 换成 Standard 之后
-                   emission_str=3.0 会让 VFX 每个像素都有通道撞顶 —— 亮是亮了,
-                   色相全丢。传 None 可以关掉钳制。
-    """
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
@@ -251,21 +267,14 @@ def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
     elif 'Subsurface' in bsdf.inputs:
         bsdf.inputs['Subsurface'].default_value = sss_weight
 
-    # 手捏色斑: 把基色朝稍暗的同色相偏移一点点, 让大色块不至于死平。
+    # 手捏色斑: 把基色朝稍暗的同色相偏移一点点
     if mottle > 0.0:
         mottle_noise = nodes.new(type='ShaderNodeTexNoise')
         mottle_noise.inputs['Scale'].default_value = 3.5
         mottle_noise.inputs['Detail'].default_value = 2.0
         mottle_noise.location = (-700, 200)
 
-        shade_col = (
-            lin_col[0] * 0.78, lin_col[1] * 0.80, lin_col[2] * 0.86, 1.0
-        )
-
-        # Blender 4.0 起 MixRGB 被 ShaderNodeMix 取代, 5.x 可能已经彻底移除。
-        # ShaderNodeMix 的同名 socket 有 float/vector/color 三套, 只能按索引取:
-        # 0=Factor(float), 6=A(color), 7=B(color); 输出 2=Result(color)。
-        mix = None
+        shade_col = (lin_col[0] * 0.85, lin_col[1] * 0.85, lin_col[2] * 0.85, lin_col[3])
         try:
             mix = nodes.new(type='ShaderNodeMix')
             mix.data_type = 'RGBA'
@@ -275,8 +284,6 @@ def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
             mix.inputs[7].default_value = shade_col
             fac_in, col_out = mix.inputs[0], mix.outputs[2]
         except Exception:
-            if mix is not None:
-                nodes.remove(mix)
             mix = nodes.new(type='ShaderNodeMixRGB')
             mix.blend_type = 'MIX'
             mix.inputs['Fac'].default_value = mottle
@@ -285,9 +292,6 @@ def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
             fac_in, col_out = mix.inputs['Fac'], mix.outputs['Color']
 
         mix.location = (-450, 200)
-
-        # 噪声直接接 Fac 会顶掉上面设的 default_value, 等于 100% 色斑。
-        # 先乘以 mottle 把幅度压回预期强度。
         mottle_gain = nodes.new(type='ShaderNodeMath')
         mottle_gain.operation = 'MULTIPLY'
         mottle_gain.inputs[1].default_value = mottle
@@ -297,10 +301,10 @@ def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
         links.new(mottle_gain.outputs['Value'], fac_in)
         links.new(col_out, bsdf.inputs['Base Color'])
 
-    # 指纹/捏痕微凹凸
+    # 微观黏土指纹与捏痕凹凸
     if bump_strength > 0.0:
         bump_noise = nodes.new(type='ShaderNodeTexNoise')
-        bump_noise.inputs['Scale'].default_value = 20.0
+        bump_noise.inputs['Scale'].default_value = 22.0
         bump_noise.inputs['Detail'].default_value = 3.0
         bump_noise.inputs['Roughness'].default_value = 0.55
         bump_noise.location = (-700, -150)
@@ -313,9 +317,10 @@ def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
         links.new(bump_noise.outputs['Fac'], bump.inputs['Height'])
         links.new(bump.outputs['Normal'], bsdf.inputs['Normal'])
 
-    if emission and emission_str > 0:
+    # 自发光
+    if emission is not None:
+        lin_em = srgb_to_linear(emission)
         if 'Emission Color' in bsdf.inputs:
-            lin_em = srgb_to_linear(emission)
             if emission_peak is not None:
                 peak = max(lin_em[0], lin_em[1], lin_em[2])
                 if peak * emission_str > emission_peak:
@@ -326,42 +331,36 @@ def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
     out = nodes.new(type='ShaderNodeOutputMaterial')
     out.location = (300, 0)
     links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
+
+    _material_cache[cache_key] = mat
     return mat
 
 
-# ---------------------------------------------------------------- 几何
+# ---------------------------------------------------------------- 几何与快速抖动
 
 _jitter_seed = [0]
-
 
 def reset_jitter_seed(value=0):
     """让整批渲染可复现 —— main() 开头调一次。"""
     _jitter_seed[0] = value
 
-
-def apply_clay_jitter(obj, strength=0.02):
-    """轻微随机化顶点位置, 让形体像手捏的而不是数学生成的。
-
-    在倒角修改器之前作用于基础网格, 所以低模上是"整体捏歪"而不是表面噪点。
-    """
-    if strength <= 0.0:
+def apply_clay_jitter(obj, strength=0.016):
+    """直接在 Object 模式下对网格顶点进行手捏轻微形变，零模式切换开销。"""
+    if strength <= 0.0 or not obj or obj.type != 'MESH':
         return
     _jitter_seed[0] += 1
-    try:
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.transform.vertex_random(
-            offset=strength, uniform=0.55, normal=0.0, seed=_jitter_seed[0]
-        )
-        bpy.ops.object.mode_set(mode='OBJECT')
-    except Exception:
-        # 个别非网格物体或上下文异常时不要中断整批渲染
-        if bpy.context.object and bpy.context.object.mode != 'OBJECT':
-            bpy.ops.object.mode_set(mode='OBJECT')
+    import random
+    rng = random.Random(_jitter_seed[0])
+    mesh = obj.data
+    for v in mesh.vertices:
+        v.co.x += rng.uniform(-strength, strength)
+        v.co.y += rng.uniform(-strength, strength)
+        v.co.z += rng.uniform(-strength * 0.6, strength * 0.6)
+    mesh.update()
 
 
-def apply_uniform_clay_bevel(obj, width=0.12, segments=4, jitter=0.018):
-    """统一倒角 + 手捏抖动。jitter=0 可关掉抖动 (发光/UI 细节件)。"""
+def apply_uniform_clay_bevel(obj, width=0.10, segments=3, jitter=0.014):
+    """统一倒角 + 手捏抖动。jitter=0 可关掉抖动。"""
     bpy.context.view_layer.objects.active = obj
     try:
         obj.select_set(True)
@@ -377,7 +376,13 @@ def apply_uniform_clay_bevel(obj, width=0.12, segments=4, jitter=0.018):
     mod.angle_limit = math.radians(22)
 
 
-# ---------------------------------------------------------------- 输出
+# ---------------------------------------------------------------- 输出与内存清理
+
+def purge_orphans():
+    try:
+        bpy.data.orphans_purge(do_local_ids=True, do_linked_ids=True, do_recursive=True)
+    except Exception:
+        pass
 
 def render_and_clean(objects, out_path, label="Rendered"):
     bpy.context.scene.render.filepath = out_path

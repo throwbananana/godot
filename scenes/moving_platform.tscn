@@ -1,0 +1,19 @@
+[gd_scene load_steps=3 format=3 uid="uid://dm15g5w3n4x8y"]
+
+[ext_resource type="Script" path="res://scripts/moving_platform.gd" id="1_platform"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_platform"]
+size = Vector2(44, 44)
+
+[node name="MovingPlatform" type="Node2D" groups=["platforms"]]
+script = ExtResource("1_platform")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="PassengerArea" type="Area2D" parent="."]
+collision_layer = 16
+collision_mask = 3
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PassengerArea"]
+shape = SubResource("RectangleShape2D_platform")

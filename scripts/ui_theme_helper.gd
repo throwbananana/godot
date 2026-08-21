@@ -86,7 +86,7 @@ static func apply_clay_button(btn: Button, dark_text: bool = true) -> void:
 		btn.add_theme_color_override("font_pressed_color", Color(0.3, 0.15, 0.1, 1.0))
 		btn.add_theme_color_override("font_focus_color", Color(0.2, 0.16, 0.12, 1.0))
 
-static func apply_clay_panel(panel: PanelContainer, bg_color: Color = Color(0.18, 0.15, 0.20, 0.92), corner_radius: int = 14) -> void:
+static func apply_clay_panel(panel: Control, bg_color: Color = Color(0.18, 0.15, 0.20, 0.92), corner_radius: int = 14) -> void:
 	if not panel: return
 	var sb = StyleBoxFlat.new()
 	sb.bg_color = bg_color

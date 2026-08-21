@@ -27,6 +27,8 @@ func _ready() -> void:
 	btn_2.pressed.connect(func(): _on_choice(2))
 	btn_3.pressed.connect(func(): _on_choice(3))
 
+var current_event_id: String = ""
+
 func setup(type: String) -> void:
 	dialog_type = type
 	visible = true
@@ -36,7 +38,7 @@ func setup(type: String) -> void:
 		icon_path = "res://assets/sprites/ui/diorama_rest.png"
 		title_label.text = "FORWARD REPAIR OUTPOST (CAMPFIRE)"
 		desc_label.text = "You reached a secured allied outpost. Choose your preparation for the battles ahead:"
-		btn_1.text = "1. 🛠 Full Vehicle Overhaul (Restore HP & Fortify)"
+		btn_1.text = "1. 🛠 Full Vehicle Overhaul (+1 Max HP & Fortify)"
 		btn_2.text = "2. ⚡ Gunsmith Calibration (+1 ATK Bonus)"
 		btn_3.text = "3. ❤️ Request Reinforcements (+1 Extra Life)"
 	elif type == "shop":
@@ -48,15 +50,60 @@ func setup(type: String) -> void:
 		btn_3.text = "3. ❤️ Heavy Supply Crate (80G) -> +2 Extra Lives"
 	elif type == "event":
 		icon_path = "res://assets/sprites/ui/diorama_event.png"
-		title_label.text = "UNEXPLORED COMBAT ZONE (MYSTERY)"
-		desc_label.text = "You discovered an abandoned enemy munitions depot in the ruins:"
-		btn_1.text = "1. 📦 Scavenge Munitions (+80 Gold, +50 XP)"
-		btn_2.text = "2. 🧪 Overclock Engine Reactor (+15% SPD Permanent)"
-		btn_3.text = "3. ⏩ Scout Ahead and Secure Perimeter (+1 Star Upgrade)"
+		var event_types = ["depot", "mechanic", "singularity", "glacier_cache", "bounty"]
+		current_event_id = event_types[randi() % event_types.size()]
+		
+		match current_event_id:
+			"depot":
+				title_label.text = "ABANDONED MUNITIONS DEPOT (MYSTERY)"
+				desc_label.text = "You discovered an intact munitions vault buried beneath the ruins:"
+				btn_1.text = "1. 📦 Scavenge High-Caliber Ammo (+100G, +60 XP)"
+				btn_2.text = "2. 🧪 Overclock Engine Reactor (+1 SPD Permanent)"
+				btn_3.text = "3. ⏩ Weapon Star Upgrade (+1 Tier Upgrade)"
+			"mechanic":
+				title_label.text = "WANDERING COMBAT MECHANIC (ENCOUNTER)"
+				desc_label.text = "A friendly scavenger engineer offers to upgrade your chassis on the spot:"
+				btn_1.text = "1. 🛡️ Heavy Exoskeleton Plating (+2 Max HP)"
+				btn_2.text = "2. ⚡ Calibrate Fire Control (+1 Fire Rate Level)"
+				btn_3.text = "3. 🔨 Tactical Clay Crusher Perk (Gain Clay Crusher)"
+			"singularity":
+				title_label.text = "COSMIC SINGULARITY ANOMALY (EVENT)"
+				desc_label.text = "A pulsating dimensional rift hums with unstable spatial energy:"
+				btn_1.text = "1. 🌀 Siphon Warp Energy (Gain Warp Drive Perk)"
+				btn_2.text = "2. 🌌 Spatial Transmutation (+150 Gold, +80 XP)"
+				btn_3.text = "3. ❤️ Dimensional Blessing (+2 Extra Lives)"
+			"glacier_cache":
+				title_label.text = "FROZEN GLACIER SUPPLY CRATE (DISCOVERY)"
+				desc_label.text = "You broke through an icy glacier wall revealing cryo-preserved tech:"
+				btn_1.text = "1. ❄️ Equip Frost Cleats Perk (Gain Frost Cleats)"
+				btn_2.text = "2. ⚡ Cryo-Powered Capacitor (+1 ATK Bonus)"
+				btn_3.text = "3. 🛠️ Defrost & Emergency Repair (+1 Life, +50G)"
+			"bounty":
+				title_label.text = "ROGUE COMBAT CONTRACT (BLACK OPS)"
+				desc_label.text = "An encrypted distress beacon broadcasts a high-priority bounty assignment:"
+				btn_1.text = "1. 💰 Accept Elite Bounty (+140 Gold, +100 XP)"
+				btn_2.text = "2. 🧲 Install Magnetic Salvage Core (Gain Magnetic Salvage)"
+				btn_3.text = "3. 🚢 Acquire Ferry Artillery Module (Gain Ferry Artillery)"
 
 	var tex = TextureHelper.get_tex(icon_path)
 	if tex and icon_sprite:
 		icon_sprite.texture = tex
+
+func _grant_life(amount: int) -> void:
+	GameState.player_lives += amount
+	if GameState.player_count == 2:
+		GameState.p2_lives += amount
+
+func _grant_tier_up() -> void:
+	GameState.player_tier = mini(GameState.player_tier + 1, 3)
+	if GameState.player_count == 2:
+		GameState.p2_tier = mini(GameState.p2_tier + 1, 3)
+
+func _grant_perk(perk_name: String) -> void:
+	if not GameState.unlocked_perks.has(perk_name):
+		GameState.unlocked_perks.append(perk_name)
+	if GameState.player_count == 2 and not GameState.p2_unlocked_perks.has(perk_name):
+		GameState.p2_unlocked_perks.append(perk_name)
 
 func _on_choice(idx: int) -> void:
 	SoundManager.play_hit_steel(get_tree())
@@ -64,13 +111,13 @@ func _on_choice(idx: int) -> void:
 		match idx:
 			1: GameState.max_hp_lvl += 1
 			2: GameState.atk_bonus += 1
-			3: GameState.player_lives += 1
+			3: _grant_life(1)
 	elif dialog_type == "shop":
 		match idx:
 			1:
 				if GameState.gold >= 100:
 					GameState.gold -= 100
-					GameState.player_tier = mini(GameState.player_tier + 1, 3)
+					_grant_tier_up()
 			2:
 				if GameState.gold >= 60:
 					GameState.gold -= 60
@@ -78,16 +125,58 @@ func _on_choice(idx: int) -> void:
 			3:
 				if GameState.gold >= 80:
 					GameState.gold -= 80
-					GameState.player_lives += 2
+					_grant_life(2)
 	elif dialog_type == "event":
-		match idx:
-			1:
-				GameState.gold += 80
-				GameState.player_xp += 50
-			2:
-				GameState.speed_lvl += 1
-			3:
-				GameState.player_tier = mini(GameState.player_tier + 1, 3)
+		match current_event_id:
+			"depot":
+				match idx:
+					1:
+						GameState.gold += 100
+						GameState.player_xp += 60
+					2:
+						GameState.speed_lvl += 1
+					3:
+						_grant_tier_up()
+			"mechanic":
+				match idx:
+					1:
+						GameState.max_hp_lvl += 2
+					2:
+						GameState.fire_rate_lvl += 1
+					3:
+						_grant_perk("clay_crusher")
+			"singularity":
+				match idx:
+					1:
+						_grant_perk("warp_drive")
+					2:
+						GameState.gold += 150
+						GameState.player_xp += 80
+					3:
+						_grant_life(2)
+			"glacier_cache":
+				match idx:
+					1:
+						_grant_perk("frost_cleats")
+					2:
+						GameState.atk_bonus += 1
+					3:
+						_grant_life(1)
+						GameState.gold += 50
+			"bounty":
+				match idx:
+					1:
+						GameState.gold += 140
+						GameState.player_xp += 100
+					2:
+						_grant_perk("magnetic_salvage")
+					3:
+						_grant_perk("ferry_artillery")
+			_:
+				match idx:
+					1: GameState.gold += 80
+					2: GameState.speed_lvl += 1
+					3: _grant_tier_up()
 
 	visible = false
 	closed.emit()

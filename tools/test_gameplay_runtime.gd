@@ -45,7 +45,7 @@ func _run_tests() -> void:
 		quit(1)
 		return
 	builder.select_structure(BuilderController.StructureType.TURRET, 1)
-	if builder.current_selection != BuilderController.StructureType.TURRET:
+	if builder.selection_by_pid.get(1, BuilderController.StructureType.NONE) != BuilderController.StructureType.TURRET:
 		print("  [FAIL] Builder selection failed!")
 		quit(1)
 		return

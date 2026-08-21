@@ -94,3 +94,56 @@ static func spawn_shockwave(parent: Node, pos: Vector2) -> void:
 		"res://assets/sprites/effects/shockwave_5.png"
 	]
 	create_anim(parent, pos, paths, 0.25, 16.0)
+
+static func spawn_teleport_burst(parent: Node, pos: Vector2) -> void:
+	if not parent or not is_instance_valid(parent):
+		return
+	spawn_shockwave(parent, pos)
+	
+	var flare = Node2D.new()
+	flare.z_index = 20
+	parent.add_child(flare)
+	flare.global_position = pos
+	
+	var ring_spr = Sprite2D.new()
+	var tex = TextureHelper.get_tex("res://assets/sprites/effects/shockwave_0.png")
+	if tex:
+		ring_spr.texture = tex
+		ring_spr.modulate = Color(0.85, 0.45, 1.8, 1.0)
+		ring_spr.scale = Vector2(0.05, 0.05)
+		flare.add_child(ring_spr)
+		
+		var tw = flare.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(ring_spr, "scale", Vector2(0.42, 0.42), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring_spr, "modulate:a", 0.0, 0.35)
+		tw.tween_property(ring_spr, "rotation", PI * 1.5, 0.35)
+		tw.chain().tween_callback(flare.queue_free)
+	else:
+		flare.queue_free()
+
+static func spawn_wormhole_swirl(parent: Node, pos: Vector2) -> void:
+	if not parent or not is_instance_valid(parent):
+		return
+	var swirl = Node2D.new()
+	swirl.z_index = 20
+	parent.add_child(swirl)
+	swirl.global_position = pos
+	
+	var spr = Sprite2D.new()
+	var tex = TextureHelper.get_tex("res://assets/sprites/effects/shockwave_0.png")
+	if tex:
+		spr.texture = tex
+		spr.modulate = Color(0.4, 1.8, 2.0, 1.0)
+		spr.scale = Vector2(0.38, 0.38)
+		swirl.add_child(spr)
+		
+		var tw = swirl.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(spr, "scale", Vector2(0.02, 0.02), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		tw.tween_property(spr, "rotation", -PI * 2.0, 0.22)
+		tw.tween_property(spr, "modulate:a", 0.1, 0.22)
+		tw.chain().tween_callback(swirl.queue_free)
+	else:
+		swirl.queue_free()
+

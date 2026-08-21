@@ -377,6 +377,7 @@ def build_icon_badge(symbol_type="mine"):
 # ==================== MAIN BATCH RENDER ENTRY ====================
 
 def main():
+    clear_scene()
     print(">>> 1. Rendering Missile Tank Frames (6 frames)...")
     setup_render_settings(rx=256, ry=256, samples=32)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)

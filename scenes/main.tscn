@@ -118,9 +118,10 @@ layout_mode = 2
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.78, 0.74, 1)
 theme_override_font_sizes/font_size = 10
-text = "• P1 / Pad 1: W/A/S/D + Space
-• P2 / Pad 2: Arrows/IJKL + Enter
-• Build: [1,2,3,4] + [E] Place"
+text = "• P1: W/A/S/D + Space (Shoot)
+• 道具/建造: [Q] ◀ | [E] ▶ 切换
+• 部署建造: [F] 键放置
+• P2: 方向键 + [U/O] 切换, [K] 放置"
 
 [node name="CenterMessage" type="Label" parent="HUD"]
 visible = false

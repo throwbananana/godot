@@ -50,6 +50,10 @@ func setup_preview(node_id: String) -> void:
 		title_label.text = "⚠️ ELITE BATTLE: " + stage_name
 		title_label.modulate = Color(1.0, 0.45, 0.45)
 		sub_title_label.text = "THREAT LEVEL: ★★★★☆ (High Risk) | ENEMY BATTALION: 18 HEAVY UNITS"
+	elif n_type == "challenge":
+		title_label.text = "🏆 SECRET VAULT (隐秘宝藏挑战): " + stage_name
+		title_label.modulate = Color(0.98, 0.82, 0.25)
+		sub_title_label.text = "CHALLENGE OBJECTIVE: 击破隐藏地块或消灭敌军寻找【金钥匙】，开启战场秘宝宝箱！"
 	elif n_type == "boss":
 		title_label.text = "👑 BOSS RAID: " + stage_name
 		title_label.modulate = Color(1.0, 0.85, 0.3)

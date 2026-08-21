@@ -19,7 +19,14 @@ $godot = "C:\Godot\tools\Godot_v4.5-stable_win64.exe"
 & $godot --headless --path . --editor --quit           # reimport assets after adding PNGs
 ```
 
-There is **no test suite and no linter** in this repo — verification is `--check-only` per script plus running the game.
+There is **no linter**. Verification is `--check-only` per script, running the game, and an ad-hoc integration suite: `tools/test_*.gd` are `SceneTree` scripts (not GUT/GDUnit) run headless and manually, e.g.:
+
+```powershell
+& $godot --headless --path . --script tools/test_compile_all.gd        # loads every script/scene under res://, instantiates each scene
+& $godot --headless --path . --script tools/test_gameplay_runtime.gd   # boots main.tscn, checks player/builder/sound wiring
+```
+
+Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched.
 
 ### Regenerating art
 
@@ -39,7 +46,10 @@ $blender = "C:\steam\steamapps\common\Blender\blender.exe"
 & $blender --background --python tools/build_sokpop_animations.py
 & $blender --background --python tools/build_sokpop_clay_ui.py
 python tools/analyze_render_and_colors.py    # QA: per-asset clipping / luminance / saturation
+python tools/qa_tank_models_and_clipping.py  # QA: tank sprite bounding-box / clipping check
 ```
+
+Alongside those three, `tools/build_*.py` accumulates one-off scripts for individual feature batches (e.g. `build_desert_mechanics.py`, `build_rpg_branch_and_train_assets.py`, `build_hard_clay_tile_asset.py`) — each still imports `sokpop_common` and follows the same conventions, but renders a narrower asset set for one feature rather than the whole game. Check whether an asset you need to touch already has a narrower script before adding to the unified one.
 
 #### `tools/sokpop_common.py` owns the look — change it there, not in the build scripts
 
@@ -70,11 +80,13 @@ Things that module deliberately enforces, each of which was a real defect:
 
 These two are **manually synced**, not shared: `main.gd::start_game()` copies `GameState` → `rpg_mgr` on entry, and `_game_over()` / `add_gold()` / `_on_rpg_level_up()` copy back. Adding a new persistent stat means touching both sides plus the copy points, or it silently resets between floors.
 
+One set riding this sync is the loadout choice `tank_branch` / `branch_tier` / `unlocked_perks` (`"default"`/`"speed"`/`"heavy"`/`"train"`, tier 0-2) that reshapes stat scaling in `rpg_manager.gd` (`get_atk_damage()`, `get_speed_multiplier()`, etc.) and, for `"train"`, makes `player.gd` attach follower `train_carriage.gd` instances (`_sync_train_carriages()`) that trail the tank and fire independently. `enemy.gd`'s train encounters use the same `train_carriage.gd` scene with `is_enemy = true`. Level/XP/gold and the flat stat points (`atk_bonus`, `speed_lvl`, etc.) are team-wide, but the branch/tier/perk choice is **per player** — `rpg_manager.gd` carries a second `p2_*` copy of each field, every stat getter takes a `player_id: int = 1` argument, and `upgrade_selection_dialog.gd` shows its level-up picker once per player in 2-player co-op (`main.gd::pending_upgrade_players`) so P1 and P2 can diverge onto different branches.
+
 ### Cross-node coupling
 
 Actors reach the battle controller via `get_tree().current_scene` and duck-type it (`main.rpg_mgr`, `main.has_method("trigger_bomb")`, `main.actors_container`). `player.gd`, `enemy.gd`, and `builder_controller.gd` all assume the current scene is `main.tscn`; running those scenes standalone degrades rather than crashes (null-guarded), but stats won't apply.
 
-`main.gd` builds the battlefield entirely in code — the 13×13 tile grid comes from the `layout` int array in `_build_map()` (0 empty, 1 brick, 2 steel, 3 water, 4 trees), tiles are `StaticBody2D`s created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`. World sprites are **256×256** renders drawn at `TILE_SCALE = TILE_SIZE / 256.0` (0.1875); the same 0.1875 is hardcoded in most `scenes/*.tscn` sprite nodes, so changing the render resolution means updating every one of them.
+`main.gd` builds the battlefield entirely in code — the 13×13 tile grid comes from a `layout` int array (0 empty, 1 brick, 2 steel, 3 water, 4 trees, 5 landmine, 6 desert sand, 7 sand dune, 8 hard clay), tiles are `StaticBody2D`s created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`. Layouts themselves live in `map_templates.gd::MapTemplates` (named templates like `TEMPLATE_CLASSIC`, `TEMPLATE_RIVERS`), selected by `get_layout_for_stage(floor, battle_type)` rather than hardcoded per-call in `main.gd`. Tile type 5 spawns a `landmine_hazard.tscn` instance instead of a static tile; type 8 spawns a `hard_clay_block.gd` `StaticBody2D` with its own 3-hit `take_hit()` (see groups below). World sprites are **256×256** renders drawn at `TILE_SCALE = TILE_SIZE / 256.0` (0.1875); the same 0.1875 is hardcoded in most `scenes/*.tscn` sprite nodes, so changing the render resolution means updating every one of them.
 
 That 5.33× minification needs mipmaps to stay clean. Assets have no `.import` files — `TextureHelper` builds them via `Image.load_from_file()` and calls `generate_mipmaps()`, paired with `textures/canvas_textures/default_texture_filter=3` (Linear Mipmap) in `project.godot`. Nearest filtering at this ratio produces aliasing, not pixel-art chunkiness; getting a genuinely chunky look would mean rendering world sprites at native size instead.
 
@@ -92,11 +104,11 @@ Layers are unnamed in `project.godot`; the de-facto scheme from the `.tscn` file
 
 Because runtime-spawned tiles never set `collision_layer`, terrain shares layer 1 with players — that is why player/enemy masks are `19` and `enemy.gd`'s line-of-sight ray uses mask `1 | 16`.
 
-Dispatch is almost entirely by **group name**, not by type: `player`, `p1`, `p2`, `enemies`, `brick`, `steel`, `water`, `border`, `base_eagle`, `buildings`, `powerups`, `collectibles`. `bullet.gd::_on_body_entered` is the single place terrain destruction is decided (`brick` always breaks; `steel` breaks only for tier-3 plasma bullets and never for `border`). Buildings join **both** `buildings` and `steel`, so bullets treat them as steel. Adding a new terrain or structure kind means adding its group here.
+Dispatch is almost entirely by **group name**, not by type: `player`, `p1`, `p2`, `enemies`, `brick`, `steel`, `water`, `border`, `base_eagle`, `buildings`, `powerups`, `collectibles`, plus `hard_clay`, `landmines`, `hazards` for the newer terrain. `bullet.gd::_on_body_entered` is the single place terrain destruction is decided (`brick` always breaks; `steel` breaks only for tier-3 plasma bullets and never for `border`). Buildings join **both** `buildings` and `steel`, so bullets treat them as steel. `hard_clay_block.gd` joins **both** `brick` and `hard_clay`: bullets route it through the `brick` destruction branch but call `take_hit(damage)` instead of freeing it outright when the target `has_method("take_hit")`, letting it absorb 3 hits with a colour-stage flash before breaking. `laser_piercer.gd` (a stateless `RefCounted`, called from `player.gd`/`enemy.gd` weapon tiers) re-implements the same group checks along a raycast line rather than reusing `bullet.gd`, since a pierce beam damages many bodies per shot instead of dying on the first. Adding a new terrain or structure kind means adding its group here — and to `laser_piercer.gd` if it should also block/be hit by beams.
 
 ### Assets are loaded by path at runtime, not via `ext_resource`
 
-`TextureHelper.get_tex(path)` (`scripts/texture_helper.gd`) is a static cache that tries `load()` and falls back to `Image.load_from_file()` on the globalized path when the `.import` is missing. Scenes therefore carry no texture references — sprite swaps (tank tiers, water frames, node icons) are string-path lookups. Naming conventions matter: tanks are `player_tier{0-3}_f{0,1}.png` and `enemy_{basic,fast,power,armor}[_bonus]_f{0,1}.png`, and two-frame `_f0/_f1` pairs are what drives the tread animation.
+`TextureHelper.get_tex(path)` (`scripts/texture_helper.gd`) is a static cache that tries `load()` and falls back to `Image.load_from_file()` on the globalized path when the `.import` is missing. Scenes therefore carry no texture references — sprite swaps (tank tiers, water frames, node icons) are string-path lookups. Naming conventions matter and now mix two schemes: enemies are still `enemy_{basic,fast,power,armor}[_bonus]_f{0,1}.png` (2-frame tread animation), but players are 6-frame (`_f0`-`_f5`) and prefixed by both player slot and `tank_branch` (`player.gd::_update_tier_appearance()`): `{player|player2}_tier{0-3}` for the default branch, or `{player|player2}_{speed|heavy}_t{1,2}` / `{player|player2}_train_loco_t{1,2}` once a branch is picked. `player2` means P2's tank, not a tier — there's no shared/recoloured sprite between P1 and P2.
 
 ### Audio
 

@@ -31,6 +31,24 @@ var tex_water_frames: Array[Texture2D] = []
 var tex_trees: Texture2D
 var tex_sand: Texture2D
 var tex_sand_dune: Texture2D
+var tex_hard_clay: Texture2D
+var tex_ice: Texture2D
+var tex_wormhole: Texture2D
+var moving_platform_scene: PackedScene
+var wormhole_scene: PackedScene
+var shield_station_scene: PackedScene
+var wind_blower_scene: PackedScene
+var conveyor_belt_scene: PackedScene
+var jump_pad_scene: PackedScene
+var treasure_chest_scene: PackedScene
+var treasure_key_scene: PackedScene
+var diamond_gem_scene: PackedScene
+var has_treasure_key: bool = false
+var key_has_dropped: bool = false
+var key_hidden_target_type: String = "block" # "block" or "enemy"
+var key_target_block_instance: Node = null
+var key_target_enemy_idx: int = -1
+var current_map_layout: Array = []
 
 var p1_instance: PlayerTank
 var p2_instance: PlayerTank
@@ -100,6 +118,9 @@ func hit_stop(duration_sec: float = 0.05) -> void:
 @onready var btn_restart_stage: Button = $HUD/PauseMenu/VBox/RestartStageButton
 @onready var btn_quit_menu: Button = $HUD/PauseMenu/VBox/QuitToMenuButton
 
+var upgrade_dialog: UpgradeSelectionDialog
+var pending_upgrade_players: Array[int] = []
+
 func _ready() -> void:
 	player_scene = load("res://scenes/player.tscn")
 	enemy_scene = load("res://scenes/enemy.tscn")
@@ -108,11 +129,29 @@ func _ready() -> void:
 	spawnstar_scene = load("res://scenes/spawn_star.tscn")
 	landmine_hazard_scene = load("res://scenes/landmine_hazard.tscn")
 
+	var upg_scene = load("res://scenes/upgrade_selection_dialog.tscn")
+	if upg_scene:
+		upgrade_dialog = upg_scene.instantiate()
+		add_child(upgrade_dialog)
+		upgrade_dialog.option_selected.connect(_on_upgrade_option_selected)
+
 	tex_brick = TextureHelper.get_tex("res://assets/sprites/tiles/tile_brick.png")
 	tex_steel = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png")
 	tex_trees = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
 	tex_sand = TextureHelper.get_tex("res://assets/sprites/tiles/tile_sand.png")
 	tex_sand_dune = TextureHelper.get_tex("res://assets/sprites/tiles/tile_sand_dune.png")
+	tex_hard_clay = TextureHelper.get_tex("res://assets/sprites/tiles/tile_hard_clay.png")
+	tex_ice = TextureHelper.get_tex("res://assets/sprites/tiles/tile_ice.png")
+	tex_wormhole = TextureHelper.get_tex("res://assets/sprites/tiles/tile_wormhole.png")
+	moving_platform_scene = load("res://scenes/moving_platform.tscn")
+	wormhole_scene = load("res://scenes/wormhole.tscn")
+	shield_station_scene = load("res://scenes/buildings/shield_station.tscn")
+	wind_blower_scene = load("res://scenes/buildings/wind_blower.tscn")
+	conveyor_belt_scene = load("res://scenes/conveyor_belt.tscn")
+	jump_pad_scene = load("res://scenes/jump_pad.tscn")
+	treasure_chest_scene = load("res://scenes/treasure_chest.tscn")
+	treasure_key_scene = load("res://scenes/treasure_key.tscn")
+	diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
 
 	tex_water_frames.clear()
 	for i in range(6):
@@ -214,6 +253,7 @@ func start_game() -> void:
 	else:
 		hud_p2_hp.visible = false
 
+	_setup_challenge_treasure()
 	_update_hud()
 	_update_rpg_hud()
 
@@ -234,6 +274,32 @@ func _on_rpg_level_up(new_lvl: int) -> void:
 	if p2_instance and is_instance_valid(p2_instance):
 		p2_instance._apply_rpg_stats()
 
+	if upgrade_dialog and is_instance_valid(upgrade_dialog):
+		var was_empty = pending_upgrade_players.is_empty()
+		var new_players: Array[int] = [1, 2] if GameState.player_count == 2 else [1]
+		pending_upgrade_players.append_array(new_players)
+		if was_empty:
+			upgrade_dialog.show_upgrade_options(rpg_mgr, pending_upgrade_players[0])
+
+func _on_upgrade_option_selected(opt: Dictionary, player_id: int) -> void:
+	var p_tag = "P1" if player_id == 1 else "P2"
+	show_toast("★ [%s] 激活战备: %s ★" % [p_tag, opt.get("name", "").replace("\n", " ")])
+	if player_id == 1 and p1_instance and is_instance_valid(p1_instance):
+		p1_instance._apply_rpg_stats()
+		p1_instance._update_tier_appearance()
+	elif player_id == 2 and p2_instance and is_instance_valid(p2_instance):
+		p2_instance._apply_rpg_stats()
+		p2_instance._update_tier_appearance()
+	_update_rpg_hud()
+
+	if not pending_upgrade_players.is_empty():
+		pending_upgrade_players.remove_at(0)
+
+	if not pending_upgrade_players.is_empty() and upgrade_dialog and is_instance_valid(upgrade_dialog):
+		upgrade_dialog.show_upgrade_options(rpg_mgr, pending_upgrade_players[0])
+	else:
+		get_tree().paused = false
+
 func _clear_all() -> void:
 	water_sprites.clear()
 	for child in map_container.get_children():
@@ -252,7 +318,8 @@ func _build_map() -> void:
 	_create_border_wall(Vector2(map_pixel_w / 2.0, -TILE_SIZE / 2.0), Vector2(map_pixel_w + TILE_SIZE * 2, TILE_SIZE))
 	_create_border_wall(Vector2(map_pixel_w / 2.0, map_pixel_h + TILE_SIZE / 2.0), Vector2(map_pixel_w + TILE_SIZE * 2, TILE_SIZE))
 
-	var layout = MapTemplates.get_layout_for_stage(GameState.current_floor, GameState.battle_type)
+	var layout = MapTemplates.get_layout_for_stage(GameState.current_floor, GameState.battle_type, GameState.current_act)
+	current_map_layout = layout
 
 	for r in range(layout.size()):
 		for c in range(layout[r].size()):
@@ -274,6 +341,38 @@ func _build_map() -> void:
 				_spawn_tile("sand", pos, tex_sand)
 			elif tile_type == 7:
 				_spawn_tile("sand_dune", pos, tex_sand_dune)
+			elif tile_type == 8:
+				_spawn_tile("hard_clay", pos, tex_hard_clay)
+			elif tile_type == 9:
+				_spawn_tile("ice", pos, tex_ice)
+			elif tile_type == 10:
+				_spawn_moving_platform(pos, Vector2.RIGHT, 144.0, 48.0)
+			elif tile_type == 11:
+				_spawn_moving_platform(pos, Vector2.DOWN, 96.0, 48.0)
+			elif tile_type == 12:
+				_spawn_wormhole(pos)
+			elif tile_type == 13:
+				_spawn_shield_station(pos)
+			elif tile_type == 14:
+				_spawn_wind_blower(pos, WindBlower.Direction.UP)
+			elif tile_type == 15:
+				_spawn_wind_blower(pos, WindBlower.Direction.DOWN)
+			elif tile_type == 16:
+				_spawn_wind_blower(pos, WindBlower.Direction.LEFT)
+			elif tile_type == 17:
+				_spawn_wind_blower(pos, WindBlower.Direction.RIGHT)
+			elif tile_type == 18:
+				_spawn_conveyor(pos, ConveyorBelt.Direction.UP)
+			elif tile_type == 19:
+				_spawn_conveyor(pos, ConveyorBelt.Direction.DOWN)
+			elif tile_type == 20:
+				_spawn_conveyor(pos, ConveyorBelt.Direction.LEFT)
+			elif tile_type == 21:
+				_spawn_conveyor(pos, ConveyorBelt.Direction.RIGHT)
+			elif tile_type == 22:
+				_spawn_jump_pad(pos)
+			elif tile_type == 23:
+				_spawn_moving_platform(pos, Vector2.LEFT, 144.0, 48.0)
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters)
 	if (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
@@ -345,6 +444,38 @@ func _spawn_brick_tile(container: Node2D, pos: Vector2, is_steel: bool = false) 
 
 			container.add_child(sub_body)
 
+func _spawn_hard_clay_tile(container: Node2D, pos: Vector2) -> void:
+	var tex = tex_hard_clay
+	if not tex:
+		tex = TextureHelper.get_tex("res://assets/sprites/tiles/tile_hard_clay.png")
+	if not tex:
+		tex = tex_brick
+	if not tex:
+		return
+
+	var sub_size = TILE_SIZE / 2.0
+	for r in range(2):
+		for c in range(2):
+			var sub_body = HardClayBlock.new()
+			var offset = Vector2((c - 0.5) * sub_size, (r - 0.5) * sub_size)
+			sub_body.position = pos + offset
+
+			var spr = Sprite2D.new()
+			spr.texture = tex
+			spr.region_enabled = true
+			spr.region_rect = Rect2(c * 128.0, r * 128.0, 128.0, 128.0)
+			spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
+			sub_body.add_child(spr)
+			sub_body.sprite = spr
+
+			var col = CollisionShape2D.new()
+			var shape = RectangleShape2D.new()
+			shape.size = Vector2(sub_size, sub_size)
+			col.shape = shape
+			sub_body.add_child(col)
+
+			container.add_child(sub_body)
+
 func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 	if not tex:
 		return
@@ -358,6 +489,9 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 		return
 	if type == "brick":
 		_spawn_brick_tile(map_container, pos, false)
+		return
+	if type == "hard_clay":
+		_spawn_hard_clay_tile(map_container, pos)
 		return
 	if type == "steel":
 		_spawn_brick_tile(map_container, pos, true)
@@ -389,6 +523,34 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 		)
 
 		map_container.add_child(sand_area)
+		return
+	if type == "ice":
+		var ice_area = Area2D.new()
+		ice_area.position = pos
+		ice_area.z_index = -1
+		ice_area.add_to_group("ice")
+
+		var spr = Sprite2D.new()
+		spr.texture = tex
+		spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
+		ice_area.add_child(spr)
+
+		var col = CollisionShape2D.new()
+		var shape = RectangleShape2D.new()
+		shape.size = Vector2(TILE_SIZE - 2, TILE_SIZE - 2)
+		col.shape = shape
+		ice_area.add_child(col)
+
+		ice_area.body_entered.connect(func(b):
+			if is_instance_valid(b) and b.has_method("on_enter_ice"):
+				b.on_enter_ice()
+		)
+		ice_area.body_exited.connect(func(b):
+			if is_instance_valid(b) and b.has_method("on_exit_ice"):
+				b.on_exit_ice()
+		)
+
+		map_container.add_child(ice_area)
 		return
 	if type == "sand_dune":
 		var dune_body = StaticBody2D.new()
@@ -430,6 +592,193 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 
 	map_container.add_child(body)
 
+func _spawn_moving_platform(pos: Vector2, axis: Vector2 = Vector2.RIGHT, dist: float = 144.0, speed: float = 48.0) -> void:
+	if not moving_platform_scene:
+		moving_platform_scene = load("res://scenes/moving_platform.tscn")
+	if moving_platform_scene:
+		var plat = moving_platform_scene.instantiate() as MovingPlatform
+		plat.position = pos
+		plat.patrol_axis = axis
+		plat.patrol_distance = dist
+		plat.move_speed = speed
+		actors_container.add_child(plat)
+
+func _spawn_wormhole(pos: Vector2) -> void:
+	if not wormhole_scene:
+		wormhole_scene = load("res://scenes/wormhole.tscn")
+	if wormhole_scene:
+		var wh = wormhole_scene.instantiate()
+		wh.position = pos
+		actors_container.add_child(wh)
+
+func _spawn_shield_station(pos: Vector2) -> void:
+	if not shield_station_scene:
+		shield_station_scene = load("res://scenes/buildings/shield_station.tscn")
+	if shield_station_scene:
+		var st = shield_station_scene.instantiate()
+		st.position = pos
+		actors_container.add_child(st)
+
+func _spawn_wind_blower(pos: Vector2, dir: WindBlower.Direction) -> void:
+	if not wind_blower_scene:
+		wind_blower_scene = load("res://scenes/buildings/wind_blower.tscn")
+	if wind_blower_scene:
+		var wb = wind_blower_scene.instantiate()
+		wb.position = pos
+		wb.set_direction(dir)
+		actors_container.add_child(wb)
+
+func _spawn_conveyor(pos: Vector2, dir: ConveyorBelt.Direction) -> void:
+	if not conveyor_belt_scene:
+		conveyor_belt_scene = load("res://scenes/conveyor_belt.tscn")
+	if conveyor_belt_scene:
+		var cb = conveyor_belt_scene.instantiate()
+		cb.position = pos
+		cb.set_direction(dir)
+		map_container.add_child(cb)
+
+func _spawn_jump_pad(pos: Vector2) -> void:
+	if not jump_pad_scene:
+		jump_pad_scene = load("res://scenes/jump_pad.tscn")
+	if jump_pad_scene:
+		var jp = jump_pad_scene.instantiate()
+		jp.position = pos
+		map_container.add_child(jp)
+
+func _setup_challenge_treasure() -> void:
+	has_treasure_key = false
+	key_has_dropped = false
+	key_target_block_instance = null
+	key_target_enemy_idx = -1
+
+	var is_challenge = (GameState.battle_type == "challenge")
+	# 100% chance in challenge nodes, 40% chance in any other stage as a secret vault event!
+	if not is_challenge and randf() > 0.40:
+		return
+
+	# Spawn chest at random empty spot
+	if treasure_chest_scene:
+		var chest_pos = get_random_empty_tile_position()
+		var chest = treasure_chest_scene.instantiate()
+		chest.position = chest_pos
+		actors_container.add_child(chest)
+
+	# Pick secret key carrier (completely hidden, no visual cues until destroyed)
+	var destructible_blocks: Array[Node] = []
+	for child in map_container.get_children():
+		if child.is_in_group("brick") or child.is_in_group("hard_clay") or child.is_in_group("sand_dune"):
+			destructible_blocks.append(child)
+
+	if destructible_blocks.size() > 0 and (randf() < 0.5 or total_enemies <= 2):
+		key_hidden_target_type = "block"
+		key_target_block_instance = destructible_blocks[randi() % destructible_blocks.size()]
+	else:
+		key_hidden_target_type = "enemy"
+		key_target_enemy_idx = randi_range(2, max(2, total_enemies - 1))
+
+	if is_challenge:
+		show_toast("🏆 隐秘宝藏挑战关：击破隐藏地块或击杀敌军寻找【金钥匙】！")
+	else:
+		show_toast("✨ 战场暗藏秘宝！击破特定地块或消灭敌军可掉落【金钥匙】！")
+
+func check_key_drop(source: Node, drop_pos: Vector2) -> void:
+	if key_has_dropped:
+		return
+	
+	if key_hidden_target_type == "block":
+		if is_instance_valid(key_target_block_instance) and source == key_target_block_instance:
+			_drop_treasure_key(drop_pos)
+		elif not is_instance_valid(key_target_block_instance):
+			_drop_treasure_key(drop_pos)
+
+func check_key_drop_enemy(enemy_node: Node, drop_pos: Vector2) -> void:
+	if key_has_dropped:
+		return
+	if key_hidden_target_type == "enemy":
+		if enemy_node.has_meta("enemy_spawn_index") and enemy_node.get_meta("enemy_spawn_index") == key_target_enemy_idx:
+			_drop_treasure_key(drop_pos)
+		elif enemies_alive <= 1 and enemies_spawned >= total_enemies:
+			_drop_treasure_key(drop_pos)
+
+func _drop_treasure_key(drop_pos: Vector2) -> void:
+	if key_has_dropped:
+		return
+	key_has_dropped = true
+	if not treasure_key_scene:
+		treasure_key_scene = load("res://scenes/treasure_key.tscn")
+	if treasure_key_scene:
+		var key = treasure_key_scene.instantiate()
+		actors_container.add_child(key)
+		key.global_position = drop_pos
+		SoundManager.play_level_up(get_tree())
+		VFXAnimator.spawn_teleport_burst(actors_container, drop_pos)
+		show_toast("🔑 发现神秘金钥匙！快去触碰战场宝箱！")
+
+func obtain_treasure_key() -> void:
+	has_treasure_key = true
+	show_toast("🔑 已获得金钥匙！触碰宝箱即可开启！")
+
+func add_life(amount: int = 1) -> void:
+	p1_lives += amount
+	if GameState.player_count == 2:
+		p2_lives += amount
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		GameState.player_lives = p1_lives
+		GameState.p2_lives = p2_lives
+	_update_hud()
+	show_toast("❤️ EXTRA LIFE +%d!" % amount)
+
+func try_spawn_block_loot(pos: Vector2) -> void:
+	# Later stage bonus loot drop rate (scales with floor & Act)
+	# Floor 0: ~6% chance
+	# Floor 3, Act 2: ~16% chance
+	# Floor 5, Act 3: ~26% chance
+	var base_chance = 0.06 + (GameState.current_floor * 0.025) + ((GameState.current_act - 1) * 0.05)
+	if randf() > base_chance:
+		return
+
+	var roll = randf()
+	if roll < 0.62:
+		# Gold Coin (+10~25G)
+		var coin_scene = load("res://scenes/gold_coin.tscn")
+		if coin_scene and actors_container:
+			var coin = coin_scene.instantiate()
+			actors_container.add_child(coin)
+			coin.global_position = pos
+	elif roll < 0.88:
+		# Rare Diamond Gem (+60G + 30XP)
+		if not diamond_gem_scene:
+			diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
+		if diamond_gem_scene and actors_container:
+			var dia = diamond_gem_scene.instantiate()
+			actors_container.add_child(dia)
+			dia.global_position = pos
+	else:
+		# Rare Power-up (Star / Bomb / Clock / Helmet / Life / Shovel / Missile / Timed Bomb)
+		if powerup_scene and actors_container:
+			var p_inst = powerup_scene.instantiate()
+			var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
+			types.shuffle()
+			p_inst.setup(types[0])
+			p_inst.position = pos
+			actors_container.add_child(p_inst)
+			show_toast("✨ 砖块暗藏极品道具！")
+
+func get_random_empty_tile_position() -> Vector2:
+	var empty_candidates: Array[Vector2] = []
+	var layout = current_map_layout
+	if layout and layout.size() > 0:
+		for r in range(layout.size()):
+			for c in range(layout[r].size()):
+				if layout[r][c] == 0:
+					# Avoid teleporting onto Eagle base
+					if r >= 10 and c >= 4 and c <= 8:
+						continue
+					empty_candidates.append(Vector2((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE))
+	if empty_candidates.size() > 0:
+		return empty_candidates[randi() % empty_candidates.size()]
+	return Vector2(randf_range(96.0, 528.0), randf_range(96.0, 528.0))
+
 func _spawn_base_and_walls(use_steel: bool = false) -> void:
 	for child in base_wall_container.get_children():
 		child.queue_free()
@@ -470,15 +819,12 @@ func trigger_bomb() -> void:
 			count += 1
 	show_toast("BOMB TRIGGERED! %d DESTROYED" % count)
 
-func add_life(amount: int = 1) -> void:
-	p1_lives += amount
-	if GameState.player_count == 2:
-		p2_lives += amount
-	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		GameState.player_lives = p1_lives
-		GameState.p2_lives = p2_lives
-	_update_hud()
-	show_toast("+1 EXTRA LIFE!")
+func heal_player(amount: int = 99) -> void:
+	if p1_instance and is_instance_valid(p1_instance):
+		p1_instance.heal(amount)
+	if p2_instance and is_instance_valid(p2_instance):
+		p2_instance.heal(amount)
+	show_toast("❤️ 装甲全功率修复！")
 
 func show_toast(msg: String) -> void:
 	if hud_toast:
@@ -517,9 +863,9 @@ func _spawn_player(pid: int) -> void:
 
 func _on_player_hp_changed(pid: int, curr: int, max_hp: int) -> void:
 	if pid == 1 and hud_p1_hp:
-		hud_p1_hp.text = "P1 [YEL] HP: %d / %d" % [curr, max_hp]
+		hud_p1_hp.text = "P1 [YEL] HP: %d / %d [%s]" % [curr, max_hp, _branch_tag(1)]
 	elif pid == 2 and hud_p2_hp:
-		hud_p2_hp.text = "P2 [GRN] HP: %d / %d" % [curr, max_hp]
+		hud_p2_hp.text = "P2 [GRN] HP: %d / %d [%s]" % [curr, max_hp, _branch_tag(2)]
 
 func _process(delta: float) -> void:
 	# Trauma Screen Shake
@@ -577,66 +923,105 @@ func _request_spawn_enemy() -> void:
 	var r = randf()
 	var floor_idx = GameState.current_floor
 
+	var has_water = false
+	if current_map_layout and current_map_layout.size() > 0:
+		for row in current_map_layout:
+			if 3 in row:
+				has_water = true
+				break
+
 	if GameState.battle_type == "boss":
-		if enemies_spawned == 0 or enemies_spawned == total_enemies - 1:
+		if enemies_spawned == 0:
+			type = EnemyTank.EnemyType.TRAIN_BOSS
+			show_toast("🚂 ARMORED TRAIN FORTRESS DETECTED! 🚂")
+			add_trauma(0.60)
+		elif enemies_spawned == total_enemies - 1:
 			type = EnemyTank.EnemyType.BOSS
 			show_toast("⚠️ SUMMIT COLOSSUS DETECTED! ⚠️")
 			add_trauma(0.50)
-		elif r < 0.25: type = EnemyTank.EnemyType.ARMOR
-		elif r < 0.52: type = EnemyTank.EnemyType.MISSILE
-		elif r < 0.78: type = EnemyTank.EnemyType.LASER
+		elif r < 0.15: type = EnemyTank.EnemyType.AIRCRAFT
+		elif r < 0.30: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
+		elif r < 0.45: type = EnemyTank.EnemyType.MIRAGE
+		elif r < 0.60: type = EnemyTank.EnemyType.MISSILE
+		elif r < 0.75: type = EnemyTank.EnemyType.BOMBER
+		elif r < 0.88: type = EnemyTank.EnemyType.LASER
 		else: type = EnemyTank.EnemyType.POWER
 	elif GameState.battle_type == "elite":
-		if r < 0.25: type = EnemyTank.EnemyType.ARMOR
-		elif r < 0.55: type = EnemyTank.EnemyType.MISSILE
-		elif r < 0.80: type = EnemyTank.EnemyType.LASER
-		else: type = EnemyTank.EnemyType.POWER
+		if enemies_spawned == 0:
+			type = EnemyTank.EnemyType.TRAIN_BOSS
+			show_toast("🚂 ELITE ARMORED CONVOY DETECTED! 🚂")
+			add_trauma(0.50)
+		elif r < 0.15: type = EnemyTank.EnemyType.AIRCRAFT
+		elif r < 0.30: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
+		elif r < 0.48: type = EnemyTank.EnemyType.MIRAGE
+		elif r < 0.65: type = EnemyTank.EnemyType.MISSILE
+		elif r < 0.80: type = EnemyTank.EnemyType.BOMBER
+		elif r < 0.90: type = EnemyTank.EnemyType.LASER
+		else: type = EnemyTank.EnemyType.ARMOR
 	else:
 		match floor_idx:
 			0:
 				type = EnemyTank.EnemyType.BASIC if r < 0.65 else EnemyTank.EnemyType.FAST
 			1:
-				if r < 0.40: type = EnemyTank.EnemyType.BASIC
-				elif r < 0.70: type = EnemyTank.EnemyType.FAST
-				else: type = EnemyTank.EnemyType.POWER
+				if r < 0.30: type = EnemyTank.EnemyType.BASIC
+				elif r < 0.60: type = EnemyTank.EnemyType.FAST
+				elif r < 0.80: type = EnemyTank.EnemyType.POWER
+				elif r < 0.92: type = EnemyTank.EnemyType.SUICIDE
+				else: type = EnemyTank.EnemyType.AIRCRAFT
 			2:
-				if r < 0.45: type = EnemyTank.EnemyType.DESERT
-				elif r < 0.70: type = EnemyTank.EnemyType.FAST
-				elif r < 0.88: type = EnemyTank.EnemyType.POWER
-				else: type = EnemyTank.EnemyType.ARMOR
-			3:
-				if r < 0.35: type = EnemyTank.EnemyType.DESERT
-				elif r < 0.60: type = EnemyTank.EnemyType.MISSILE
-				elif r < 0.80: type = EnemyTank.EnemyType.ARMOR
-				else: type = EnemyTank.EnemyType.LASER
-			4:
-				if r < 0.20: type = EnemyTank.EnemyType.DESERT
-				elif r < 0.45: type = EnemyTank.EnemyType.ARMOR
-				elif r < 0.75: type = EnemyTank.EnemyType.MISSILE
-				else: type = EnemyTank.EnemyType.LASER
-			_:
 				if r < 0.25: type = EnemyTank.EnemyType.DESERT
-				elif r < 0.50: type = EnemyTank.EnemyType.MISSILE
-				elif r < 0.75: type = EnemyTank.EnemyType.LASER
-				else: type = EnemyTank.EnemyType.ARMOR
+				elif r < 0.45: type = EnemyTank.EnemyType.FAST
+				elif r < 0.62: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.76: type = EnemyTank.EnemyType.BOMBER
+				elif r < 0.88: type = EnemyTank.EnemyType.AIRCRAFT
+				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.ARMOR
+			3:
+				if r < 0.12: type = EnemyTank.EnemyType.TRAIN_BOSS
+				elif r < 0.25: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.40: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.55: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.70: type = EnemyTank.EnemyType.MISSILE
+				elif r < 0.85: type = EnemyTank.EnemyType.BOMBER
+				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
+			4:
+				if r < 0.15: type = EnemyTank.EnemyType.TRAIN_BOSS
+				elif r < 0.30: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.60: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.75: type = EnemyTank.EnemyType.BOMBER
+				elif r < 0.88: type = EnemyTank.EnemyType.MISSILE
+				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
+			_:
+				if r < 0.15: type = EnemyTank.EnemyType.TRAIN_BOSS
+				elif r < 0.30: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.60: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.75: type = EnemyTank.EnemyType.MISSILE
+				elif r < 0.88: type = EnemyTank.EnemyType.BOMBER
+				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 
+	var spawn_index = enemies_spawned
 	var star = spawnstar_scene.instantiate()
 	star.position = spawn_pos
-	star.finished.connect(func(): _instantiate_enemy(spawn_pos, type, is_bonus))
+	star.finished.connect(func(): _instantiate_enemy(spawn_pos, type, is_bonus, spawn_index))
 	actors_container.add_child(star)
-	
+
 	enemies_spawned += 1
 	enemies_alive += 1
 	_update_hud()
 
-func _instantiate_enemy(pos: Vector2, type: EnemyTank.EnemyType, is_bonus: bool) -> void:
+func _instantiate_enemy(pos: Vector2, type: EnemyTank.EnemyType, is_bonus: bool, spawn_index: int) -> void:
 	if not enemy_scene:
 		return
 	var enemy = enemy_scene.instantiate()
 	enemy.position = pos
 	enemy.enemy_type = type
 	enemy.is_bonus = is_bonus
-	enemy.enemy_destroyed.connect(_on_enemy_destroyed)
+	enemy.set_meta("enemy_spawn_index", spawn_index)
+	enemy.enemy_destroyed.connect(func(pts, bonus, drop_p):
+		check_key_drop_enemy(enemy, drop_p)
+		_on_enemy_destroyed(pts, bonus, drop_p)
+	)
 	actors_container.add_child(enemy)
 
 func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void:
@@ -652,7 +1037,7 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 
 	if is_bonus and powerup_scene:
 		var p_inst = powerup_scene.instantiate()
-		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE]
+		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = drop_pos
@@ -666,20 +1051,50 @@ func _on_player_destroyed(pid: int) -> void:
 	SoundManager.play_explosion(get_tree())
 	add_trauma(0.60)
 	hit_stop(0.06)
+
+	var death_pos = Vector2(6.5 * TILE_SIZE, 11.5 * TILE_SIZE)
+	if pid == 1 and p1_instance and is_instance_valid(p1_instance):
+		death_pos = p1_instance.global_position
+	elif pid == 2 and p2_instance and is_instance_valid(p2_instance):
+		death_pos = p2_instance.global_position
+
+	# 1. Reset Tank Upgrades to Base Scout Tier on Death
 	if pid == 1:
 		p1_lives -= 1
+		GameState.player_tier = 0
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
 			GameState.player_lives = p1_lives
 		if p1_lives > 0:
 			get_tree().create_timer(1.5).timeout.connect(func(): _spawn_player(1))
 	else:
 		p2_lives -= 1
+		GameState.p2_tier = 0
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
 			GameState.p2_lives = p2_lives
 		if p2_lives > 0:
 			get_tree().create_timer(1.5).timeout.connect(func(): _spawn_player(2))
-	
+
+	# 2. Gold Penalty & Death Coin Drop
+	var current_gold = rpg_mgr.gold if rpg_mgr else 0
+	var lost_gold = int(current_gold * 0.35)
+	if lost_gold > 0:
+		rpg_mgr.spend_gold(lost_gold)
+		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			rpg_mgr.sync_to_game_state()
+
+		var coin_scene = load("res://scenes/gold_coin.tscn")
+		if coin_scene and actors_container:
+			var coin_count = mini(4, max(1, lost_gold / 25))
+			for i in range(coin_count):
+				var coin = coin_scene.instantiate()
+				var offset = Vector2(randf_range(-28.0, 28.0), randf_range(-28.0, 28.0))
+				actors_container.add_child(coin)
+				coin.global_position = death_pos + offset
+
+	show_toast("⚠️ P%d 战车损毁！装甲星级重置，损失 %dG 金币！" % [pid, lost_gold])
+
 	_update_hud()
+	_update_rpg_hud()
 	_check_defeat_condition()
 
 func _check_defeat_condition() -> void:
@@ -714,16 +1129,22 @@ func _game_over(victory: bool) -> void:
 		is_victory = true
 		SoundManager.play_victory(get_tree())
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
-			GameState.save_campaign()
 			if GameState.battle_type == "boss":
-				hud_status.text = "👑 VICTORY! 👑\nSPIRE CONQUERED!"
-				hud_status.modulate = Color(0.98, 0.82, 0.35)
-				btn_restart.text = "RETURN TO TITLE"
-				GameState.delete_saved_game()
+				if GameState.current_act < GameState.max_acts:
+					hud_status.text = "🏆 ACT %d CONQUERED! 🏆\n%s SECURED!" % [GameState.current_act, GameState.get_act_name(GameState.current_act)]
+					hud_status.modulate = Color(0.98, 0.85, 0.35)
+					btn_restart.text = "PROCEED TO ACT %d ->" % (GameState.current_act + 1)
+					GameState.save_campaign()
+				else:
+					hud_status.text = "👑 GRAND DEMO VICTORY! 👑\nALL 3 MAJOR ACTS CONQUERED!"
+					hud_status.modulate = Color(0.98, 0.82, 0.35)
+					btn_restart.text = "RETURN TO TITLE"
+					GameState.delete_saved_game()
 			else:
 				hud_status.text = "VICTORY!\nSECTOR SECURED"
 				hud_status.modulate = Color(0.58, 0.86, 0.6)
 				btn_restart.text = "CONTINUE CLIMBING"
+				GameState.save_campaign()
 		else:
 			hud_status.text = "VICTORY!\nSTAGE CLEARED"
 			hud_status.modulate = Color(0.58, 0.86, 0.6)
@@ -742,8 +1163,16 @@ func _game_over(victory: bool) -> void:
 
 func _on_button_action() -> void:
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		if is_victory and GameState.battle_type != "boss":
-			get_tree().change_scene_to_file("res://scenes/spire_map.tscn")
+		if is_victory:
+			if GameState.battle_type == "boss":
+				if GameState.current_act < GameState.max_acts:
+					GameState.advance_to_next_act()
+					GameState.save_campaign()
+					get_tree().change_scene_to_file("res://scenes/spire_map.tscn")
+				else:
+					get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+			else:
+				get_tree().change_scene_to_file("res://scenes/spire_map.tscn")
 		else:
 			get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
 	else:
@@ -758,21 +1187,38 @@ func _update_hud() -> void:
 	var remaining = total_enemies - enemies_spawned + enemies_alive
 	hud_enemies.text = "ENEMIES: %d" % remaining
 
+func _branch_tag(player_id: int) -> String:
+	match rpg_mgr.get_branch(player_id):
+		"speed":
+			return "⚡SPEED T%d" % rpg_mgr.get_branch_tier(player_id)
+		"heavy":
+			return "💥HEAVY T%d" % rpg_mgr.get_branch_tier(player_id)
+		"train":
+			return "🚂TRAIN T%d" % rpg_mgr.get_branch_tier(player_id)
+		_:
+			return "DEFAULT"
+
 func _update_rpg_hud() -> void:
 	if hud_rpg_level:
-		hud_rpg_level.text = "★ LEVEL: LV.%d" % rpg_mgr.level
+		hud_rpg_level.text = "★ LV.%d [%s]" % [rpg_mgr.level, _branch_tag(1)]
 	if hud_rpg_xp:
 		hud_rpg_xp.max_value = rpg_mgr.xp_to_next
 		hud_rpg_xp.value = rpg_mgr.current_xp
 	if hud_gold:
 		hud_gold.text = "🪙 GOLD: %d G" % rpg_mgr.gold
 	if hud_p1_hp and p1_instance and is_instance_valid(p1_instance):
-		hud_p1_hp.text = "P1 [YEL] HP: %d / %d" % [p1_instance.current_health, p1_instance.max_health]
+		hud_p1_hp.text = "P1 [YEL] HP: %d / %d [%s]" % [p1_instance.current_health, p1_instance.max_health, _branch_tag(1)]
 	if hud_p2_hp and p2_instance and is_instance_valid(p2_instance):
-		hud_p2_hp.text = "P2 [GRN] HP: %d / %d" % [p2_instance.current_health, p2_instance.max_health]
+		hud_p2_hp.text = "P2 [GRN] HP: %d / %d [%s]" % [p2_instance.current_health, p2_instance.max_health, _branch_tag(2)]
 	if hud_stats:
-		hud_stats.text = "⚔️ ATK: +%d | ⚡ SPD: +%d%%\n❤️ REGEN: +%.1f/s" % [
-			rpg_mgr.atk_bonus,
-			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
-			rpg_mgr.get_regen_rate()
-		]
+		if GameState.player_count == 2:
+			hud_stats.text = "P1 ⚔️%d ⚡+%d%% | P2 ⚔️%d ⚡+%d%%" % [
+				rpg_mgr.get_atk_damage(1), int((rpg_mgr.get_speed_multiplier(1) - 1.0) * 100),
+				rpg_mgr.get_atk_damage(2), int((rpg_mgr.get_speed_multiplier(2) - 1.0) * 100)
+			]
+		else:
+			hud_stats.text = "⚔️ ATK: %d | ⚡ SPD: +%d%%\n❤️ REGEN: +%.1f/s" % [
+				rpg_mgr.get_atk_damage(1),
+				int((rpg_mgr.get_speed_multiplier(1) - 1.0) * 100),
+				rpg_mgr.get_regen_rate(1)
+			]

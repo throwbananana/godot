@@ -11,15 +11,43 @@ func _run_tests() -> void:
 	var templates = [
 		{"name": "CLASSIC", "grid": MapTemplates.TEMPLATE_CLASSIC},
 		{"name": "RIVERS", "grid": MapTemplates.TEMPLATE_RIVERS},
+		{"name": "DESERT_STORM", "grid": MapTemplates.TEMPLATE_DESERT_STORM},
+		{"name": "OASIS_DUNES", "grid": MapTemplates.TEMPLATE_OASIS_DUNES},
 		{"name": "CITADEL", "grid": MapTemplates.TEMPLATE_CITADEL},
 		{"name": "JUNGLE", "grid": MapTemplates.TEMPLATE_JUNGLE},
 		{"name": "CHECKERBOARD", "grid": MapTemplates.TEMPLATE_CHECKERBOARD},
 		{"name": "SPEEDWAY", "grid": MapTemplates.TEMPLATE_SPEEDWAY},
 		{"name": "CANYON", "grid": MapTemplates.TEMPLATE_CANYON},
 		{"name": "BOSS_ARENA", "grid": MapTemplates.TEMPLATE_BOSS_ARENA},
+		{"name": "GLACIER_ICE", "grid": MapTemplates.TEMPLATE_GLACIER_ICE},
+		{"name": "VOID_FERRY", "grid": MapTemplates.TEMPLATE_VOID_FERRY},
+		{"name": "COSMIC_WORMHOLES", "grid": MapTemplates.TEMPLATE_COSMIC_WORMHOLES},
+		{"name": "WARP_GLACIER", "grid": MapTemplates.TEMPLATE_WARP_GLACIER},
+		{"name": "VOID_CANAL", "grid": MapTemplates.TEMPLATE_VOID_CANAL},
+		{"name": "DESERT_LABYRINTH", "grid": MapTemplates.TEMPLATE_DESERT_LABYRINTH},
+		{"name": "METEOR_CRATER", "grid": MapTemplates.TEMPLATE_METEOR_CRATER},
+		{"name": "TWIN_ISLANDS", "grid": MapTemplates.TEMPLATE_TWIN_ISLANDS},
+		{"name": "ELITE_CITADEL", "grid": MapTemplates.TEMPLATE_ELITE_CITADEL},
+		{"name": "WIND_TEMPEST", "grid": MapTemplates.TEMPLATE_WIND_TEMPEST},
+		{"name": "SHIELD_OUTPOST", "grid": MapTemplates.TEMPLATE_SHIELD_OUTPOST},
+		{"name": "CYCLONE_ARENA", "grid": MapTemplates.TEMPLATE_CYCLONE_ARENA},
+		{"name": "SHIELD_LABYRINTH", "grid": MapTemplates.TEMPLATE_SHIELD_LABYRINTH},
+		{"name": "WARP_TURBINE_VALLEY", "grid": MapTemplates.TEMPLATE_WARP_TURBINE_VALLEY},
+		{"name": "CONVEYOR_FACTORY", "grid": MapTemplates.TEMPLATE_CONVEYOR_FACTORY},
+		{"name": "JUMP_ARCHIPELAGO", "grid": MapTemplates.TEMPLATE_JUMP_ARCHIPELAGO},
+		{"name": "TURBINE_CONVEYOR_LAB", "grid": MapTemplates.TEMPLATE_TURBINE_CONVEYOR_LAB},
+		{"name": "NEO_TITAN_BASTION", "grid": MapTemplates.TEMPLATE_NEO_TITAN_BASTION},
+		{"name": "CONVEYOR_PINBALL", "grid": MapTemplates.TEMPLATE_CONVEYOR_PINBALL},
+		{"name": "WARP_CITADEL_APEX", "grid": MapTemplates.TEMPLATE_WARP_CITADEL_APEX},
+		{"name": "NAVAL_DELTA", "grid": MapTemplates.TEMPLATE_NAVAL_DELTA},
+		{"name": "MIRAGE_JUNGLE_MAZE", "grid": MapTemplates.TEMPLATE_MIRAGE_JUNGLE_MAZE},
+		{"name": "AIR_NAVAL_STRAITS", "grid": MapTemplates.TEMPLATE_AIR_NAVAL_STRAITS},
+		{"name": "DEMOLITION_TRENCH", "grid": MapTemplates.TEMPLATE_DEMOLITION_TRENCH},
+		{"name": "DIAMOND_CRYSTAL_MINE", "grid": MapTemplates.TEMPLATE_DIAMOND_CRYSTAL_MINE},
+		{"name": "APEX_TRI_ARMOR_CITADEL", "grid": MapTemplates.TEMPLATE_APEX_TRI_ARMOR_CITADEL}
 	]
 
-	print(">>> 1. Validating all 8 Map Templates...")
+	print(">>> 1. Validating all 36 Map Templates...")
 	for t in templates:
 		var g = t["grid"]
 		assert(g.size() == 13, "Template %s must have 13 rows, got %d" % [t["name"], g.size()])

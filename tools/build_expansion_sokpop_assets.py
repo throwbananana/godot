@@ -512,7 +512,7 @@ def main():
     # 3. High-Detail Event Dioramas (480x240)
     print(">>> 3. Rendering Event Dioramas (480x240)...")
     setup_render_settings(rx=480, ry=240)
-    create_sokpop_lighting(ortho_scale=5.2, sun_energy=2.6, ambient_strength=0.38)
+    create_sokpop_lighting(ortho_scale=5.2)
     render_and_clean(build_diorama_rest(), os.path.join(SPRITES_UI, "diorama_rest.png"))
     render_and_clean(build_diorama_shop(), os.path.join(SPRITES_UI, "diorama_shop.png"))
     render_and_clean(build_diorama_event(), os.path.join(SPRITES_UI, "diorama_event.png"))
@@ -520,7 +520,7 @@ def main():
     # 4. RPG HUD Clay Badges (128x128)
     print(">>> 4. Rendering RPG HUD Clay Badges (128x128)...")
     setup_render_settings(rx=128, ry=128)
-    create_sokpop_lighting(ortho_scale=2.6, sun_energy=2.8)
+    create_sokpop_lighting(ortho_scale=2.6)
     for ic in ["atk", "speed", "armor", "regen"]:
         render_and_clean(build_hud_icon(ic), os.path.join(SPRITES_UI, f"icon_{ic}.png"))
 

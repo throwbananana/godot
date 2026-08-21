@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://timedbomb01"]
+
+[ext_resource type="Script" path="res://scripts/timed_bomb.gd" id="1_tb"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_tb"]
+radius = 20.0
+
+[node name="TimedBomb" type="Area2D" groups=["destructible", "timed_bomb"]]
+z_index = 25
+script = ExtResource("1_tb")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.2, 0.2)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_tb")

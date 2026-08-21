@@ -4,7 +4,7 @@ extends Area2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 
-enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE }
+enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE, MISSILE, TIMED_BOMB }
 
 @export var power_up_type: Type = Type.STAR
 
@@ -33,6 +33,8 @@ func _update_texture() -> void:
 		Type.HELMET: tex_name = "helmet"
 		Type.SHOVEL: tex_name = "shovel"
 		Type.LIFE: tex_name = "life"
+		Type.MISSILE: tex_name = "missile_strike"
+		Type.TIMED_BOMB: tex_name = "powerup_timed_bomb"
 	
 	var path = "res://assets/sprites/powerups/%s.png" % tex_name
 	var tex = TextureHelper.get_tex(path)

@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://item101key01"]
+
+[ext_resource type="Script" path="res://scripts/treasure_key.gd" id="1_key"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_key"]
+radius = 24.0
+
+[node name="TreasureKey" type="Area2D" groups=["collectibles", "treasure_key"]]
+script = ExtResource("1_key")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_key")

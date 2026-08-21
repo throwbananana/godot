@@ -50,14 +50,29 @@ func _on_back_to_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
 
 func _update_top_bar() -> void:
-	hud_floor.text = "FLOOR: %d / %d" % [GameState.current_floor + 1, GameState.max_floors]
+	var act_name = GameState.get_act_name()
+	hud_floor.text = "[ACT %d/3] %s  |  FLOOR: %d/%d" % [GameState.current_act, act_name, GameState.current_floor + 1, GameState.max_floors]
 	hud_gold.text = "GOLD: %d G" % GameState.gold
 	if GameState.player_count == 1:
 		hud_lives.text = "LIVES: %d" % GameState.player_lives
+		hud_tier.text = "TANK: %s" % _branch_label(GameState.tank_branch, GameState.branch_tier, GameState.player_tier)
 	else:
 		hud_lives.text = "LIVES: P1:%d | P2:%d" % [GameState.player_lives, GameState.p2_lives]
-	var tier_names = ["SCOUT", "STRIKER", "TWIN-GUN", "PLASMA DREAD"]
-	hud_tier.text = "TANK: %s" % tier_names[GameState.player_tier]
+		var p1_tag = _branch_label(GameState.tank_branch, GameState.branch_tier, GameState.player_tier)
+		var p2_tag = _branch_label(GameState.p2_branch, GameState.p2_branch_tier, GameState.p2_tier)
+		hud_tier.text = "P1: %s | P2: %s" % [p1_tag, p2_tag]
+
+func _branch_label(branch: String, tier: int, default_tier_idx: int) -> String:
+	match branch:
+		"speed":
+			return "⚡ SPEED T%d" % tier
+		"heavy":
+			return "💥 HEAVY T%d" % tier
+		"train":
+			return "🚂 TRAIN T%d" % tier
+		_:
+			var tier_names = ["SCOUT", "STRIKER", "TWIN-GUN", "PLASMA DREAD"]
+			return tier_names[default_tier_idx]
 
 func _build_spire_ui() -> void:
 	for child in map_canvas.get_children():
@@ -84,6 +99,7 @@ func _build_spire_ui() -> void:
 		match data["type"]:
 			"battle": icon_name = "node_battle"
 			"elite": icon_name = "node_elite"
+			"challenge": icon_name = "node_challenge"
 			"rest": icon_name = "node_rest"
 			"shop": icon_name = "node_shop"
 			"event": icon_name = "node_event"
@@ -145,7 +161,7 @@ func _on_node_clicked(node_id: String) -> void:
 
 	SoundManager.play_hit_steel(get_tree())
 
-	if n_type in ["battle", "elite", "boss"]:
+	if n_type in ["battle", "elite", "boss", "challenge"]:
 		stage_preview_dialog.setup_preview(node_id)
 	elif n_type == "shop":
 		GameState.visit_node(node_id)

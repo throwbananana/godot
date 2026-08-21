@@ -40,9 +40,17 @@ static func play_laser(tree: SceneTree = null) -> void:
 	# High-tech piercing laser sweep
 	_play_synth_sound(0.22, 1800.0, 320.0, "sawtooth", 0.45, tree)
 
+static func play_button_click(tree: SceneTree = null) -> void:
+	# Short UI confirm tick
+	_play_synth_sound(0.06, 950.0, 950.0, "sine", 0.3, tree)
+
 static func play_missile(tree: SceneTree = null) -> void:
 	# Rocket propulsion whoosh
 	_play_synth_sound(0.28, 280.0, 750.0, "triangle", 0.35, tree)
+
+static func play_teleport(tree: SceneTree = null) -> void:
+	# Dimensional phase warp: ascending/descending cosmic harmonic arpeggio
+	_play_arpeggio([380.0, 580.0, 880.0, 1420.0], 0.045, "sine", 0.40, tree)
 
 static func _play_arpeggio(freqs: Array, note_duration: float, wave_type: String, volume: float, tree: SceneTree = null) -> void:
 	var root = _get_root(tree)
