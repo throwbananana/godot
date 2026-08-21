@@ -245,19 +245,22 @@ static func create_boss_bar(parent: Node) -> Dictionary:
 	parent.add_child(root)
 
 	var frame_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_boss_bar_frame.png")
+	var track_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_boss_bar_track.png")
 	var fill_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_boss_bar_fill.png")
 
 	var prog = TextureProgressBar.new()
 	prog.name = "Progress"
-	prog.texture_over = frame_tex
+	prog.texture_under = track_tex
 	prog.texture_progress = fill_tex
+	prog.texture_over = frame_tex
+	prog.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
 	prog.custom_minimum_size = Vector2(480, 48)
 	prog.position = Vector2(0, 8)
-	prog.nine_patch_stretch = true
-	prog.stretch_margin_left = 24
-	prog.stretch_margin_right = 24
-	prog.stretch_margin_top = 8
-	prog.stretch_margin_bottom = 8
+	# Fixed-size widget (never resized), so nine-patch corner stretching buys
+	# nothing here and previously used margins (24px) that didn't line up
+	# with the actual rendered content bounds -- a plain proportional crop is
+	# simpler and correct now that ui_boss_bar_fill.png has ~1px of padding.
+	prog.nine_patch_stretch = false
 	root.add_child(prog)
 
 	var lbl = Label.new()

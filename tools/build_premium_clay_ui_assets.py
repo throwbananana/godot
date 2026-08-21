@@ -15,6 +15,7 @@ from sokpop_common import (
     create_clay_mat,
     apply_uniform_clay_bevel,
     render_and_clean,
+    reset_jitter_seed,
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
@@ -83,30 +84,43 @@ def build_hotbar_slot(active=False):
 
     return objs
 
-# 3. BOSS HP BAR FRAME (ui_boss_bar_frame.png & ui_boss_bar_fill.png)
+# 3. BOSS HP BAR FRAME (ui_boss_bar_frame.png), TRACK (ui_boss_bar_track.png) & FILL (ui_boss_bar_fill.png)
+#
+# TextureProgressBar draws texture_under, then the cropped texture_progress on
+# top of it, then texture_over on top of THAT at full opacity, uncropped. The
+# frame used to be a solid cube spanning the whole bar (with the dark track
+# baked in as opaque pixels) -- as texture_over that opaque rectangle would
+# have permanently hidden the health-color fill underneath, so the bar would
+# never visually change with HP. The frame is now a hollow ring (four bars,
+# no center geometry) so the middle renders transparent and the fill shows
+# through; the dark track background moves to its own texture for
+# texture_under so the empty portion still reads as a track, not raw HUD bg.
 def build_boss_bar_frame():
     objs = []
     mat_frame = create_clay_mat("m_ui_boss_frm", (0.20, 0.18, 0.22, 1.0), roughness=0.50)
     mat_gold_trim = create_clay_mat("m_ui_boss_gld", (0.95, 0.75, 0.20, 1.0), roughness=0.35)
     mat_ruby_crest = create_clay_mat("m_ui_boss_rby", (0.95, 0.15, 0.20, 1.0), emission=(0.95, 0.15, 0.20, 1.0), emission_str=3.5)
 
-    # Wide Frame
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.05))
-    frm = bpy.context.active_object
-    frm.scale = (4.40, 0.70, 0.20)
-    frm.data.materials.append(mat_frame)
-    apply_uniform_clay_bevel(frm, width=0.05, segments=2)
-    objs.append(frm)
+    # Hollow rim ring: top/bottom/left/right bars only, true empty hole in
+    # the middle (outer envelope 4.40 x 0.70 unchanged from the old solid
+    # frame; ~0.12-thick walls leave a ~4.16 x 0.46 hole, matching the old
+    # track's footprint so the fill/track line up visually underneath it).
+    rim_thickness = 0.12
+    outer_w, outer_h = 4.40, 0.70
+    for scale, loc in [
+        ((outer_w, rim_thickness, 0.20), (0, outer_h / 2 - rim_thickness / 2, -0.05)),
+        ((outer_w, rim_thickness, 0.20), (0, -(outer_h / 2 - rim_thickness / 2), -0.05)),
+        ((rim_thickness, outer_h, 0.20), (outer_w / 2 - rim_thickness / 2, 0, -0.05)),
+        ((rim_thickness, outer_h, 0.20), (-(outer_w / 2 - rim_thickness / 2), 0, -0.05)),
+    ]:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=loc)
+        bar = bpy.context.active_object
+        bar.scale = scale
+        bar.data.materials.append(mat_frame)
+        apply_uniform_clay_bevel(bar, width=0.04, segments=2)
+        objs.append(bar)
 
-    # Inner Recessed Bar Track
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.02))
-    track = bpy.context.active_object
-    track.scale = (4.10, 0.45, 0.15)
-    track.data.materials.append(create_clay_mat("m_ui_boss_trk", (0.08, 0.06, 0.10, 1.0), roughness=0.85))
-    apply_uniform_clay_bevel(track, width=0.02, segments=1)
-    objs.append(track)
-
-    # Center Skull/Crown Crest
+    # Center Skull/Crown Crest (sits in the hole, always on top of the fill)
     bpy.ops.mesh.primitive_cylinder_add(radius=0.25, depth=0.25, vertices=6, location=(0, 0, 0.10))
     crest = bpy.context.active_object
     crest.data.materials.append(mat_gold_trim)
@@ -119,12 +133,33 @@ def build_boss_bar_frame():
 
     return objs
 
+
+def build_boss_bar_track():
+    """Static dark track background -- used as texture_under, drawn beneath
+    the fill so the un-filled portion of the bar reads as a recessed track
+    instead of transparent HUD background."""
+    objs = []
+    mat_track = create_clay_mat("m_ui_boss_trk", (0.08, 0.06, 0.10, 1.0), roughness=0.85)
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
+    track = bpy.context.active_object
+    track.scale = (4.10, 0.45, 0.15)
+    track.data.materials.append(mat_track)
+    apply_uniform_clay_bevel(track, width=0.02, segments=1)
+    objs.append(track)
+    return objs
+
+
 def build_boss_bar_fill():
+    # Scaled to nearly the track's own width (4.10) rather than leaving a wide
+    # margin: TextureProgressBar's left-to-right fill crops this texture
+    # proportionally to *its own* pixel width, so empty padding here becomes a
+    # dead zone where the bar looks unfilled/full near 0%/100% HP regardless
+    # of the true value. Keeping the margin to ~1px of AA avoids that.
     objs = []
     mat_fill = create_clay_mat("m_ui_boss_fil", (0.95, 0.20, 0.25, 1.0), emission=(0.95, 0.20, 0.25, 1.0), emission_str=3.2)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     fill = bpy.context.active_object
-    fill.scale = (4.0, 0.40, 0.15)
+    fill.scale = (4.06, 0.40, 0.15)
     fill.data.materials.append(mat_fill)
     apply_uniform_clay_bevel(fill, width=0.02, segments=2)
     objs.append(fill)
@@ -158,15 +193,42 @@ def build_gold_badge():
 
 def build_diamond_badge():
     objs = []
+    mat_rim = create_clay_mat("m_ui_bdg_dia_rim", (0.18, 0.55, 0.68, 1.0), roughness=0.40)
     mat_dia = create_clay_mat("m_ui_bdg_dia", (0.35, 0.92, 1.0, 1.0), emission=(0.35, 0.92, 1.0, 1.0), emission_str=4.0)
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.80, depth=0.28, vertices=8, location=(0, 0, 0))
+    mat_facet = create_clay_mat("m_ui_bdg_dia_fct", (0.80, 0.98, 1.0, 1.0), emission=(0.80, 0.98, 1.0, 1.0), emission_str=3.0, roughness=0.25)
+
+    # Darker rim, matching the two-layer read of the gold/eagle badges
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.85, depth=0.20, vertices=8, location=(0, 0, 0))
+    rim = bpy.context.active_object
+    rim.rotation_euler = (0, 0, math.radians(22.5))
+    rim.data.materials.append(mat_rim)
+    apply_uniform_clay_bevel(rim, width=0.05, segments=2)
+    objs.append(rim)
+
+    # Gem body
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.68, depth=0.30, vertices=8, location=(0, 0, 0.05))
     dia = bpy.context.active_object
     dia.data.materials.append(mat_dia)
-    apply_uniform_clay_bevel(dia, width=0.08, segments=2)
+    apply_uniform_clay_bevel(dia, width=0.10, segments=2)
     objs.append(dia)
+
+    # Table facet cross on top so the gem reads as cut, not a flat disc
+    for rot in (0.0, 90.0):
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.20))
+        facet = bpy.context.active_object
+        facet.rotation_euler = (0, 0, math.radians(45 + rot))
+        facet.scale = (0.62, 0.10, 0.02)
+        facet.data.materials.append(mat_facet)
+        objs.append(facet)
+
     return objs
 
 def build_eagle_badge():
+    # NOTE: camera is top-down orthographic (looks down -Z). A cone's default
+    # axis runs along local Z, so a Z-only rotation just spins its base circle
+    # in place -- it always reads as a plain dot from above, never as a wing.
+    # To get a wing silhouette in the XY footprint the cone's axis has to be
+    # tipped into the XY plane first (rotate on X), *then* swept on Z.
     objs = []
     mat_eagle = create_clay_mat("m_ui_bdg_egl", (0.95, 0.78, 0.22, 1.0), roughness=0.35)
     mat_shield = create_clay_mat("m_ui_bdg_shd", (0.22, 0.45, 0.85, 1.0), roughness=0.45)
@@ -178,19 +240,34 @@ def build_eagle_badge():
     apply_uniform_clay_bevel(shd, width=0.06, segments=2)
     objs.append(shd)
 
-    # Golden Eagle Wings
+    # Golden Eagle Wings -- flattened, tapered cones lying in the XY plane,
+    # wide root at the head/shoulder tapering to a swept-back tip.
     for side in [-1, 1]:
-        bpy.ops.mesh.primitive_cone_add(radius1=0.35, depth=0.75, vertices=12, location=(side * 0.42, 0.10, 0.12))
+        bpy.ops.mesh.primitive_cone_add(radius1=0.30, radius2=0.0, depth=0.62, vertices=10,
+                                         location=(side * 0.30, -0.05, 0.14))
         wing = bpy.context.active_object
-        wing.rotation_euler = (0, 0, math.radians(-35 * side))
+        # Rx 90 deg lays the cone flat (root toward +Y, tip toward -Y in local
+        # space); Rz sweeps the tip outward/back away from the shield center.
+        wing.rotation_euler = (math.radians(90), 0, math.radians(-55 * side))
+        wing.scale = (1.0, 1.0, 0.55)
         wing.data.materials.append(mat_eagle)
+        apply_uniform_clay_bevel(wing, width=0.015, segments=1)
         objs.append(wing)
 
     # Eagle Head
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.22, location=(0, 0.15, 0.16))
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.20, location=(0, 0.20, 0.16))
     head = bpy.context.active_object
     head.data.materials.append(mat_eagle)
     objs.append(head)
+
+    # Beak, so the head reads as a head and not a third wing-root dot
+    mat_beak = create_clay_mat("m_ui_bdg_bk", (0.85, 0.55, 0.15, 1.0), roughness=0.40)
+    bpy.ops.mesh.primitive_cone_add(radius1=0.06, radius2=0.0, depth=0.14, vertices=6,
+                                     location=(0, 0.36, 0.16))
+    beak = bpy.context.active_object
+    beak.rotation_euler = (math.radians(90), 0, 0)
+    beak.data.materials.append(mat_beak)
+    objs.append(beak)
 
     return objs
 
@@ -198,6 +275,8 @@ def main():
     print("==================================================")
     print(" Executing Premium Clay UI Asset Pipeline...      ")
     print("==================================================")
+
+    reset_jitter_seed(0)
 
     # 1. UI Panel Background (256x256)
     clear_scene()
@@ -222,13 +301,20 @@ def main():
     render_and_clean(objs, os.path.join(SPRITES_UI, "ui_hotbar_slot_active.png"))
     print("[OK] UI Hotbar Slot Active Rendered.")
 
-    # 3. Boss HP Bar Frame & Fill
+    # 3. Boss HP Bar Frame, Track & Fill
     clear_scene()
     setup_render_settings(512, 96, samples=24)
     create_sokpop_lighting(ortho_scale=4.60)
     objs = build_boss_bar_frame()
     render_and_clean(objs, os.path.join(SPRITES_UI, "ui_boss_bar_frame.png"))
     print("[OK] Boss HP Bar Frame Rendered.")
+
+    clear_scene()
+    setup_render_settings(512, 96, samples=24)
+    create_sokpop_lighting(ortho_scale=4.60)
+    objs = build_boss_bar_track()
+    render_and_clean(objs, os.path.join(SPRITES_UI, "ui_boss_bar_track.png"))
+    print("[OK] Boss HP Bar Track Rendered.")
 
     clear_scene()
     setup_render_settings(512, 96, samples=24)
