@@ -16,6 +16,7 @@ from sokpop_common import (
     apply_uniform_clay_bevel,
     render_and_clean,
     ORTHO_SCALE_DEFAULT,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
 )
@@ -140,7 +141,7 @@ def main():
     # 1. Refine Repair Station
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_refined_repair_station()
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "repair_station.png"))
     print("[OK] Repair Station Refined.")
@@ -148,7 +149,7 @@ def main():
     # 2. Refine Defense Turret Gun
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_refined_turret_gun()
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "turret_gun.png"))
     print("[OK] Defense Turret Gun Refined.")

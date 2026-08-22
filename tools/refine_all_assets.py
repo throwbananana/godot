@@ -16,6 +16,7 @@ from sokpop_common import (
     apply_uniform_clay_bevel,
     render_and_clean,
     ORTHO_SCALE_DEFAULT,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
 )
@@ -440,7 +441,7 @@ def main():
     # 1. Refine Star
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_star()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "star.png"))
     print("[OK] Star Refined.")
@@ -448,7 +449,7 @@ def main():
     # 2. Refine Bomb
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_bomb()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "bomb.png"))
     print("[OK] Bomb Refined.")
@@ -456,7 +457,7 @@ def main():
     # 3. Refine Shovel
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_shovel()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "shovel.png"))
     print("[OK] Shovel Refined.")
@@ -464,7 +465,7 @@ def main():
     # 4. Refine Clock
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_clock()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "clock.png"))
     print("[OK] Clock Refined.")
@@ -472,7 +473,7 @@ def main():
     # 5. Refine Helmet
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_helmet()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "helmet.png"))
     print("[OK] Helmet Refined.")
@@ -480,7 +481,7 @@ def main():
     # 6. Refine Life
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_life()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "life.png"))
     print("[OK] Life Refined.")

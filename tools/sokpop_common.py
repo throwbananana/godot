@@ -25,6 +25,16 @@ ORTHO_SCALE_TANK    = 3.6       # 坦克画幅宽度 (单位, 彻底解决前伸
 TILE_FULL_BLEED     = 3.34      # 瓦片底板满幅尺寸 (略超 3.30，消除相邻网格 6.4px 黑缝，实现 100% 满幅无缝拼接)
 MAX_ASSET_RADIUS    = 1.60      # 中心旋转资源的安全最大半径
 
+# 道具/小建筑画幅。这个数是考古出来的, 不是拍的:
+# refine_all_assets.py / refine_buildings_and_tanks.py 一直用 ORTHO_SCALE_DEFAULT
+# 渲这 8 个资源 (star/bomb/shovel/clock/helmet/life/repair_station/turret_gun),
+# 但仓库里已提交的版本明显更大。量了 alpha 包围盒: 八张全部等比小了 0.817~0.824,
+# 纵横比误差 <=1% —— 纯画幅差, 几何没变。正交相机下像素尺寸与 ortho_scale 成反比,
+# 3.3 * 0.82 = 2.706, 也就是当初那个已被删除的脚本用的是 2.7。改回 2.7 之后,
+# 八张的包围盒与已提交版本逐像素一致 (比值 1.000, 纵横比差 0.0%)。
+# 结论: 这 8 个资源的正确画幅是 2.7, refine_* 用 3.3 是"四代合并"时丢失的信息。
+ORTHO_SCALE_PROP    = 2.7       # 道具/小建筑画幅 (比默认更紧, 让道具在 48px 下更满)
+
 # ---------------------------------------------------------------- 色彩空间
 
 def _srgb_channel_to_linear(c):
