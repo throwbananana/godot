@@ -93,6 +93,22 @@ var enemy_spawn_points: Array[Vector2] = [
 var p1_spawn_point: Vector2 = Vector2(4.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 var p2_spawn_point: Vector2 = Vector2(8.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 var water_sprites: Array[Sprite2D] = []
+
+# 树林格号 -> Sprite2D。树冠是画在坦克*上面*的 (z_index=10) 且完全不透明,
+# 所以钻进林子的坦克会彻底消失 —— 连自己在哪都看不到。这里按格记下来, 由
+# _update_tree_transparency() 在有坦克压着时把那几格淡下去。
+#
+# 为什么不干脆把树冠整体做成半透明: MIRAGE 敌人静止时会把自己的贴图换成这张
+# 树瓦片来伪装 (enemy.gd 的光学迷彩状态机)。整体调透明的话, 它那棵不透明的
+# 假树会在一片半透明的真树里格外扎眼, 伪装当场失效。按格动态淡入淡出不碰
+# 这个机制: 假树是敌人自己的 Sprite, 不在这张表里。
+var tree_sprites: Dictionary = {}
+
+# 被坦克压住时树冠的不透明度。不做成 0 是故意的 —— 树林的战术价值就是遮蔽,
+# 全透就等于这块地形没用了。0.38 能让人看出"林子里有个东西在动"和自己的位置,
+# 但看不清朝向和血条, 伏击仍然成立。
+const TREE_REVEAL_ALPHA: float = 0.38
+const TREE_FADE_SPEED: float = 6.0
 var water_bodies: Array[StaticBody2D] = [] # used by player.gd's Amphibious Hull perk for add_collision_exception_with()
 var water_frame: int = 0
 var water_anim_timer: float = 0.0
@@ -434,6 +450,7 @@ func _on_upgrade_option_selected(opt: Dictionary, player_id: int) -> void:
 
 func _clear_all() -> void:
 	water_sprites.clear()
+	tree_sprites.clear()
 	water_bodies.clear()
 	factory_instances.clear()
 	if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
@@ -646,6 +663,9 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 		spr.position = pos
 		spr.z_index = 10
 		map_container.add_child(spr)
+		# 按格记下来, 供 _update_tree_transparency() 做"有坦克进林子就透出来"。
+		# pos 是格心 (c+0.5)*TILE_SIZE, 所以直接整除就能还原格号。
+		tree_sprites[Vector2i(int(pos.x / TILE_SIZE), int(pos.y / TILE_SIZE))] = spr
 		return
 	if type == "brick":
 		_spawn_brick_tile(map_container, pos, false)
@@ -1130,6 +1150,52 @@ func _on_player_hp_changed(pid: int, curr: int, max_hp: int) -> void:
 	elif pid == 2 and hud_p2_hp:
 		hud_p2_hp.text = "P2 [GRN] HP: %d / %d [%s]" % [curr, max_hp, _branch_tag(2)]
 
+## 有坦克钻进树林时, 把它压着的那几格树冠淡下去。
+##
+## 遍历的是坦克 (最多十几个) 而不是树格, 所以开销和林子多大无关。
+##
+## 用包围盒而不是"中心点所在的那一格": 坦克约 40px 宽而格子 48px, 骑在两格
+## 中间是常态。只算中心格的话, 车头探进相邻那格的部分照样是隐形的 —— 而那
+## 半截车正是玩家最需要看见的部分。
+func _update_tree_transparency(delta: float) -> void:
+	if tree_sprites.is_empty():
+		return
+
+	var occupied := {}
+	var units: Array = []
+	units.append_array(get_tree().get_nodes_in_group("player"))
+	units.append_array(get_tree().get_nodes_in_group("enemies"))
+	const HALF := 17.0
+	for u in units:
+		if not is_instance_valid(u) or not (u is Node2D):
+			continue
+		# 已经开启光学迷彩的 MIRAGE 不触发淡出。它静止时会把自己伪装成一棵树,
+		# 要是周围的真树反而因为它而淡了一圈, 等于亲手在地图上标出"这里有东西",
+		# 它整个机制就废了。潜行单位不该自己暴露自己。
+		if "is_camouflaged" in u and u.is_camouflaged:
+			continue
+		# 树瓦片挂在 map_container 下用的是*局部*坐标, 而坦克给的是全局坐标。
+		# GameArea 有 (48,48) 的偏移, 直接拿全局坐标去除以 TILE_SIZE 会整整
+		# 差一格 —— 见 CLAUDE.md 的坐标系一节。
+		var lp: Vector2 = map_container.to_local(u.global_position)
+		var c0 := int(floor((lp.x - HALF) / TILE_SIZE))
+		var c1 := int(floor((lp.x + HALF) / TILE_SIZE))
+		var r0 := int(floor((lp.y - HALF) / TILE_SIZE))
+		var r1 := int(floor((lp.y + HALF) / TILE_SIZE))
+		for c in range(c0, c1 + 1):
+			for r in range(r0, r1 + 1):
+				occupied[Vector2i(c, r)] = true
+
+	for cell in tree_sprites:
+		var spr = tree_sprites[cell]
+		if not is_instance_valid(spr):
+			continue
+		var target: float = TREE_REVEAL_ALPHA if occupied.has(cell) else 1.0
+		if absf(spr.modulate.a - target) < 0.004:
+			spr.modulate.a = target
+			continue
+		spr.modulate.a = move_toward(spr.modulate.a, target, TREE_FADE_SPEED * delta)
+
 func _process(delta: float) -> void:
 	# Trauma Screen Shake
 	if trauma > 0.0:
@@ -1142,6 +1208,8 @@ func _process(delta: float) -> void:
 		trauma = max(0.0, trauma - trauma_decay * delta)
 	else:
 		game_area.position = base_game_area_pos
+
+	_update_tree_transparency(delta)
 
 	water_anim_timer += delta
 	if water_anim_timer >= 0.12:
