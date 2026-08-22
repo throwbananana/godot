@@ -6,11 +6,12 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 const LaserPiercer = preload("res://scripts/laser_piercer.gd")
+const FlameJet = preload("res://scripts/flame_jet.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER }
 
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
@@ -30,6 +31,17 @@ var is_on_sand: bool = false
 var sand_overlap_count: int = 0
 var is_on_ice: bool = false
 var ice_overlap_count: int = 0
+
+# 喷火兵的持续火舌与它的开合周期。
+# 做成"喷 2.4 秒 / 停 1.2 秒"而不是常开: 常开的话玩家一旦被逼到它正面就没有任何
+# 处理窗口, 只能等死; 有间歇才谈得上"看准换气的空档冲过去"。
+# 喷嘴上的引燃火在冷却期也亮着 (见 build_flamethrower_assets.py), 是这个节奏的
+# 视觉提示。
+var flame_jet: FlameJet = null
+var flame_cycle_t: float = 0.0
+var flame_is_on: bool = false
+const FLAME_BURN_TIME: float = 2.4
+const FLAME_REST_TIME: float = 1.2
 
 var is_camouflaged: bool = false
 var still_timer: float = 0.0
@@ -116,6 +128,18 @@ func _setup_tank_type() -> void:
 			xp_value = 80
 			gold_value = 50
 			fire_interval = 2.2
+		EnemyType.FLAMETHROWER:
+			prefix = "enemy_flame"
+			# 慢、肉、近战。它的威胁来自"正面是一条持续的死亡区域", 不是靠数值,
+			# 所以移动速度压到全场最慢之一, 给玩家留出绕侧面的时间。
+			speed = 58.0
+			max_health = 4
+			score_value = 550
+			xp_value = 100
+			gold_value = 70
+			# 火舌自己有开合周期 (FLAME_BURN_TIME/FLAME_REST_TIME), 不走 fire_timer,
+			# 这里给个大值只是为了不让通用射击逻辑插进来放子弹。
+			fire_interval = 999.0
 		EnemyType.MISSILE:
 			prefix = "enemy_missile"
 			speed = 70.0
@@ -239,6 +263,13 @@ func _setup_tank_type() -> void:
 		gold_value = int(gold_value * (1.0 + cycle * 0.15))
 		score_value = int(score_value * (1.0 + cycle * 0.15))
 
+	if enemy_type == EnemyType.FLAMETHROWER and flame_jet == null:
+		# 挂成子节点, 位置和旋转由父变换自动带着走 —— 不需要每帧同步坐标。
+		flame_jet = FlameJet.new()
+		flame_jet.shooter = self
+		add_child(flame_jet)
+		flame_cycle_t = randf_range(0.0, FLAME_BURN_TIME)
+
 	health = max_health
 	tank_frames.clear()
 	for i in range(6):
@@ -355,10 +386,23 @@ func _physics_process(delta: float) -> void:
 			warp_blink_timer = randf_range(3.5, 5.5)
 			_warp_blink()
 
-	fire_timer -= delta
-	if fire_timer <= 0.0:
-		_shoot()
-		fire_timer = randf_range(fire_interval * 0.8, fire_interval * 1.3)
+	# 6. 喷火兵: 火舌自成节奏, 不走 fire_timer 那套"攒够时间放一发"的逻辑
+	elif enemy_type == EnemyType.FLAMETHROWER:
+		if flame_jet:
+			flame_cycle_t -= delta
+			if flame_cycle_t <= 0.0:
+				flame_is_on = not flame_is_on
+				flame_cycle_t = FLAME_BURN_TIME if flame_is_on else FLAME_REST_TIME
+				flame_jet.set_burning(flame_is_on)
+
+	# 喷火兵不走这套"攒够时间放一发"的逻辑 —— 它的火舌是持续的, 由上面的开合
+	# 周期驱动。这里只跳开火, *不能*提前 return: 下面还有移动、冰面/沙地速度
+	# 修正和 move_and_slide, 直接 return 会让它变成一动不动的摆设。
+	if enemy_type != EnemyType.FLAMETHROWER:
+		fire_timer -= delta
+		if fire_timer <= 0.0:
+			_shoot()
+			fire_timer = randf_range(fire_interval * 0.8, fire_interval * 1.3)
 
 	var move_speed = speed
 	if is_on_ice:

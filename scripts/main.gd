@@ -1230,6 +1230,10 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.SUICIDE: 1,
 	EnemyTank.EnemyType.ARMOR: 1,
 	EnemyTank.EnemyType.BOMBER: 3,
+	# 喷火兵和 BOMBER 同档 (延时/持续的范围压制), 而不是和 LASER 那档 (5 层)。
+	# 它的射程只有 2.75 格, 绕侧面就能解 —— 属于"逼你换位"而不是"逼你换装备",
+	# 早点出现反而能教会玩家侧向机动, 为 5 层以后真正的远程威胁做铺垫。
+	EnemyTank.EnemyType.FLAMETHROWER: 3,
 	EnemyTank.EnemyType.AIRCRAFT: 5,
 	EnemyTank.EnemyType.MIRAGE: 5,
 	EnemyTank.EnemyType.BATTLESHIP: 5,
@@ -1303,8 +1307,9 @@ func _request_spawn_enemy() -> void:
 			add_trauma(0.50)
 		elif r < 0.15: type = EnemyTank.EnemyType.AIRCRAFT
 		elif r < 0.30: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
-		elif r < 0.48: type = EnemyTank.EnemyType.MIRAGE
-		elif r < 0.65: type = EnemyTank.EnemyType.MISSILE
+		elif r < 0.42: type = EnemyTank.EnemyType.MIRAGE
+		elif r < 0.52: type = EnemyTank.EnemyType.FLAMETHROWER
+		elif r < 0.68: type = EnemyTank.EnemyType.MISSILE
 		elif r < 0.80: type = EnemyTank.EnemyType.BOMBER
 		elif r < 0.90: type = EnemyTank.EnemyType.LASER
 		else: type = themed_type
@@ -1327,7 +1332,8 @@ func _request_spawn_enemy() -> void:
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.ARMOR
 			3:
 				if r < 0.12: type = EnemyTank.EnemyType.TRAIN_BOSS
-				elif r < 0.25: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.22: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.32: type = EnemyTank.EnemyType.MIRAGE
 				elif r < 0.40: type = EnemyTank.EnemyType.AIRCRAFT
 				elif r < 0.55: type = EnemyTank.EnemyType.SUICIDE
 				elif r < 0.70: type = EnemyTank.EnemyType.MISSILE
@@ -1335,7 +1341,8 @@ func _request_spawn_enemy() -> void:
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			4:
 				if r < 0.15: type = EnemyTank.EnemyType.TRAIN_BOSS
-				elif r < 0.30: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.25: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.36: type = EnemyTank.EnemyType.MIRAGE
 				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT
 				elif r < 0.60: type = EnemyTank.EnemyType.SUICIDE
 				elif r < 0.75: type = EnemyTank.EnemyType.BOMBER
@@ -1343,7 +1350,8 @@ func _request_spawn_enemy() -> void:
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			_:
 				if r < 0.15: type = EnemyTank.EnemyType.TRAIN_BOSS
-				elif r < 0.30: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.25: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.36: type = EnemyTank.EnemyType.MIRAGE
 				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT
 				elif r < 0.60: type = EnemyTank.EnemyType.SUICIDE
 				elif r < 0.75: type = EnemyTank.EnemyType.MISSILE

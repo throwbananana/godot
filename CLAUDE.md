@@ -26,7 +26,7 @@ There is **no linter**. Verification is `--check-only` per script, running the g
 & $godot --headless --path . --script tools/test_gameplay_runtime.gd   # boots main.tscn, checks player/builder/sound wiring
 ```
 
-Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, …) — check for an existing one covering your area before writing a new script.
+Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, …) — check for an existing one covering your area before writing a new script.
 
 `test_train_teleport.gd` is worth copying as a pattern: it drives `TrainFollowHelper` against `tools/_train_stub.gd` (a bare `Node2D` exposing only `history_positions` / `history_rotations` / `follow_distance` / `leader_node`) instead of booting `main.tscn`. The helper is duck-typed throughout, so the whole follow-and-teleport behaviour is testable without textures, physics, or a map — and the test was verified to fail against the pre-fix logic, not just pass against the new one.
 
@@ -163,12 +163,14 @@ That 5.33× minification needs mipmaps to stay clean (nearest/unmipmapped sampli
 
 Sprite naming, which now mixes two schemes:
 
-- **Enemies**: `enemy_{basic,fast,power,armor,missile,laser,boss,desert,bomber,suicide,mirage,battleship,aircraft,warp}[_bonus]_f{0..5}.png` — **6 frames**, same as players (they were 2-frame historically).
+- **Enemies**: `enemy_{basic,fast,power,armor,missile,laser,boss,desert,bomber,suicide,mirage,battleship,aircraft,warp,flame}[_bonus]_f{0..5}.png` — **6 frames**, same as players (they were 2-frame historically).
 - **Players**: 6-frame, prefixed by both player slot and branch (`player.gd::_update_tier_appearance()`): `{player|player2}_tier{0-3}` for the default branch, or `{player|player2}_{speed|heavy}_t{1,2}` / `{player|player2}_train_loco_t{1,2}` once a branch is picked. `player2` means P2's tank, not a tier — there is no shared or recoloured sprite between P1 and P2.
 
 ### Enemies: variety gated by floor, not stat inflation
 
-`enemy.gd::EnemyType` has 15 members. Which ones can appear is governed by `main.gd::ENEMY_MIN_FLOOR`, grouped by *mechanic* rather than raw stats — floor 1 unlocks reskins of the direct-fire loop (POWER/SUICIDE/ARMOR), floor 3 adds delayed AoE (BOMBER), floor 5 adds genuinely new counterplay (AIRCRAFT ignores all terrain, MIRAGE cloaks, BATTLESHIP/LASER hit in AoE/pierce lines), floor 8 adds the boss-adjacent tier (MISSILE/WARP). `_gate_enemy_type()` downgrades anything spawned too early to BASIC/FAST.
+`enemy.gd::EnemyType` has 16 members. Which ones can appear is governed by `main.gd::ENEMY_MIN_FLOOR`, grouped by *mechanic* rather than raw stats — floor 1 unlocks reskins of the direct-fire loop (POWER/SUICIDE/ARMOR), floor 3 adds area denial (BOMBER's delayed AoE, FLAMETHROWER's sustained forward cone), floor 5 adds genuinely new counterplay (AIRCRAFT ignores all terrain, MIRAGE cloaks, BATTLESHIP/LASER hit in AoE/pierce lines), floor 8 adds the boss-adjacent tier (MISSILE/WARP). `_gate_enemy_type()` downgrades anything spawned too early to BASIC/FAST.
+
+FLAMETHROWER is the one enemy whose weapon is a *persistent* node rather than a per-shot call: `scripts/flame_jet.gd` is a `Node2D` parented to the tank, so the cone inherits the tank's transform and never needs per-frame coordinate syncing — which is also why it sidesteps the local-vs-global trap described above. It bypasses `fire_timer` entirely and runs its own burn/rest cycle (`FLAME_BURN_TIME` / `FLAME_REST_TIME` in `enemy.gd`); the rest window is the counterplay, and the always-lit pilot flame on the nozzle sprite is its visual tell. Range is deliberately short (132px, 2.75 tiles) so flanking beats it — lengthen that and it stops being a positioning puzzle and becomes a stat check. Its `_physics_process` branch must **not** `return` early: everything below it is movement, so an early return turns the tank into scenery (`test_flamethrower.gd` asserts this).
 
 One **act-themed "signature" enemy** slot signals which act you're in by silhouette: Act 1 → ARMOR (the default filler), Act 2 → DESERT, Act 3 → WARP, keyed off `get_visual_act()`. Daily Challenge deliberately bypasses the gate entirely and rolls uniformly across the full roster.
 
