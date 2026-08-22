@@ -132,6 +132,15 @@ Things that module deliberately enforces, each of which was a real defect:
 
 These two are **manually synced**, not shared: `main.gd::start_game()` copies `GameState` → `rpg_mgr` on entry, and `_game_over()` / `add_gold()` / `_on_rpg_level_up()` copy back. Adding a new persistent stat means touching both sides plus the copy points **plus `save_campaign()`/`load_campaign()`**, or it silently resets between floors or between sessions.
 
+**`tools/test_persistence_roundtrip.gd` enforces that instead of trusting you to remember it.** Both `save_campaign()`'s dictionary and `sync_to/from_game_state()` are hand-written field lists, and omitting a field from either produces no error — the value just quietly reverts. The test reflects over `get_property_list()` on both classes (never a hand-copied list, which is how the template test once drifted to covering 36 of 50), stamps every field, round-trips it, and diffs. A field added later is required to persist **by default**; exempting one means adding it to `EXEMPT`/`RPG_EXEMPT` with a stated reason. Verified by deleting `"run_seed"` from `save_campaign()` and `GameState.regen_lvl = regen_lvl` from `sync_to_game_state()` — both were caught by name.
+
+Two methodology traps this test documents in-line, both of which produced false results while it was being written:
+
+- **Deep-copy the expected values.** Dictionaries and arrays are references, so stashing `stamped[n] = v` and then calling `reset_campaign()` — which does `unlocked_perks.clear()` — empties the *baseline* too, and a successful round-trip reads as a failure.
+- **Clobber with a sentinel between save and load; don't rely on `reset_campaign()` to wipe.** `reset_campaign()` doesn't touch every field, so anything it misses "survives" the round-trip by never having been erased. Under the weaker version, `max_acts`/`max_floors` appeared to persist despite not being in the save file at all.
+
+The audit that produced this test found the chain otherwise sound — every field round-trips, defeat correctly calls `delete_saved_game()`, and victory saves before returning to the map. Its only other finding was two dead `static var`s (`total_enemies_override`, `boss_enabled`) with zero references project-wide despite sitting under a "Battle Configuration" heading; they're gone. Encounter size is set by `main.gd::start_game()` per `battle_type`.
+
 #### Campaign structure: acts, floors, save files
 
 A run is **8 acts × 15 floors** (`max_acts` / `max_floors`). Only **3 unique visual themes** exist (Plains/Desert/Glacial), so acts 4-8 lap back through them — `get_visual_act()` gives the theme (1-3) and `get_difficulty_cycle()` gives the lap count (0-2). Anything that varies by act must key off `get_visual_act()`, not the raw act number, or it will index past the content that exists; anything that scales difficulty on repeat laps reads `get_difficulty_cycle()` (see `enemy.gd`'s per-lap +18% HP / +7% speed / +15% rewards).

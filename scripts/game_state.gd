@@ -139,8 +139,10 @@ static var p2_branch_tier: int = 0
 # Battle Configuration
 static var battle_type: String = "battle"
 static var challenge_mode: String = "" # "", "bomb_rain", "night_ops", "vault", "night_bombs"
-static var total_enemies_override: int = 15
-static var boss_enabled: bool = false
+# 这里曾经还有 total_enemies_override / boss_enabled 两个 static var, 全项目
+# (含 .tscn) 除声明处外零引用 —— 既没人写也没人读, 但摆在"Battle Configuration"
+# 名下很像是可用的旋钮。遭遇规模实际由 main.gd::start_game() 按 battle_type
+# 直接赋 total_enemies, boss 与否由 battle_type == "boss" 决定。已删。
 
 # Map Grid Data
 ## 本次 run 的种子。用来给"选哪张手搓地图"洗牌 —— 见
