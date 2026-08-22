@@ -59,8 +59,15 @@ func detonate() -> void:
 	# 1. Spawn Core Fiery Explosion & VFX
 	if explosion_scene:
 		var exp_inst = explosion_scene.instantiate()
-		exp_inst.global_position = global_position
+		# 必须先 add_child 再设 global_position。节点还没进场景树时,
+		# 它没有父级变换可言, 赋 global_position 等同于赋 position ——
+		# 随后挂到 actors_container (在 GameArea 下, 偏移 48,48) 上时那份
+		# 偏移又叠了一次, 火球会画到桶的右下方整整一格。同一个函数里的
+		# 震波/碎屑/尘土走 VFXAnimator (内部就是先入树再设全局坐标), 伤害
+		# 判定的 query.transform 也用的是真全局坐标, 所以错位的只有火球
+		# 自己 —— 玩家看到的爆心和实际杀伤范围对不上。见 CLAUDE.md 坐标系一节。
 		get_parent().add_child(exp_inst)
+		exp_inst.global_position = global_position
 
 	SoundManager.play_explosion(get_tree())
 	VFXAnimator.spawn_shockwave(get_parent(), global_position)
@@ -101,7 +108,14 @@ func detonate() -> void:
 		elif collider.is_in_group("timed_bomb") and collider.has_method("detonate"):
 			collider.call_deferred("detonate")
 		# C. Destroy destructible tiles (Brick walls, hard clay, sand dunes)
-		elif collider.is_in_group("brick") or collider.is_in_group("hard_clay") or collider.is_in_group("sand_dune") or collider.is_in_group("trees"):
+		#
+		# 这里曾经还检查过 is_in_group("trees"), 那是个永远为假的死分支:
+		# 树瓦片在 main.gd::_spawn_tile() 里是一个提前 return 的裸 Sprite2D,
+		# 没有碰撞体也没有分组, 根本不会出现在 intersect_shape 的结果里。
+		# 没有反过来"给树加碰撞", 是因为树的整个存在意义就是可穿行的伪装掩体
+		# (z_index=10 画在坦克之上, 靠 _update_tree_transparency 淡出),
+		# 给它加碰撞等于把掩体变成墙, 顺带废掉 MIRAGE 的伪装机制。
+		elif collider.is_in_group("brick") or collider.is_in_group("hard_clay") or collider.is_in_group("sand_dune"):
 			if collider.has_method("take_hit"):
 				collider.take_hit(blast_damage)
 			elif collider.has_method("take_damage"):

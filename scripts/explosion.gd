@@ -20,6 +20,18 @@ func _ready() -> void:
 		sprite.texture = textures[0]
 	SoundManager.play_explosion(get_tree())
 
+	# 夜战闪光必须延到本帧末再打, 不能在 _ready() 里直接读 global_position。
+	# _ready() 是在 add_child() 期间跑的, 而所有调用方 (油桶/地雷/子弹/鹰巢/
+	# 炮塔/围墙) 都遵循"先入树、再设 global_position"的约定 —— 也就是说
+	# _ready() 比赋值早一步, 这时读到的还是默认的 (0,0) 经父级变换的结果。
+	# 父级是 GameArea 下的 ActorsContainer, 减掉 game_area.global_position
+	# 正好抵消, 于是每一次爆炸都在地图左上角那格点灯, 而不是爆点。
+	# call_deferred 排到当前调用栈退完之后, 那时坐标已经赋好了。
+	call_deferred("_flash_darkness")
+
+func _flash_darkness() -> void:
+	if not is_inside_tree():
+		return
 	var main = get_tree().current_scene
 	if main and "darkness_fog_instance" in main and main.darkness_fog_instance and is_instance_valid(main.darkness_fog_instance):
 		var local_p = global_position - main.game_area.global_position
