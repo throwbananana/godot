@@ -186,7 +186,19 @@ func add_xp(amount: int) -> void:
 	stats_changed.emit()
 
 func _auto_level_bonus() -> void:
-	atk_bonus += 1
+	# 攻击力每 3 级 +1, 不是每级。
+	#
+	# get_atk_damage() 是 1 + atk_bonus, 所以以前"每级 +1"等于**伤害 == 等级**,
+	# 线性无上限。实测 act 1 一整幕涨 22 级, 而敌人血量在幕内恒定 ——
+	# 从 floor 4 起玩家一发秒掉场上 100% 的敌人, 包括 14 血的 TRAIN_BOSS 和
+	# 10 血的最终 BOSS。ARMOR(4)/BATTLESHIP(6)/TRAIN_BOSS(14) 这套血量分层
+	# 整个维度报废, 肉盾单位没有肉盾, 只剩外形不同 —— 连"靠敌人种类而非数值
+	# 堆砌来提难度"这个设计意图本身也被削平了。
+	#
+	# 升级带来的其它收益 (射速/血量/回复/移速/建造) 保持原节奏不动: 问题出在
+	# 伤害这一项独自线性碾过了所有敌人血量, 不是升级给得太多。
+	if level % 3 == 0:
+		atk_bonus += 1
 	if level % 2 == 0:
 		fire_rate_lvl += 1
 	if level % 3 == 0:

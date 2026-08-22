@@ -117,7 +117,14 @@ func test_save_load_roundtrip() -> bool:
 	GameState.current_floor = 3
 	GameState.current_node_id = "f2_n1"
 	GameState.visited_node_ids = ["f0_n0", "f1_n1", "f2_n1"]
-	
+	# run_seed 决定这一局抽到哪批手搓地图 (MapTemplates._pick_from_pool)。
+	# 它必须跟着存档走: 存了不读回来的话, 同一个存档每次读进来都会换一批
+	# 地形 —— 已经打过的楼层也会跟着变脸。
+	var saved_seed := GameState.run_seed
+	if saved_seed == 0:
+		print("    Error: reset_campaign() 没有生成 run_seed")
+		return false
+
 	GameState.save_campaign()
 	if not GameState.has_saved_game():
 		print("    Error: Save file was not created")
@@ -139,7 +146,11 @@ func test_save_load_roundtrip() -> bool:
 	if GameState.current_floor != 3: return false
 	if GameState.current_node_id != "f2_n1": return false
 	if GameState.visited_node_ids != ["f0_n0", "f1_n1", "f2_n1"]: return false
-	
+	if GameState.run_seed != saved_seed:
+		print("    Error: run_seed 没存回来 (存 %d, 读 %d) —— 地图会每次读档都变"
+			% [saved_seed, GameState.run_seed])
+		return false
+
 	for k in GameState.spire_nodes.keys():
 		var node = GameState.spire_nodes[k]
 		if not (node["pos_ratio"] is Vector2):

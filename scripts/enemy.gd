@@ -231,6 +231,17 @@ func _setup_tank_type() -> void:
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * 0.08
+
+	# 血量也吃楼层缩放 —— 以前 floor_mult 只乘 xp/gold/score, **不乘
+	# max_health**, 于是一幕之内敌人强度完全恒定: 实测 floor 5 到 floor 14
+	# 的遭遇总血量一直在 58-69 之间打转, 后十层没有任何强度爬升, 涨的只有
+	# 奖励。而玩家每一层都在升级, 相对难度是一路往下走的。
+	#
+	# 这条要和 rpg_manager.gd::_auto_level_bonus() 里"攻击力改为每 3 级 +1"
+	# 一起看: 单独加血量追不上原来线性无上限的伤害成长, 单独压伤害又会让
+	# 后期空转。两边一起动才谈得上曲线。
+	max_health = int(ceil(float(max_health) * floor_mult))
+
 	if GameState.battle_type == "elite":
 		max_health = int(ceil(max_health * 1.5))
 		speed = speed * 1.08

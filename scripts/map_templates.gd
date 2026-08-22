@@ -1021,9 +1021,16 @@ const TEMPLATE_MIN_FLOOR: Dictionary = {
 	TEMPLATE_INFERNO_REFINERY: 5, TEMPLATE_NIGHTSHADE_WARP: 5, TEMPLATE_MAGNETIC_ARCHIPELAGO: 5,
 	TEMPLATE_QUICKSAND_FOUNDRY: 5, TEMPLATE_HYPERDRIVE_PINBALL: 5, TEMPLATE_TRI_DOMAIN_BIOHAZARD: 5,
 	TEMPLATE_NAVAL_SALVAGE_ROUTE: 5, TEMPLATE_TWIN_LAKES_SALVAGE: 5,
-	# TEMPLATE_SOLAR_TITAN_SANCTUM / TEMPLATE_APEX_TRI_ARMOR_CITADEL's boss-arena
-	# picks and TEMPLATE_BOSS_ARENA/TEMPLATE_SPEEDWAY are single fixed returns
-	# for battle_type=="boss" (not pool-indexed), so they need no gate.
+
+	# SOLAR_TITAN_SANCTUM 曾经漏在门禁外, 理由写的是"它只是 battle_type==boss
+	# 的固定返回值, 不走池索引"。那句话是错的 —— 它同时躺在 act3_pool 里,
+	# 而缺省 min_floor=0 让它成为该池**唯一**在 floor 0/1 就合格的条目, 于是
+	# act 3 的头两层必然是它: 全游戏机制最密的一张图 (8 个机制族), 连开两层。
+	# 对比 act 1/2 的开场都是 0 族的纯地形图。
+	# 这正是 MapDirector 刚修好的"最难的图出现在最前面"在模板侧的镜像。
+	TEMPLATE_SOLAR_TITAN_SANCTUM: 5,
+	# TEMPLATE_BOSS_ARENA / TEMPLATE_SPEEDWAY 才是真的只作 boss 固定返回、
+	# 不出现在任何池里, 所以确实不需要门禁。
 }
 
 ## Filters a pool down to templates unlocked at floor_idx, falling back to
@@ -1033,7 +1040,7 @@ const TEMPLATE_MIN_FLOOR: Dictionary = {
 static func _pick_from_pool(pool: Array, floor_idx: int) -> Array:
 	var eligible = pool.filter(func(t): return floor_idx >= TEMPLATE_MIN_FLOOR.get(t, 0))
 	if not eligible.is_empty():
-		return eligible[floor_idx % eligible.size()]
+		return eligible[_pool_index(eligible.size(), floor_idx)]
 	# Nothing in this pool is unlocked yet (some curated pools -- e.g.
 	# "challenge" -- skew entirely toward multi-mechanic templates with no
 	# floor-0 entry at all). Fall back to whichever template(s) have the
@@ -1043,7 +1050,50 @@ static func _pick_from_pool(pool: Array, floor_idx: int) -> Array:
 	for t in pool:
 		lowest = mini(lowest, TEMPLATE_MIN_FLOOR.get(t, 0))
 	var closest = pool.filter(func(t): return TEMPLATE_MIN_FLOOR.get(t, 0) == lowest)
-	return closest[floor_idx % closest.size()]
+	return closest[_pool_index(closest.size(), floor_idx)]
+
+
+## 在一个已经过门禁筛选的候选表里选一个下标。
+##
+## 原来是裸的 `floor_idx % size` —— 完全确定性, 于是**每一局的每一层都是同一
+## 张图**。实测 act 1 的 15 层永远是 MEADOW_OUTPOST, CLASSIC, 程序生成,
+## ORCHARD_ROWS, ... 一字不差, 54 张模板一幕只用到 8-10 张。对一个 roguelite
+## 来说这是重复可玩性的硬伤。
+##
+## 现在按 run_seed 给下标加一个每局不同、但**同一局内稳定**的偏移。稳定是硬
+## 要求: 存档读回来、或者同一层重进, 都必须还是那张图。所以偏移只由
+## (run_seed, floor_idx, 候选表大小) 决定, 不碰全局 RNG 流 —— 顺带也不会
+## 干扰每日挑战靠 seed() 建立的全局可复现性。
+##
+## run_seed == 0 表示老存档或未开局, 退回原来的取模行为。
+static func _pool_index(size: int, floor_idx: int) -> int:
+	if size <= 0:
+		return 0
+	if GameState.run_seed == 0 or size == 1:
+		return floor_idx % size
+	# 用"每局不同的起点 + 每局不同的步长"来扫描候选表, 而不是拿
+	# (种子, 楼层) 直接 hash 出一个下标。
+	#
+	# 两者都能做到每局不一样, 但 per-floor hash 等于每层独立均匀抽样, 一局
+	# 之内会撞车 —— 实测某个种子下 ORCHARD_ROWS 在 15 层里出现了 3 次。原来
+	# 那个朴素的 floor_idx % size 虽然每局都一样, 至少保证了**局内**顺序扫描
+	# 不重复, 这个性质不能丢。
+	#
+	# 步长与候选表长度互质时, (off + floor*stride) % size 会不重复地走遍整张
+	# 表, 既保住局内不重复, 又让起点和遍历顺序每局都不同。
+	var off: int = abs(hash("%d:pool_off" % GameState.run_seed)) % size
+	var stride: int = 1 + abs(hash("%d:pool_stride" % GameState.run_seed)) % (size - 1)
+	while _gcd(stride, size) != 1:
+		stride = (stride % (size - 1)) + 1
+	return (off + floor_idx * stride) % size
+
+
+static func _gcd(a: int, b: int) -> int:
+	while b != 0:
+		var t := b
+		b = a % b
+		a = t
+	return a
 
 static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int = -1, allow_procgen: bool = true) -> Array:
 	# Acts beyond 3 reuse the 3 existing visual themes on a cycle (see

@@ -1314,10 +1314,37 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.WARP: 8,
 }
 
+## 被门禁挡下时的替补名单, 按解锁顺序排列。
+##
+## 刻意不含 BOSS / TRAIN_BOSS (它们是遭遇身份, 不是填充兵) 和 DESERT
+## (第 2 幕的招牌轮廓, 走 themed_type 那条豁免路径)。
+const GATE_FALLBACK_POOL: Array = [
+	EnemyTank.EnemyType.BASIC, EnemyTank.EnemyType.FAST,
+	EnemyTank.EnemyType.POWER, EnemyTank.EnemyType.SUICIDE, EnemyTank.EnemyType.ARMOR,
+	EnemyTank.EnemyType.BOMBER, EnemyTank.EnemyType.FLAMETHROWER,
+	EnemyTank.EnemyType.AIRCRAFT, EnemyTank.EnemyType.MIRAGE,
+	EnemyTank.EnemyType.BATTLESHIP, EnemyTank.EnemyType.LASER,
+	EnemyTank.EnemyType.MISSILE, EnemyTank.EnemyType.WARP,
+]
+
 func _gate_enemy_type(type: EnemyTank.EnemyType, floor_idx: int) -> EnemyTank.EnemyType:
 	if floor_idx >= ENEMY_MIN_FLOOR.get(type, 0):
 		return type
-	return EnemyTank.EnemyType.FAST if floor_idx >= 1 else EnemyTank.EnemyType.BASIC
+	# 以前这里一律砸成 FAST, 结果是 roll 表写的花样全是假的: floor 3 的表列了
+	# 8 个条目, 其中 MIRAGE/AIRCRAFT/MISSILE/BATTLESHIP/LASER 五个都还没解锁,
+	# 于是实测 62% 的敌人是 FAST —— 读代码像是花样最多的一层, 玩起来是全局最
+	# 单调的一层, 甚至比 floor 2 (56%) 还单调。
+	#
+	# 改成在**当层已解锁**的填充兵里重摇: 门禁的本意是"这个机制还没到时候",
+	# 不是"那就给你最便宜的那只"。槽位该有的分量保住了, 未解锁的机制也仍然
+	# 出不来。
+	var unlocked: Array = []
+	for t in GATE_FALLBACK_POOL:
+		if floor_idx >= ENEMY_MIN_FLOOR.get(t, 0):
+			unlocked.append(t)
+	if unlocked.is_empty():
+		return EnemyTank.EnemyType.BASIC
+	return unlocked[randi() % unlocked.size()]
 
 func _request_spawn_enemy() -> void:
 	if enemies_spawned >= total_enemies or enemy_spawn_points.is_empty():
@@ -1403,7 +1430,15 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.88: type = EnemyTank.EnemyType.AIRCRAFT
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.ARMOR
 			3:
-				if r < 0.12: type = EnemyTank.EnemyType.TRAIN_BOSS
+				# 这一档以前是 TRAIN_BOSS。它是 14 血、会点亮 HUD boss 血条、
+				# 会占用 active_boss_instance 的遭遇 boss —— 实测常规战里它占
+				# 17-21%, 是 floor 5 之后**出现最多的单一类型**, 而精英战和
+				# boss 战里的填充位反而 0% (那两处只有开场固定一只)。也就是说
+				# boss 单位在常规层比在 boss 层常见三到四倍, boss 血条几乎常驻
+				# 并被每只新火车反复顶掉, "boss"这个框架被消解了。
+				# 现在把这份权重给 ARMOR (4 血的重甲填充兵), 保住"这一格该有个
+				# 硬骨头"的手感, 但不再拿遭遇身份当杂兵。
+				if r < 0.12: type = EnemyTank.EnemyType.ARMOR
 				elif r < 0.22: type = EnemyTank.EnemyType.FLAMETHROWER
 				elif r < 0.32: type = EnemyTank.EnemyType.MIRAGE
 				elif r < 0.40: type = EnemyTank.EnemyType.AIRCRAFT
@@ -1412,7 +1447,8 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.85: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			4:
-				if r < 0.15: type = EnemyTank.EnemyType.TRAIN_BOSS
+				# 同 floor 3: TRAIN_BOSS 不再当常规填充兵, 见上。
+				if r < 0.15: type = EnemyTank.EnemyType.ARMOR
 				elif r < 0.25: type = EnemyTank.EnemyType.FLAMETHROWER
 				elif r < 0.36: type = EnemyTank.EnemyType.MIRAGE
 				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT
@@ -1421,7 +1457,10 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.88: type = EnemyTank.EnemyType.MISSILE
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			_:
-				if r < 0.15: type = EnemyTank.EnemyType.TRAIN_BOSS
+				# floor 5 以后同样不再拿 TRAIN_BOSS 当填充兵 (见 floor 3 的说明)。
+				# 这一档换成 BATTLESHIP: 6 血的重装单位, 正好在 floor 5 解锁,
+				# 顶替得上原来"这一格是硬目标"的位置。
+				if r < 0.15: type = EnemyTank.EnemyType.BATTLESHIP
 				elif r < 0.25: type = EnemyTank.EnemyType.FLAMETHROWER
 				elif r < 0.36: type = EnemyTank.EnemyType.MIRAGE
 				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT

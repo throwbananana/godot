@@ -143,6 +143,17 @@ static var total_enemies_override: int = 15
 static var boss_enabled: bool = false
 
 # Map Grid Data
+## 本次 run 的种子。用来给"选哪张手搓地图"洗牌 —— 见
+## MapTemplates._pick_from_pool()。
+##
+## 必须**持久化**而不是每次现摇: 存档读回来以后, 已经走过的楼层要还是同一张
+## 图, 否则同一个存档反复读会看到不同地形。也不能直接用 randi() 当场决定,
+## 那样连同一层重进都会换图。
+##
+## 0 表示"这是老存档 / 还没开始 run", 此时 _pick_from_pool() 退回原来的
+## 纯 floor_idx 取模行为, 不会炸。
+static var run_seed: int = 0
+
 static var spire_nodes: Dictionary = {}
 static var spire_connections: Array = []
 
@@ -209,6 +220,9 @@ static func reset_campaign(p_count: int = 1) -> void:
 	builder_lvl = 0
 	battle_type = "battle"
 	challenge_mode = ""
+	# 每局换一批地图。maxi(1, ...) 是因为 0 被 _pick_from_pool() 当作
+	# "没有种子"的哨兵值。
+	run_seed = maxi(1, randi())
 	_generate_spire_map()
 
 static func advance_to_next_act() -> void:
@@ -485,6 +499,7 @@ static func save_campaign() -> void:
 		"builder_lvl": builder_lvl,
 		"battle_type": battle_type,
 		"challenge_mode": challenge_mode,
+		"run_seed": run_seed,
 		"spire_nodes": nodes_copy,
 		"spire_connections": spire_connections
 	}
@@ -537,6 +552,9 @@ static func load_campaign() -> bool:
 	builder_lvl = int(d.get("builder_lvl", 0))
 	battle_type = str(d.get("battle_type", "battle"))
 	challenge_mode = str(d.get("challenge_mode", ""))
+	# 老存档没有这个字段 -> 0 -> _pick_from_pool() 退回旧的取模行为。
+	# 存档里已经打过的楼层因此和存档时看到的一致, 不会因为升级而变脸。
+	run_seed = int(d.get("run_seed", 0))
 	spire_nodes = d.get("spire_nodes", {})
 	for k in spire_nodes.keys():
 		var n_data = spire_nodes[k]

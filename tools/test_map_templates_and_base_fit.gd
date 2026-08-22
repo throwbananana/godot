@@ -206,32 +206,66 @@ func _check_entry_maps_reachable(templates: Dictionary) -> void:
 		by_layout[templates[n]] = n
 
 	GameState.current_act = 1
-	var seen := {}
-	for f in range(15):        # GameState.max_floors
-		var g = MapTemplates.get_layout_for_stage(f, "battle", 1, true)
-		var nm = by_layout.get(g, "")
-		if nm != "":
-			seen[nm] = f
-
 	var want := ["TEMPLATE_MEADOW_OUTPOST", "TEMPLATE_BRICK_COURTYARD",
 				 "TEMPLATE_CREEK_CROSSING", "TEMPLATE_ORCHARD_ROWS"]
-	var missing: Array[String] = []
-	var where: Array[String] = []
-	for n in want:
-		if seen.has(n):
-			where.append("%s@f%d" % [n.replace("TEMPLATE_", ""), seen[n]])
-		else:
-			missing.append(n)
-	if missing.is_empty():
-		ok("四张入门图都会在 act 1 的 15 层内出现 (%s)" % ", ".join(where))
-	else:
-		fail("%s 在 act 1 的任何一层都抽不到 —— 多半是排在了取不到的下标上"
-			% ", ".join(missing))
 
-	# 顺带确认它们确实排在前段, 而不是挤到深层去
+	# 选图现在按 run_seed 洗牌 (每局换一批图, 见 _pool_index), 所以"这四张
+	# 特定的图出现在第几层"不再对任意单局成立 —— 只对旧的确定性取模成立。
+	# 但那个断言本来也只是代理: 它真正要守的是**开局几层必须温和**, 以及
+	# **新加的图不能落在永远取不到的下标上**。这两条各自直接验。
+	var seeds: Array = [0, 1, 7919, 123457, 555555, 987654321]
+
+	# (a) 新图不能是死代码: across 若干局, 每张入门图都必须至少被抽到过一次。
+	var ever := {}
+	for s in seeds:
+		GameState.run_seed = s
+		for f in range(15):
+			var nm = by_layout.get(MapTemplates.get_layout_for_stage(f, "battle", 1, true), "")
+			if nm != "":
+				ever[nm] = true
+	var missing: Array[String] = []
 	for n in want:
-		if seen.has(n) and seen[n] > 8:
-			fail("%s 出现在 floor %d, 对入门图来说太靠后了" % [n, seen[n]])
+		if not ever.has(n):
+			missing.append(n.replace("TEMPLATE_", ""))
+	if missing.is_empty():
+		ok("四张入门图在 %d 局里都被抽到过 (act 1 共见到 %d 张不同模板)"
+			% [seeds.size(), ever.size()])
+	else:
+		fail("%s 在 %d 局 x 15 层里一次都没出现 —— 多半是排在了取不到的下标上"
+			% [", ".join(missing), seeds.size()])
+
+	# (b) 真正的不变量: 无论哪一局, floor 0/1 抽到的都必须是入门档的图。
+	#     这条比"那四张图排在前面"强 —— 它管的是每一张可能被抽到的图。
+	var harsh: Array[String] = []
+	for s in seeds:
+		GameState.run_seed = s
+		for f in [0, 1]:
+			var g = MapTemplates.get_layout_for_stage(f, "battle", 1, true)
+			var nm = by_layout.get(g, "<procgen>")
+			if not _is_entry_tier(g):
+				harsh.append("seed %d floor %d -> %s" % [s, f, nm.replace("TEMPLATE_", "")])
+	if harsh.is_empty():
+		ok("%d 局的 floor 0/1 全部是纯基础地形的入门图" % seeds.size())
+	else:
+		fail("开局层抽到了非入门档的图: %s" % ", ".join(harsh))
+
+	GameState.run_seed = 0
+
+
+## 入门档 = 只用基础地形, 外加 {硬黏土/地雷/沙地} 里至多一种。
+## 与本文件 "入门池全部只用基础地形" 那条检查同一把尺子。
+func _is_entry_tier(g: Array) -> bool:
+	var optional_used := {}
+	for r in range(g.size()):
+		for c in range(g[r].size()):
+			var v := int(g[r][c])
+			if v in BASIC_TILES:
+				continue
+			if v in TIER0_OPTIONAL:
+				optional_used[v] = true
+				continue
+			return false
+	return optional_used.size() <= 1
 
 
 func _check_base_alignment() -> void:
