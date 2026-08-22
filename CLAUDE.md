@@ -26,7 +26,7 @@ There is **no linter**. Verification is `--check-only` per script, running the g
 & $godot --headless --path . --script tools/test_gameplay_runtime.gd   # boots main.tscn, checks player/builder/sound wiring
 ```
 
-Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, …) — check for an existing one covering your area before writing a new script.
+Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, …) — check for an existing one covering your area before writing a new script.
 
 `test_train_teleport.gd` is worth copying as a pattern: it drives `TrainFollowHelper` against `tools/_train_stub.gd` (a bare `Node2D` exposing only `history_positions` / `history_rotations` / `follow_distance` / `leader_node`) instead of booting `main.tscn`. The helper is duck-typed throughout, so the whole follow-and-teleport behaviour is testable without textures, physics, or a map — and the test was verified to fail against the pre-fix logic, not just pass against the new one.
 
@@ -136,6 +136,13 @@ Two JSON saves under `user://`, deliberately independent:
 ### Cross-node coupling
 
 Actors reach the battle controller via `get_tree().current_scene` and duck-type it (`main.rpg_mgr`, `main.has_method("trigger_bomb")`, `main.actors_container`). `player.gd`, `enemy.gd`, and `builder_controller.gd` all assume the current scene is `main.tscn`; running those scenes standalone degrades rather than crashes (null-guarded), but stats won't apply.
+
+**`GameArea` sits at `position = Vector2(48, 48)`, so local and global coordinates differ by exactly one tile.** Every container the game spawns into (`MapContainer`, `ActorsContainer`, `BuilderController`) lives under it, and the grid maths in `_build_map()` (`(c + 0.5) * TILE_SIZE`) produces **local** coordinates. Mixing the two is silent — nothing errors, the thing just renders or lands one tile up-left. Two shipped bugs came from exactly this:
+
+- `laser_piercer.gd::_spawn_laser_visual()` set `beam_spr.position` (local) from a global midpoint, so the beam drew a tile away from where the raycast actually hit — while the muzzle flash and shockwave, which go through `VFXAnimator` (global, all three call sites), stayed correct.
+- `get_random_empty_tile_position()` returned local coordinates but `wormhole.gd` assigned them to `body.global_position`. Measured over 200 samples: 54 landed inside brick, 7 on another solid type, 24 outside the map. It now returns **global** (`map_container.to_global(...)`) and both call sites use `global_position`.
+
+Rule of thumb: spawning a *tile* into `MapContainer` at grid coordinates → `.position`. Anything positioned from a world-space value (a raycast hit, another node's `global_position`, a teleport target) → `add_child()` **first**, then `.global_position`. Setting `global_position` before the node is in the tree silently behaves like `position`.
 
 `main.gd` (~1700 lines) builds the battlefield entirely in code — the 13×13 grid comes from an int array of **tile types 0-29**, tiles are `StaticBody2D`s or scene instances created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`.
 

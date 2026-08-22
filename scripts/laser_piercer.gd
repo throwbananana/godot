@@ -98,11 +98,20 @@ static func _spawn_laser_visual(parent: Node2D, start_pos: Vector2, end_pos: Vec
 	var tex = TextureHelper.get_tex("res://assets/sprites/effects/laser_beam.png")
 	if tex:
 		beam_spr.texture = tex
-	beam_spr.position = mid_pos
 	beam_spr.rotation = direction.angle() + PI / 2.0
 	beam_spr.scale = Vector2(0.24, beam_len / 256.0)
 	beam_spr.z_index = 25
 	parent.add_child(beam_spr)
+	# 必须 add_child 之后再设 global_position。
+	#
+	# 这里原本是在 add_child 之前设 beam_spr.position = mid_pos —— 而 position 是
+	# *局部*坐标, mid_pos 却是全局的。parent 是 ActorsContainer, 它挂在 GameArea
+	# 下面, 而 GameArea 在 main.tscn 里 position = Vector2(48, 48), 于是整条光束
+	# 被平移了一整格。伤害判定用的是全局坐标的射线, 一直是对的, 所以现象是
+	# "打中的和画出来的不是一条线": 枪口闪光和冲击波 (都走 VFXAnimator, 用的是
+	# global_position) 在正确位置, 唯独光束差一格。
+	# vfx_animator.gd 里三处生成节点全部用 global_position, 本文件是唯一的例外。
+	beam_spr.global_position = mid_pos
 
 	var tween = parent.create_tween()
 	tween.tween_property(beam_spr, "scale:x", 0.42, 0.04)

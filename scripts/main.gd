@@ -909,8 +909,10 @@ func _setup_challenge_treasure() -> void:
 	if treasure_chest_scene:
 		var chest_pos = get_random_empty_tile_position()
 		var chest = treasure_chest_scene.instantiate()
-		chest.position = chest_pos
 		actors_container.add_child(chest)
+		# get_random_empty_tile_position() 现在返回全局坐标, 所以要先入树再设
+		# global_position —— 入树前设 global_position 等价于设 position, 白搭。
+		chest.global_position = chest_pos
 
 	# Pick secret key carrier (completely hidden, no visual cues until destroyed)
 	var destructible_blocks: Array[Node] = []
@@ -1013,6 +1015,15 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 			actors_container.call_deferred("add_child", p_inst)
 			show_toast("✨ 砖块暗藏极品道具！")
 
+## 随机挑一块空地, 返回**全局**坐标。
+##
+## 返回全局而不是网格局部, 是因为两个调用点里更容易搞错的那个用的就是全局:
+## wormhole.gd 把结果直接赋给 body.global_position。而 (c+0.5)*TILE_SIZE 这套
+## 网格算式产出的是 map_container 的局部坐标 —— GameArea 在 main.tscn 里
+## position = Vector2(48,48), 于是两者差整整一格。
+## 后果不是"偏一点点"而是实打实的错格: 这个函数精心挑了一块空地, 传送却把单位
+## 放到它左上角那一格 —— 而那一格完全可能是砖墙或水。
+## 现在契约统一为全局, 两个调用点都用 global_position。
 func get_random_empty_tile_position() -> Vector2:
 	var empty_candidates: Array[Vector2] = []
 	var layout = current_map_layout
@@ -1024,9 +1035,12 @@ func get_random_empty_tile_position() -> Vector2:
 					if r >= 10 and c >= 4 and c <= 8:
 						continue
 					empty_candidates.append(Vector2((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE))
+	var local_pos := Vector2(randf_range(96.0, 528.0), randf_range(96.0, 528.0))
 	if empty_candidates.size() > 0:
-		return empty_candidates[randi() % empty_candidates.size()]
-	return Vector2(randf_range(96.0, 528.0), randf_range(96.0, 528.0))
+		local_pos = empty_candidates[randi() % empty_candidates.size()]
+	if map_container:
+		return map_container.to_global(local_pos)
+	return local_pos
 
 func _spawn_base_and_walls(use_steel: bool = false) -> void:
 	for child in base_wall_container.get_children():
