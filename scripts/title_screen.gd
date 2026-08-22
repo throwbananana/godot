@@ -42,6 +42,9 @@ func _ready() -> void:
 	btn_daily_challenge.pressed.connect(_start_daily_challenge)
 	btn_quit.pressed.connect(_on_quit_pressed)
 
+	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
+	UIThemeHelper.focus_first(self)
+
 func _process(_delta: float) -> void:
 	if banner_sprite:
 		var float_y = 70.0 + sin(Time.get_ticks_msec() * 0.003) * 4.0

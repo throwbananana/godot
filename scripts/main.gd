@@ -269,7 +269,13 @@ func _ready() -> void:
 	start_game()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode == KEY_P):
+	# "pause" = ESC / P / 两个手柄的 START。以前这里是 ui_cancel + 硬编码 KEY_P,
+	# 而 ui_cancel 在手柄上的默认绑定是 B —— B 同时又是菜单里的"返回", 于是手柄
+	# 玩家一按 B 就会在关闭对话框的同时弹出暂停菜单。改用独立 action 后 B 只管
+	# 菜单返回, 暂停归 START。键盘行为不变: ESC 和 P 都在这个 action 里。
+	# 注意 START 也绑着 restart, 但那个只在 is_game_over/is_victory 时读取,
+	# 而这里恰好把那两种状态排除了, 所以同一颗键不会有歧义。
+	if event.is_action_pressed("pause"):
 		if not is_game_over and not is_victory:
 			_toggle_pause()
 

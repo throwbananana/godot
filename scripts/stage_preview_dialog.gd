@@ -83,6 +83,9 @@ func setup_preview(node_id: String) -> void:
 	_populate_enemies(floor_idx, n_type)
 	_populate_drops(floor_idx, n_type, c_mode)
 
+	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
+	UIThemeHelper.focus_first(self)
+
 func _populate_terrain(floor_idx: int, n_type: String, c_mode: String = "") -> void:
 	for child in terrain_container.get_children():
 		child.queue_free()

@@ -86,6 +86,43 @@ static func apply_clay_button(btn: Button, dark_text: bool = true) -> void:
 		btn.add_theme_color_override("font_pressed_color", Color(0.3, 0.15, 0.1, 1.0))
 		btn.add_theme_color_override("font_focus_color", Color(0.2, 0.16, 0.12, 1.0))
 
+## 把焦点交给界面里第一个可用控件, 让手柄/键盘一进来就能操作。
+##
+## 没有这一句, 整个游戏的菜单都只能用鼠标: Godot 不会自动给任何控件初始焦点,
+## 而没有焦点就没有 ui_up/down/accept 的落点 —— 手柄玩家连"开始游戏"都按不到。
+## 全项目此前一处 grab_focus() 都没有。
+##
+## 用 call_deferred: 各对话框都是在 _ready() 里用代码现搭控件的, 这一帧里它们
+## 还没进入场景树、也还没算出布局, 此时 grab_focus() 会被静默丢弃。
+##
+## 相邻关系不用手动接 —— Godot 会按控件的实际布局自动推算上下左右邻居,
+## 而这些界面都是规规矩矩的 VBox/GridContainer。
+##
+## 参数收 Node 而不是 Control: 界面根节点并不都是 Control ——
+## upgrade_selection_dialog 是 CanvasLayer, 其余几个是 Control/PanelContainer。
+## 反正下面本来就是向下遍历找 Control, 收窄类型只会把 CanvasLayer 挡在门外。
+static func focus_first(root: Node) -> void:
+	if not root:
+		return
+	var target := _first_focusable(root)
+	if target:
+		target.call_deferred("grab_focus")
+
+static func _first_focusable(node: Node) -> Control:
+	for child in node.get_children():
+		if child is Control:
+			var c := child as Control
+			# 隐藏的分支整棵跳过: 标题界面的"继续游戏"在没有存档时是隐藏的,
+			# 抓它会把焦点丢进一个看不见的按钮里。
+			if not c.visible:
+				continue
+			if c is Button and not (c as Button).disabled and c.focus_mode != Control.FOCUS_NONE:
+				return c
+		var found := _first_focusable(child)
+		if found:
+			return found
+	return null
+
 static func apply_clay_panel(panel: Control, bg_color: Color = Color(0.18, 0.15, 0.20, 0.92), corner_radius: int = 14) -> void:
 	if not panel: return
 	var tex_panel = TextureHelper.get_tex("res://assets/sprites/ui/ui_panel_bg.png")

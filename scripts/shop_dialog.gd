@@ -56,6 +56,9 @@ func setup_shop() -> void:
 	_generate_shop_inventory()
 	_update_ui()
 
+	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
+	UIThemeHelper.focus_first(self)
+
 func _update_ui() -> void:
 	gold_label.text = "YOUR GOLD: %d G" % GameState.gold
 	btn_reroll.text = "刷新货架 (Reroll %dG)" % reroll_cost

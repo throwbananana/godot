@@ -192,40 +192,36 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			select_structure(StructureType.NONE, 1)
 
+	# 建造走 input action 而不是原始 keycode —— 原来那套 event.keycode == KEY_Q
+	# 的写法把整个建造系统锁死在键盘上, 手柄玩家一个建筑都放不了 (移动和开火
+	# 早就有手柄绑定, 唯独这里没有)。
+	# 键盘按键没变: Q/Z E/C F R 和 U/J O/L K/Enter Backspace 都还在, 只是搬进了
+	# project.godot 的 p1_build_* / p2_build_* 里, 每个 action 另外挂了手柄键。
+	# 手柄布局 (两名玩家各自的设备): LB=上一个 X=下一个 Y=放置 BACK=取消。
+	# 刻意避开 B: 它是内置 ui_cancel 的默认绑定 —— 见下面 cancel 处的注释。
+	for pid in [1, 2]:
+		if event.is_action_pressed("p%d_build_prev" % pid):
+			cycle_prev(pid)
+			return
+		if event.is_action_pressed("p%d_build_next" % pid):
+			cycle_next(pid)
+			return
+		if event.is_action_pressed("p%d_build_place" % pid):
+			if selection_by_pid.get(pid, StructureType.NONE) == StructureType.NONE:
+				cycle_next(pid) # 未选中时先开热键栏
+			else:
+				_try_place_current(pid)
+			return
+		if event.is_action_pressed("p%d_build_cancel" % pid):
+			# ESC/B 刻意*不*绑在这里 —— main.gd 的 _unhandled_input 用
+			# ui_cancel/pause 开暂停菜单, 两个处理器会在同一次按键上都触发:
+			# 既取消了选择又弹出暂停菜单。键盘留 R/Backspace, 手柄留 BACK。
+			select_structure(StructureType.NONE, pid)
+			return
+
 	if event is InputEventKey and event.pressed:
-		# P1 Main Controls: [Q] ◀ Prev | [E] ▶ Next | [F] Place
-		if event.keycode == KEY_Q or event.keycode == KEY_Z:
-			cycle_prev(1)
-		elif event.keycode == KEY_E or event.keycode == KEY_C:
-			cycle_next(1)
-		elif event.keycode == KEY_F:
-			if selection_by_pid.get(1, StructureType.NONE) == StructureType.NONE:
-				cycle_next(1) # Open hotbar
-			else:
-				_try_place_current(1)
-		elif event.keycode == KEY_R:
-			# ESC deliberately NOT bound here -- main.gd's _unhandled_input
-			# also treats ESC (Godot's default "ui_cancel" action) as the
-			# pause-menu toggle, and both handlers used to fire on the same
-			# keypress: cancelling the selection AND opening the pause menu
-			# at once. R is the sole dedicated cancel key now.
-			select_structure(StructureType.NONE, 1)
-
-		# P2 Controls: [U] ◀ Prev | [O] ▶ Next | [K] Place
-		elif event.keycode == KEY_U or event.keycode == KEY_J:
-			cycle_prev(2)
-		elif event.keycode == KEY_O or event.keycode == KEY_L:
-			cycle_next(2)
-		elif event.keycode == KEY_K or event.keycode == KEY_ENTER:
-			if selection_by_pid.get(2, StructureType.NONE) == StructureType.NONE:
-				cycle_next(2)
-			else:
-				_try_place_current(2)
-		elif event.keycode == KEY_BACKSPACE:
-			select_structure(StructureType.NONE, 2)
-
-		# Quick number direct select fallback (1..6) — P1 only
-		elif event.keycode == KEY_1: select_structure(StructureType.TURRET, 1)
+		# 数字键 1..6 直选 —— 仅 P1, 键盘专属的便捷方式, 手柄用 LB/X 循环即可
+		if event.keycode == KEY_1: select_structure(StructureType.TURRET, 1)
 		elif event.keycode == KEY_2: select_structure(StructureType.FORTIFIED_WALL, 1)
 		elif event.keycode == KEY_3: select_structure(StructureType.LANDMINE, 1)
 		elif event.keycode == KEY_4: select_structure(StructureType.REPAIR_STATION, 1)

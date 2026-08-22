@@ -62,6 +62,9 @@ func _ready() -> void:
 	_build_spire_ui()
 	_update_top_bar()
 
+	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
+	UIThemeHelper.focus_first(self)
+
 func _process(delta: float) -> void:
 	for ring in active_rings:
 		if is_instance_valid(ring):

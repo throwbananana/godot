@@ -110,6 +110,9 @@ func setup(type: String) -> void:
 	if tex and icon_sprite:
 		icon_sprite.texture = tex
 
+	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
+	UIThemeHelper.focus_first(self)
+
 func _grant_life(amount: int) -> void:
 	GameState.player_lives += amount
 	if GameState.player_count == 2:

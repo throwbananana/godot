@@ -84,6 +84,9 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 		card_btn.pressed.connect(_on_card_picked.bind(opt, rpg_mgr))
 		card_container.add_child(card_btn)
 
+	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
+	UIThemeHelper.focus_first(self)
+
 func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]:
 	var choices: Array[Dictionary] = []
 	var branch = rpg_mgr.get_branch(player_id)
