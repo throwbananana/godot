@@ -10,7 +10,7 @@ const BuilderController = preload("res://scripts/builder_controller.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const MapTemplates = preload("res://scripts/map_templates.gd")
-const MapGenerator = preload("res://scripts/map_generator.gd")
+const MapDirector = preload("res://scripts/map_director.gd")
 const DarknessFog = preload("res://scripts/darkness_fog.gd")
 const FallingBombHazard = preload("res://scripts/falling_bomb_hazard.gd")
 
@@ -481,7 +481,11 @@ func _build_map() -> void:
 		# spins up its own local RandomNumberGenerator rather than using the
 		# global randi()/randf() stream.
 		var daily_act = randi_range(1, 3)
-		layout = MapGenerator.generate_map(daily_act, MapGenerator.Symmetry.HORIZONTAL, GameState.get_daily_seed())
+		# tier_override=2: 每日挑战是单场一命的花活局, 机制拉满才是它的卖点,
+		# 不该被楼层档位压成入门图 (它本来也没有"楼层"的概念)。
+		# 走 MapDirector 是为了拿到连通性验收 —— 每日是全服同一张图, 生成出
+		# 一张出生点被钢墙隔断的图, 所有人当天都得吃这个亏。
+		layout = MapDirector.build(0, daily_act, GameState.get_daily_seed(), 2)
 	else:
 		layout = MapTemplates.get_layout_for_stage(GameState.current_floor, GameState.battle_type, GameState.current_act)
 	current_map_layout = layout

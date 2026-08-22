@@ -1,25 +1,75 @@
 class_name MapGenerator
 extends RefCounted
 
+## 随机地图的**采样器**: 按一份"方案(plan)"往格子里填地形, 只管填, 不管好不好玩。
+##
+## 决定"这一层该给什么样的图"、生成完检查连通性、不合格就重来 —— 那些是
+## map_director.gd 的活。这里刻意只保留采样, 免得又出现两套都能生成地图、
+## 谁后跑谁说了算的局面 (本仓库在 build_*.py 上已经吃过这个亏)。
+##
+## 入口是 generate_planned(); generate_map() 是保留的旧签名, 内部也走同一条
+## 采样路径, 不另开一份实现。
+
 enum Biome { PLAINS_FORTRESS, DESERT_DUNES, GLACIAL_VOID }
 enum Symmetry { HORIZONTAL, ROTATIONAL, ASYMMETRIC }
 
-# Generates a valid, playable 13x13 map grid
-static func generate_map(act: int = 1, symmetry: Symmetry = Symmetry.HORIZONTAL, custom_seed: int = 0) -> Array:
-	var rng = RandomNumberGenerator.new()
-	if custom_seed != 0:
-		rng.seed = custom_seed
-	else:
-		rng.randomize()
+## 各生物群系的**基础地形**权重 —— 不含任何需要现学的机制。
+## [地形号, 权重]
+const BIOME_TERRAIN := {
+	Biome.PLAINS_FORTRESS: [[0, 34], [1, 18], [8, 10], [2, 7], [3, 7], [4, 8]],
+	Biome.DESERT_DUNES:    [[0, 34], [6, 16], [7, 12], [8, 9], [2, 7], [1, 6]],
+	Biome.GLACIAL_VOID:    [[0, 34], [1, 12], [8, 10], [2, 8], [3, 8], [4, 4]],
+}
 
-	var biome = Biome.PLAINS_FORTRESS
-	match act:
-		1: biome = Biome.PLAINS_FORTRESS
-		2: biome = Biome.DESERT_DUNES
-		3: biome = Biome.GLACIAL_VOID
-		_: biome = Biome.PLAINS_FORTRESS
+## 机制"族"→ 该族包含的地形号。按族而不是按地形号控制难度, 是因为难度来自
+## "玩家要同时理解几种新机制", 而不是"屏幕上有多少格". 一张全是冰面的图有
+## 48 格机制地形却只有一种机制, 并不难 —— 手搓模板 GLACIER_ICE 就是这样。
+const FAMILY_TILES := {
+	"ice":      [9],
+	"platform": [10, 11, 23],
+	"wormhole": [12],
+	"shield":   [13],
+	"wind":     [14, 15, 16, 17],
+	"conveyor": [18, 19, 20, 21],
+	"jump":     [22],
+	"lamp":     [24],
+	"electric": [25],
+	"barrel":   [26],
+}
 
-	# Initialize empty 13x13 grid
+## 生成一张 13x13 网格。
+##
+## plan 字段:
+##   biome      : Biome
+##   families   : Array[String]  允许出现的机制族 (可为空 -> 纯地形图)
+##   mech_weight: int            机制地形的总权重 (相对 BIOME_TERRAIN 的权重和)
+##   symmetry   : Symmetry
+static func generate_planned(plan: Dictionary, rng: RandomNumberGenerator) -> Array:
+	var biome: int = plan.get("biome", Biome.PLAINS_FORTRESS)
+	var families: Array = plan.get("families", [])
+	var mech_weight: int = plan.get("mech_weight", 0)
+	var symmetry: int = plan.get("symmetry", Symmetry.HORIZONTAL)
+
+	# 把地形与机制拼成一张加权表, 一次带权抽样搞定, 不用一串 if roll <
+	var table: Array = []
+	for entry in BIOME_TERRAIN[biome]:
+		table.append([int(entry[0]), int(entry[1])])
+	if not families.is_empty() and mech_weight > 0:
+		# 总机制权重按族均分, 族内再按地形号均分 —— 这样"族"才是难度旋钮:
+		# 允许 4 个方向的风机不会让风比只有 1 种地形的虫洞多占 4 倍面积。
+		var per_family: float = float(mech_weight) / float(families.size())
+		for fam in families:
+			var tiles: Array = FAMILY_TILES.get(fam, [])
+			if tiles.is_empty():
+				continue
+			var per_tile: int = maxi(1, int(round(per_family / float(tiles.size()))))
+			for t in tiles:
+				table.append([int(t), per_tile])
+
+	var total: int = 0
+	for e in table:
+		total += int(e[1])
+
 	var grid: Array = []
 	for r in range(13):
 		var row: Array = []
@@ -27,159 +77,101 @@ static func generate_map(act: int = 1, symmetry: Symmetry = Symmetry.HORIZONTAL,
 			row.append(0)
 		grid.append(row)
 
-	# 1. Generate Left Half (Columns 0 to 6)
+	# 1. 只生成左半边 (含中列)
 	for r in range(1, 12):
 		for c in range(1, 7):
-			# Skip Eagle Base Sanctuary Area (r >= 10, c >= 4)
 			if r >= 10 and c >= 4:
-				continue
-			# Skip Top Enemy Spawn Zones (r <= 1, c in [0, 1, 6])
+				continue          # 鹰巢保护区
 			if r <= 1 and (c <= 1 or c == 6):
-				continue
+				continue          # 敌人出生区
+			grid[r][c] = _weighted_pick(table, total, rng)
 
-			var tile = _generate_tile_for_biome(biome, r, c, rng)
-			grid[r][c] = tile
-
-	# 2. Apply Symmetry to Right Half (Columns 7 to 12)
+	# 2. 镜像到右半边
 	if symmetry == Symmetry.HORIZONTAL:
 		for r in range(13):
 			for c in range(7, 13):
-				var mirror_c = 12 - c
-				var src_tile = grid[r][mirror_c]
-				grid[r][c] = _mirror_tile_horizontal(src_tile)
+				grid[r][c] = _mirror_tile_horizontal(grid[r][12 - c])
 	elif symmetry == Symmetry.ROTATIONAL:
 		for r in range(13):
 			for c in range(7, 13):
-				var mirror_r = 12 - r
-				var mirror_c = 12 - c
-				var src_tile = grid[mirror_r][mirror_c]
-				grid[r][c] = _mirror_tile_rotational(src_tile)
+				grid[r][c] = _mirror_tile_rotational(grid[12 - r][12 - c])
 
-	# 3. Clear Critical Spawns & Corridors
 	_carve_critical_paths(grid)
-
-	# 4. Sprinkle Tactical Elements (Shield Station, Jump Pad, Wormhole)
-	_sprinkle_tactical_features(grid, biome, rng)
-
 	return grid
 
-static func _generate_tile_for_biome(biome: Biome, r: int, c: int, rng: RandomNumberGenerator) -> int:
-	var roll = rng.randf()
 
-	match biome:
-		Biome.PLAINS_FORTRESS:
-			# Focus: Brick, Hard Clay, Rivers, Foliage, Conveyors, Oil Barrels, Electric Walls
-			if roll < 0.32: return 0 # Empty
-			elif roll < 0.48: return 1 # Brick Wall
-			elif roll < 0.58: return 8 # Hard Clay Block (3HP)
-			elif roll < 0.65: return 2 # Steel Wall
-			elif roll < 0.72: return 3 # River Water
-			elif roll < 0.78: return 4 # Foliage
-			elif roll < 0.84: return 26 # Explosive Oil Barrel
-			elif roll < 0.90: return 25 # Electric Wall
-			elif roll < 0.95: return 18 # Conveyor UP
-			else: return 21 # Conveyor RIGHT
-
-		Biome.DESERT_DUNES:
-			# Focus: Quicksand, Sand Dunes, Hard Clay, Wind Blowers, Jump Pads, Oil Barrels
-			if roll < 0.30: return 0 # Empty
-			elif roll < 0.45: return 6 # Quicksand Ground
-			elif roll < 0.58: return 7 # Sand Dune Block
-			elif roll < 0.68: return 8 # Hard Clay Block
-			elif roll < 0.74: return 2 # Steel Wall
-			elif roll < 0.80: return 26 # Explosive Oil Barrel
-			elif roll < 0.86: return 14 # Wind Blower UP
-			elif roll < 0.92: return 22 # Jump Pad
-			elif roll < 0.96: return 25 # Electric Wall
-			else: return 17 # Wind Blower RIGHT
-
-		Biome.GLACIAL_VOID:
-			# Focus: Glacial Ice, Wormholes, Moving Platforms, Electric Walls, Street Lamps, Shield Stations
-			if roll < 0.28: return 0 # Empty
-			elif roll < 0.44: return 9 # Glacial Ice
-			elif roll < 0.54: return 8 # Hard Clay
-			elif roll < 0.62: return 2 # Steel Wall
-			elif roll < 0.70: return 25 # Electric Wall
-			elif roll < 0.76: return 3 # Void River
-			elif roll < 0.84: return 12 # Cosmic Wormhole
-			elif roll < 0.90: return 22 # Jump Pad
-			elif roll < 0.95: return 24 # Street Lamp
-			else: return 10 # Moving Platform
-
+static func _weighted_pick(table: Array, total: int, rng: RandomNumberGenerator) -> int:
+	var roll: int = rng.randi_range(1, maxi(1, total))
+	var acc: int = 0
+	for e in table:
+		acc += int(e[1])
+		if roll <= acc:
+			return int(e[0])
 	return 0
 
+
+## 旧签名, 保留给不关心楼层的调用方 (以及历史测试)。走的是同一条采样路径,
+## 只是自己拼一份"全机制"方案 —— 想要按楼层控难度请用 MapDirector.build()。
+static func generate_map(act: int = 1, symmetry: Symmetry = Symmetry.HORIZONTAL, custom_seed: int = 0) -> Array:
+	var rng := RandomNumberGenerator.new()
+	if custom_seed != 0:
+		rng.seed = custom_seed
+	else:
+		rng.randomize()
+
+	var biome := Biome.PLAINS_FORTRESS
+	match act:
+		2: biome = Biome.DESERT_DUNES
+		3: biome = Biome.GLACIAL_VOID
+		_: biome = Biome.PLAINS_FORTRESS
+
+	return generate_planned({
+		"biome": biome,
+		"families": FAMILY_TILES.keys(),
+		"mech_weight": 30,
+		"symmetry": symmetry,
+	}, rng)
+
+
 static func _mirror_tile_horizontal(tile: int) -> int:
-	# Mirror directional tiles
 	match tile:
 		16: return 17 # Wind LEFT -> RIGHT
 		17: return 16 # Wind RIGHT -> LEFT
 		20: return 21 # Conveyor LEFT -> RIGHT
 		21: return 20 # Conveyor RIGHT -> LEFT
 		_: return tile
+
 
 static func _mirror_tile_rotational(tile: int) -> int:
 	match tile:
-		14: return 15 # Wind UP -> DOWN
-		15: return 14 # Wind DOWN -> UP
-		16: return 17 # Wind LEFT -> RIGHT
-		17: return 16 # Wind RIGHT -> LEFT
-		18: return 19 # Conveyor UP -> DOWN
-		19: return 18 # Conveyor DOWN -> UP
-		20: return 21 # Conveyor LEFT -> RIGHT
-		21: return 20 # Conveyor RIGHT -> LEFT
+		14: return 15
+		15: return 14
+		16: return 17
+		17: return 16
+		18: return 19
+		19: return 18
+		20: return 21
+		21: return 20
 		_: return tile
 
+
+## 清出出生点、鹰巢区和中央走廊。这是**硬约束**, 不是美化:
+## main.gd::_spawn_base_and_walls() 会自己在 row11 col5-7 / row12 col5,7 放
+## 鹰和围墙, 那几格必须是空的。
 static func _carve_critical_paths(grid: Array) -> void:
-	# Keep top row and bottom row borders free
 	for c in range(13):
 		grid[0][c] = 0
 		grid[12][c] = 0
 
-	# Keep Enemy Spawn Tiles (Col 0, 6, 12, Row 0 & 1) completely clear
 	for c in [0, 1, 5, 6, 7, 11, 12]:
 		grid[0][c] = 0
 		grid[1][c] = 0
 
-	# Keep Player Spawn & Eagle Base Area Clear (Row 11 & 12, Col 4..8)
 	for r in [10, 11, 12]:
 		for c in [4, 5, 6, 7, 8]:
 			grid[r][c] = 0
 
-	# Keep vertical central corridor partially open (Col 6)
+	# 中央竖向走廊别被永久障碍堵死
 	for r in [2, 3, 7, 8, 9]:
-		if grid[r][6] == 2 or grid[r][6] == 25: # Replace blocking steel or electric wall with empty or passable
+		if grid[r][6] == 2 or grid[r][6] == 25:
 			grid[r][6] = 0
-
-static func _sprinkle_tactical_features(grid: Array, biome: Biome, rng: RandomNumberGenerator) -> void:
-	# Place 1 or 2 Shield Stations at key tactical cross points
-	var shield_candidates = [Vector2(2, 6), Vector2(10, 6), Vector2(6, 3), Vector2(6, 9)]
-	shield_candidates.shuffle()
-	var sc = shield_candidates[0]
-	grid[int(sc.y)][int(sc.x)] = 13 # Shield Station
-	grid[int(sc.y)][12 - int(sc.x)] = 13
-
-	# Place Street Lamps at key crossroads
-	grid[2][2] = 24 # Street Lamp Top-Left
-	grid[2][10] = 24 # Street Lamp Top-Right
-	grid[8][2] = 24 # Street Lamp Bottom-Left
-	grid[8][10] = 24 # Street Lamp Bottom-Right
-
-	# Place Tactical Biome-specific Features
-	if biome == Biome.GLACIAL_VOID:
-		grid[3][3] = 12 # Wormhole
-		grid[3][9] = 12
-		grid[9][3] = 12
-		grid[9][9] = 12
-		grid[6][1] = 25 # Electric Wall flank
-		grid[6][11] = 25
-	elif biome == Biome.DESERT_DUNES:
-		grid[4][2] = 22 # Jump Pad
-		grid[4][10] = 22
-		grid[8][4] = 26 # Oil Barrel
-		grid[8][8] = 26
-		grid[6][6] = 22 # Central Jump Pad
-	elif biome == Biome.PLAINS_FORTRESS:
-		grid[4][3] = 26 # Oil Barrel
-		grid[4][9] = 26
-		grid[7][3] = 22 # Jump Pad
-		grid[7][9] = 22

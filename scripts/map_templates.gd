@@ -1,6 +1,8 @@
 class_name MapTemplates
 extends RefCounted
 
+const MapDirector = preload("res://scripts/map_director.gd")
+
 # Tile Legend:
 # 0 = Empty Ground
 # 1 = Brick Wall (2x2 Destructible Subdivided)
@@ -1053,7 +1055,10 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 
 	# Procedural generation chance (25% chance for a fresh randomized layout during regular battles)
 	if allow_procgen and battle_type == "battle" and (floor_idx % 3 == 2):
-		return MapGenerator.generate_map(current_act)
+		# 走 MapDirector 而不是直接调 MapGenerator: 它会按 floor_idx 定档位、
+		# 限制机制族数, 并在返回前验收连通性。以前这里是无视楼层的满配生成,
+		# 而这一分支第一次触发正好是 floor 2 —— 全局最难的图出现在第三层。
+		return MapDirector.build(floor_idx, current_act)
 
 	if battle_type == "boss":
 		match current_act:

@@ -12,16 +12,17 @@ extends SceneTree
 
 const MapTemplates = preload("res://scripts/map_templates.gd")
 const GameState = preload("res://scripts/game_state.gd")
+const MapDirector = preload("res://scripts/map_director.gd")
 
-# 坦克永远过不去的地形。砖(1)/硬黏土(8)/沙丘(7) 都能打掉, 所以连通性上算通路 ——
-# 被砖封住只是要多开几枪, 被钢或水封住才是真的过不去。
-const HARD_BLOCK := [2, 3]
-
-# 摆渡/越障装置。地图里只要有这些, 水面就不再是绝对屏障 —— 设计上本来就是
-# "靠平台渡过去"。VOID_FERRY / VOID_CANAL 就是这么设计的: 第 3、9 行是整幅
-# 水墙, 全靠 1、11 两列的竖向平台(11)摆渡。静态泛洪没法模拟平台的往返路线,
-# 所以这里改成: 图里备了渡河手段, 就不再把水判成死路。
-const CROSSING_TILES := [10, 11, 12, 22, 23]
+# 连通性判定统一走 MapDirector.reachable_from_base()。
+#
+# 这里原本有一份自己的实现 (HARD_BLOCK = [2,3] + CROSSING_TILES), 而
+# MapDirector 后来为程序生成又写了一份 —— 同一个"什么叫通得过去"在两处
+# 各说各话, 正是本仓库在 build_*.py 上吃过大亏的那种重复。两份还真的不一样:
+# 这边把电墙(25)当可通行, 而电墙是 StaticBody2D 且加入 steel 组, 只有 3 阶
+# 等离子弹打得穿, 对绝大多数单位就是钢墙。改用生产代码那一份 (含 25, 同时
+# 保留"图里备了渡河手段就不把水判成死路"的摆渡语义) —— 已核对过 54 张模板
+# 里没有一张因为收紧而变得不连通, 所以这是补上盲区, 不是放宽或收紧标准。
 
 # floor 0 那一档允许的地形: 基础地形 + {硬黏土, 地雷, 沙地} 里至多一种。
 const BASIC_TILES := [0, 1, 2, 3, 4]
@@ -62,33 +63,10 @@ func _all_templates() -> Dictionary:
 	return out
 
 
-## 从鹰巢那一格泛洪, 返回可达格集合。
+## 从鹰巢那一格泛洪, 返回可达格集合。见文件头: 判定本身在 MapDirector 里,
+## 这里只是转调, 免得同一套规则在两处漂移。
 func _reachable_from_base(g: Array) -> Dictionary:
-	var blockers: Array = HARD_BLOCK.duplicate()
-	var has_crossing := false
-	for r in range(13):
-		for c in range(13):
-			if int(g[r][c]) in CROSSING_TILES:
-				has_crossing = true
-	if has_crossing:
-		blockers.erase(3)      # 有摆渡手段, 水不再算死路
-
-	var seen := {}
-	var stack: Array = [Vector2i(6, 12)]
-	seen[Vector2i(6, 12)] = true
-	while not stack.is_empty():
-		var cur: Vector2i = stack.pop_back()
-		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var nx: Vector2i = cur + d
-			if nx.x < 0 or nx.x > 12 or nx.y < 0 or nx.y > 12:
-				continue
-			if seen.has(nx):
-				continue
-			if int(g[nx.y][nx.x]) in blockers:
-				continue
-			seen[nx] = true
-			stack.append(nx)
-	return seen
+	return MapDirector.reachable_from_base(g)
 
 
 func _run() -> void:
