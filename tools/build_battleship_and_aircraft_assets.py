@@ -15,6 +15,7 @@ from sokpop_common import (
     create_clay_mat,
     apply_uniform_clay_bevel,
     render_and_clean,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
@@ -243,7 +244,7 @@ def main():
     # 3. Render Water Wake VFX
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_water_wake_vfx()
     render_and_clean(objs, os.path.join(SPRITES_EFFECTS, "vfx_water_wake.png"))
     print("[OK] Water Wake VFX Rendered.")
@@ -251,7 +252,7 @@ def main():
     # 4. Render Plane Shadow VFX
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_plane_shadow_vfx()
     render_and_clean(objs, os.path.join(SPRITES_EFFECTS, "vfx_plane_shadow.png"))
     print("[OK] Plane Shadow VFX Rendered.")

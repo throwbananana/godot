@@ -20,6 +20,7 @@ from sokpop_common import (  # noqa: E402
     clear_scene,
     setup_render_settings,
     create_sokpop_lighting,
+    ORTHO_SCALE_DEFAULT,
     create_clay_mat,
     apply_uniform_clay_bevel as apply_bevel,
     reset_jitter_seed,
@@ -27,7 +28,7 @@ from sokpop_common import (  # noqa: E402
 )
 
 
-def create_lighting(ortho_scale=3.3):
+def create_lighting(ortho_scale=ORTHO_SCALE_DEFAULT):
     create_sokpop_lighting(ortho_scale=ortho_scale)
 
 
@@ -252,7 +253,7 @@ def build_base_damaged():
 def main():
     clear_scene()
     setup_render_settings(rx=256, ry=256)
-    create_lighting(ortho_scale=3.3)
+    create_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
 
     print(">>> Rendering Sokpop Animations & VFX (All 6+ Frames)...")
     # 1. Muzzle Flash (6 frames)

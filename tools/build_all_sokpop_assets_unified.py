@@ -1913,7 +1913,7 @@ def main():
         render_and_clean(build_sokpop_map_node(node_type), os.path.join(SPRITES_MAP, f"node_{node_type}.png"))
     create_sokpop_lighting(ortho_scale=4.2, sun_energy=1.4)  # Wider frame, dimmer sun for glow-heavy ring
     render_and_clean(build_sokpop_active_ring(), os.path.join(SPRITES_MAP, "node_active_ring.png"))
-    create_sokpop_lighting(ortho_scale=3.3)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
 
     # Master .blend clean and save
     for mat in list(bpy.data.materials):

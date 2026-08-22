@@ -15,6 +15,7 @@ from sokpop_common import (
     create_clay_mat,
     apply_uniform_clay_bevel,
     render_and_clean,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
@@ -211,7 +212,7 @@ def main():
     # 1. Render Shield Recharge Station
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     shld_objs = build_shield_station()
     shld_out = os.path.join(SPRITES_BUILDINGS, "shield_station.png")
     render_and_clean(shld_objs, shld_out)
@@ -220,7 +221,7 @@ def main():
     # 2. Render Wind Blower Turbine
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     blower_objs = build_wind_blower()
     blower_out = os.path.join(SPRITES_BUILDINGS, "wind_blower.png")
     render_and_clean(blower_objs, blower_out)

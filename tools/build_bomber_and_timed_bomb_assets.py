@@ -15,6 +15,7 @@ from sokpop_common import (
     create_clay_mat,
     apply_uniform_clay_bevel,
     render_and_clean,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
@@ -240,7 +241,7 @@ def main():
     # 1. Render Timed Bomb Entity
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_timed_bomb()
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "prop_timed_bomb.png"))
     print("[OK] Timed Bomb Entity Rendered.")
@@ -248,7 +249,7 @@ def main():
     # 2. Render Timed Bomb Powerup Crate
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_timed_bomb_powerup()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "powerup_timed_bomb.png"))
     print("[OK] Timed Bomb Powerup Rendered.")
@@ -256,7 +257,7 @@ def main():
     # 3. Render Flame Cross Beam
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_flame_cross_beam()
     render_and_clean(objs, os.path.join(SPRITES_EFFECTS, "flame_cross_beam.png"))
     print("[OK] Flame Cross Beam Rendered.")

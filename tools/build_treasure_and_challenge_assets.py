@@ -15,6 +15,7 @@ from sokpop_common import (
     create_clay_mat,
     apply_uniform_clay_bevel,
     render_and_clean,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_DEFAULT,
     TILE_FULL_BLEED,
 )
@@ -216,7 +217,7 @@ def main():
     # 1. Render Treasure Chest
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     chest_objs = build_treasure_chest()
     chest_out = os.path.join(SPRITES_POWERUPS, "treasure_chest.png")
     render_and_clean(chest_objs, chest_out)
@@ -225,7 +226,7 @@ def main():
     # 2. Render Golden Mystery Key
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     key_objs = build_treasure_key()
     key_out = os.path.join(SPRITES_POWERUPS, "treasure_key.png")
     render_and_clean(key_objs, key_out)
@@ -234,7 +235,7 @@ def main():
     # 3. Render Spire Challenge Node Icon
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     node_objs = build_challenge_node_icon()
     node_out = os.path.join(SPRITES_MAP, "node_challenge.png")
     render_and_clean(node_objs, node_out)

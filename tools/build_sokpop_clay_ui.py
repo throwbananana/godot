@@ -18,6 +18,7 @@ from sokpop_common import (  # noqa: E402
     clear_scene,
     setup_render_settings,
     create_sokpop_lighting,
+    ORTHO_SCALE_DEFAULT,
     create_clay_mat as create_sokpop_clay_mat,
     apply_uniform_clay_bevel as add_smooth_clay_bevel,
     reset_jitter_seed,
@@ -25,7 +26,7 @@ from sokpop_common import (  # noqa: E402
 )
 
 
-def create_sokpop_warm_lighting(ortho_scale=3.3):
+def create_sokpop_warm_lighting(ortho_scale=ORTHO_SCALE_DEFAULT):
     create_sokpop_lighting(ortho_scale=ortho_scale)
 
 

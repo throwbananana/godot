@@ -15,6 +15,7 @@ from sokpop_common import (
     create_clay_mat,
     apply_uniform_clay_bevel,
     render_and_clean,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
@@ -241,7 +242,7 @@ def main():
     # 3. Render Suicide Blast VFX
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_suicide_blast_vfx()
     render_and_clean(objs, os.path.join(SPRITES_EFFECTS, "vfx_suicide_blast.png"))
     print("[OK] Suicide Blast VFX Rendered.")
@@ -249,7 +250,7 @@ def main():
     # 4. Render Mirage Shimmer VFX
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_mirage_shimmer_vfx()
     render_and_clean(objs, os.path.join(SPRITES_EFFECTS, "vfx_mirage_shimmer.png"))
     print("[OK] Mirage Shimmer VFX Rendered.")

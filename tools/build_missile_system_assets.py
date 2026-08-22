@@ -15,6 +15,7 @@ from sokpop_common import (
     create_clay_mat,
     apply_uniform_clay_bevel,
     render_and_clean,
+    ORTHO_SCALE_PROP,
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
 )
@@ -211,7 +212,7 @@ def main():
     # 1. Render Tactical Missile Projectile
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_tactical_missile()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "projectile_missile.png"))
     print("[OK] Projectile Missile Rendered.")
@@ -219,7 +220,7 @@ def main():
     # 2. Render Targeting Reticle
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_targeting_reticle()
     render_and_clean(objs, os.path.join(SPRITES_EFFECTS, "reticle_target.png"))
     print("[OK] Targeting Reticle Rendered.")
@@ -227,7 +228,7 @@ def main():
     # 3. Render Missile Powerup
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=2.70)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
     objs = build_missile_powerup()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "missile_strike.png"))
     print("[OK] Missile Powerup Rendered.")
