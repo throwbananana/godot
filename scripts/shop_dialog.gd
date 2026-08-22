@@ -171,19 +171,56 @@ func _generate_shop_inventory() -> void:
 		it["sold_out"] = false
 		current_shop_items.append(it)
 
+## 商店卖的是"给队伍"的东西, 不是"给 1 号位"的东西。
+##
+## 大多数商品写的是 GameState 上的团队字段 (max_hp_lvl / fire_rate_lvl /
+## speed_lvl / builder_lvl / atk_bonus / player_xp), 两个玩家天然共享。但有
+## 四样不是: 备用生命 (player_lives 与 p2_lives 分开)、升阶模块, 以及三个
+## perk (unlocked_perks 与 p2_unlocked_perks 分开)。这四样以前一律硬编码
+## player_id = 1, 于是**双人模式下 2P 永远拿不到**。
+##
+## 同一个项目里的 event_dialog.gd 对完全相同的奖励是发两份的
+## (_grant_life / _grant_tier_up / _grant_perk 都判 player_count == 2) ——
+## 也就是说双份才是既定行为, 商店这边是漏了, 不是另一种设计。
+const PER_PLAYER_PERKS := ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds"]
+
+
+## 这一局有几个玩家要拿这份奖励。
+static func _reward_targets() -> Array:
+	return [1, 2] if GameState.player_count == 2 else [1]
+
+
 func _can_buy_item(item_id: String) -> bool:
 	if item_id == "star_tier":
 		# Only default-branch players actually cap at tier 3 (multi-shot/plasma
 		# progression). Once a branch is picked, this item redirects to a
 		# permanent +1 ATK (GameState.grant_star_tier_reward) which has no
 		# such cap -- same as the shop's other flat stat items.
-		return GameState.tank_branch != "default" or GameState.player_tier < 3
-	if item_id in ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds"]:
+		#
+		# 双人时只要还有一个人吃得下就该能买 —— 否则 1P 顶了 tier 3 会连带
+		# 把 2P 的升阶也锁死。
+		for pid in _reward_targets():
+			var branch = GameState.tank_branch if pid == 1 else GameState.p2_branch
+			var tier = GameState.player_tier if pid == 1 else GameState.p2_tier
+			if branch != "default" or tier < 3:
+				return true
+		return false
+	if item_id in PER_PLAYER_PERKS:
 		# These are perks (GameState.unlocked_perks), not flat stat fields --
 		# unlike the items above, repeat purchases across shop visits are
 		# capped by GameState.PERK_MAX_STACKS.
-		return int(GameState.unlocked_perks.get(item_id, 0)) < GameState.max_stacks_for_perk(item_id)
+		var cap = GameState.max_stacks_for_perk(item_id)
+		for pid in _reward_targets():
+			var perks = GameState.unlocked_perks if pid == 1 else GameState.p2_unlocked_perks
+			if int(perks.get(item_id, 0)) < cap:
+				return true
+		return false
 	return true
+
+func _grant_perk_to_team(perk_id: String) -> void:
+	for pid in _reward_targets():
+		GameState.grant_perk_stack(perk_id, pid)
+
 
 func _apply_item_purchase(item_id: String) -> void:
 	for b in BUILDING_ITEMS:
@@ -195,7 +232,8 @@ func _apply_item_purchase(item_id: String) -> void:
 	match item_id:
 		"star_tier":
 			var was_default = (GameState.tank_branch == "default")
-			GameState.grant_star_tier_reward(1)
+			for pid in _reward_targets():
+				GameState.grant_star_tier_reward(pid)
 			if was_default:
 				_show_toast("战车成功升级至阶级 %d !" % (GameState.player_tier + 1))
 			else:
@@ -210,7 +248,11 @@ func _apply_item_purchase(item_id: String) -> void:
 			GameState.speed_lvl += 1
 			_show_toast("战车引擎输出功率强化！")
 		"extra_life":
+			# player_lives 和 p2_lives 是分开的两个字段 —— 只加前者的话双人
+			# 模式下 2P 买了命也没命。event_dialog._grant_life() 同理。
 			GameState.player_lives += 1
+			if GameState.player_count == 2:
+				GameState.p2_lives += 1
 			_show_toast("呼叫近卫坦克增援，备用生命 +1！")
 		"steel_shovel":
 			GameState.builder_lvl += 1
@@ -222,14 +264,14 @@ func _apply_item_purchase(item_id: String) -> void:
 			GameState.player_xp += 50
 			_show_toast("获得地雷战术补给，经验 +50！")
 		"ricochet_rounds":
-			GameState.grant_perk_stack("ricochet_rounds", 1)
+			_grant_perk_to_team("ricochet_rounds")
 			var bounces = int(GameState.unlocked_perks.get("ricochet_rounds", 0))
 			_show_toast("反射炮弹改装完成！当前可反弹 %d 次 —— 小心别被自己的流弹打中！" % bounces)
 		"amphibious_hull":
-			GameState.grant_perk_stack("amphibious_hull", 1)
+			_grant_perk_to_team("amphibious_hull")
 			_show_toast("两栖化改装完成！可以下水了，但陆地机动力永久 -50%！")
 		"armor_piercing_rounds":
-			GameState.grant_perk_stack("armor_piercing_rounds", 1)
+			_grant_perk_to_team("armor_piercing_rounds")
 			_show_toast("贯穿装甲弹装填完毕！可洞穿墙体，但再也无法拦截敌方炮弹！")
 
 func _render_item_cards() -> void:
@@ -308,6 +350,13 @@ func _render_item_cards() -> void:
 func _on_buy_item(item: Dictionary) -> void:
 	if GameState.gold < item["cost"]:
 		_show_toast("金币不足！(Not Enough Gold)")
+		return
+	# 上限也要在这里再判一次, 不能只靠 btn_buy.disabled。禁用按钮确实不会发
+	# pressed, 所以今天走 UI 点不出问题 —— 但"扣了钱、grant_perk_stack()
+	# 返回 false、什么都没给, 还弹一句购买成功"离得只有一个新调用点那么远,
+	# 而且真出了也不会报错。
+	if not _can_buy_item(item["id"]):
+		_show_toast("已达上限，无法再购买！")
 		return
 
 	GameState.gold -= item["cost"]
