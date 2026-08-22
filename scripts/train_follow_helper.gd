@@ -129,3 +129,36 @@ static func sample_at_distance(positions: Array[Vector2], rotations: Array[float
 			}
 		accum += seg
 	return {"position": positions[0], "rotation": rotations[0]}
+
+
+## 把一个"车队的某一节"解析回真正驾驶它的那辆坦克。
+##
+## train 分支的玩家会挂上 train_carriage.gd 的跟随车厢, 而车厢在 _ready()
+## 里 add_to_group("player") —— 它得在"player"组里, 敌方子弹和伤害判定才认
+## 得它。副作用是**所有只判 is_in_group("player") 的拾取物都会被车厢触发**。
+##
+## 大多数收集物无所谓: 金币/钻石/补给/宝箱/钥匙都是把奖励记到
+## get_tree().current_scene 上的团队账户, 谁碰到都一样。但有两处不是:
+##   * power_up.gd 是对 body 本身调 apply_powerup()。车厢没有这个方法,
+##     于是道具被销毁、音效照播、效果为零 —— 车队越长, 被白吃的概率越大。
+##   * gold_coin.gd / diamond_gem.gd 要读 body.player_id 才能算
+##     magnetic_salvage 的加成; 车厢没有这个字段, 加成静默丢失。
+##
+## 沿 leader_node 往前走即可 —— 车厢的 leader 可能是上一节车厢, 所以要一直
+## 走到链头。返回 null 表示这个 body 压根不是车队的一部分 (调用方原样处理)。
+static func resolve_train_owner(body: Node) -> Node:
+	if body == null or not is_instance_valid(body):
+		return null
+	var cur: Node = body
+	# 链长有硬上限 (player.gd::_sync_train_carriages 只挂几节), 这里再给一个
+	# 保险计数, 免得万一有人把 leader_node 接成环就死循环。
+	for _i in range(16):
+		if cur.has_method("apply_powerup"):
+			return cur
+		if not ("leader_node" in cur):
+			return null
+		var nxt = cur.leader_node
+		if nxt == null or not is_instance_valid(nxt):
+			return null
+		cur = nxt
+	return null

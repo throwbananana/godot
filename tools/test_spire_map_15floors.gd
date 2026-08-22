@@ -59,4 +59,74 @@ func _check_act(act: int) -> void:
 			print("    [FAIL] Orphaned node with no incoming connection: %s (floor %d)" % [node_id, node["floor"]])
 	assert(orphans == 0, "Act %d has %d unreachable node(s)" % [act, orphans])
 
-	print("  [PASS] Act %d: 15 floors, %d nodes, %d connections, 0 orphans." % [act, GameState.spire_nodes.size(), GameState.spire_connections.size()])
+	# 上面的"无孤儿"只保证每个节点有**入边**。真正会卡死一局的是相反的一侧:
+	# 有入边、没出边。GameState.is_node_available() 要求存在一条从
+	# current_node_id 出发的连线, 所以走进这样的节点之后地图上什么都点不动了 ——
+	# 而且不会报错, 玩家只会以为游戏卡住。boss 层 (最后一层) 是唯一合法的终点。
+	var outgoing: Dictionary = {}
+	for conn in GameState.spire_connections:
+		if not outgoing.has(conn["from"]):
+			outgoing[conn["from"]] = []
+		outgoing[conn["from"]].append(conn["to"])
+
+	var dead_ends: Array[String] = []
+	for node_id in GameState.spire_nodes.keys():
+		var node2 = GameState.spire_nodes[node_id]
+		if int(node2["floor"]) >= GameState.max_floors - 1:
+			continue
+		if not outgoing.has(node_id) or (outgoing[node_id] as Array).is_empty():
+			dead_ends.append("%s (floor %d)" % [node_id, int(node2["floor"])])
+	assert(dead_ends.is_empty(),
+		"Act %d 有 %d 个死胡同节点, 走进去整局卡死: %s"
+		% [act, dead_ends.size(), ", ".join(dead_ends)])
+
+	# 真可达性: "有入边"不等于"从起点走得到" —— 入边可能来自一个本身就走不到
+	# 的节点。从所有 floor 0 起点做一次 BFS 才是实际能走到的集合。
+	var seen: Dictionary = {}
+	var stack: Array = []
+	for node_id in GameState.spire_nodes.keys():
+		if int(GameState.spire_nodes[node_id]["floor"]) == 0:
+			seen[node_id] = true
+			stack.append(node_id)
+	while not stack.is_empty():
+		var cur = stack.pop_back()
+		for nxt in outgoing.get(cur, []):
+			if not seen.has(nxt):
+				seen[nxt] = true
+				stack.append(nxt)
+	var unreached: Array[String] = []
+	for node_id in GameState.spire_nodes.keys():
+		if not seen.has(node_id):
+			unreached.append(node_id)
+	assert(unreached.is_empty(),
+		"Act %d 有 %d 个节点从 floor 0 根本走不到: %s"
+		% [act, unreached.size(), ", ".join(unreached)])
+
+	# 每一个开局选项都必须能通到 boss —— 否则选错起点等于开局就废了。
+	for start_id in GameState.spire_nodes.keys():
+		if int(GameState.spire_nodes[start_id]["floor"]) != 0:
+			continue
+		var s2: Dictionary = {start_id: true}
+		var st2: Array = [start_id]
+		var hit_boss := false
+		while not st2.is_empty():
+			var cur = st2.pop_back()
+			if int(GameState.spire_nodes[cur]["floor"]) == GameState.max_floors - 1:
+				hit_boss = true
+				break
+			for nxt in outgoing.get(cur, []):
+				if not s2.has(nxt):
+					s2[nxt] = true
+					st2.append(nxt)
+		assert(hit_boss, "Act %d 的起点 %s 通不到 boss 层" % [act, start_id])
+
+	# 连线只能指向存在的节点, 且只能向前跨一层 (不跳层, 不倒退)。
+	for conn in GameState.spire_connections:
+		assert(GameState.spire_nodes.has(conn["from"]) and GameState.spire_nodes.has(conn["to"]),
+			"Act %d 有连线指向不存在的节点: %s -> %s" % [act, conn["from"], conn["to"]])
+		var df = int(GameState.spire_nodes[conn["to"]]["floor"]) - int(GameState.spire_nodes[conn["from"]]["floor"])
+		assert(df == 1, "Act %d 的连线 %s -> %s 跨了 %d 层 (只允许 +1)"
+			% [act, conn["from"], conn["to"], df])
+
+	print("  [PASS] Act %d: 15 floors, %d nodes, %d connections, 0 orphans, 0 dead ends, boss reachable from every start."
+		% [act, GameState.spire_nodes.size(), GameState.spire_connections.size()])

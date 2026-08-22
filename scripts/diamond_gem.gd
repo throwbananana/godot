@@ -4,6 +4,7 @@ extends Area2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 @export var gold_value: int = 60
 @export var xp_value: int = 30
@@ -62,8 +63,11 @@ func _on_body_entered(body: Node2D) -> void:
 		if main:
 			var g_val = gold_value + (GameState.current_act - 1) * 20
 			if main.rpg_mgr:
-				if "player_id" in body:
-					g_val = int(g_val * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, body.player_id)))
+				# 同 gold_coin.gd: 车厢在"player"组里却没有 player_id,
+				# 直接读会让 magnetic_salvage 加成静默丢失。
+				var picker := TrainFollowHelper.resolve_train_owner(body)
+				if picker and ("player_id" in picker):
+					g_val = int(g_val * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, picker.player_id)))
 				main.rpg_mgr.add_xp(xp_value)
 			if main.has_method("add_gold"):
 				main.add_gold(g_val)

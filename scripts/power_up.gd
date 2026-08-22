@@ -3,6 +3,7 @@ extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE, MISSILE, TIMED_BOMB }
 
@@ -58,8 +59,16 @@ func _process(delta: float) -> void:
 		queue_free()
 
 func _on_body_entered(body: Node2D) -> void:
-	if body.is_in_group("player"):
-		if body.has_method("apply_powerup"):
-			body.apply_powerup(power_up_type)
-		SoundManager.play_pickup(get_tree())
-		queue_free()
+	if not body.is_in_group("player"):
+		return
+	# "player"组里不只有坦克: train 分支的跟随车厢也在里面 (它必须在, 否则
+	# 敌方火力不认它)。以前这里是 has_method 判一下就完事, 车厢没有
+	# apply_powerup, 于是道具被销毁、音效照播、效果为零 —— 车队越长, 被自己
+	# 尾巴白吃掉的道具越多, 而且完全无声。
+	# 现在沿 leader_node 解析回车头那辆坦克, 由它来吃。
+	var owner_tank := TrainFollowHelper.resolve_train_owner(body)
+	if owner_tank == null:
+		return   # 不是坦克也不是车队的一部分 -> 道具留在原地, 不被消耗
+	owner_tank.apply_powerup(power_up_type)
+	SoundManager.play_pickup(get_tree())
+	queue_free()

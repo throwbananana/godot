@@ -3,6 +3,7 @@ extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 @export var value: int = 25
 @onready var sprite: Sprite2D = $Sprite2D
@@ -45,8 +46,11 @@ func _on_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"):
 		var main = get_tree().current_scene
 		var final_val = value
-		if main and main.rpg_mgr and ("player_id" in body):
-			final_val = int(float(value) * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, body.player_id)))
+		# 车厢也在"player"组里但没有 player_id, 直接读会让 magnetic_salvage
+		# 的加成在"金币被尾巴捡到"时静默消失。先解析回车头那辆坦克。
+		var picker := TrainFollowHelper.resolve_train_owner(body)
+		if main and main.rpg_mgr and picker and ("player_id" in picker):
+			final_val = int(float(value) * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, picker.player_id)))
 		if main and main.has_method("add_gold"):
 			main.add_gold(final_val)
 		SoundManager.play_pickup(get_tree())
