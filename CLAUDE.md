@@ -26,7 +26,9 @@ There is **no linter**. Verification is `--check-only` per script, running the g
 & $godot --headless --path . --script tools/test_gameplay_runtime.gd   # boots main.tscn, checks player/builder/sound wiring
 ```
 
-Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, …) — check for an existing one covering your area before writing a new script.
+Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_train_teleport.gd`, …) — check for an existing one covering your area before writing a new script.
+
+`test_train_teleport.gd` is worth copying as a pattern: it drives `TrainFollowHelper` against `tools/_train_stub.gd` (a bare `Node2D` exposing only `history_positions` / `history_rotations` / `follow_distance` / `leader_node`) instead of booting `main.tscn`. The helper is duck-typed throughout, so the whole follow-and-teleport behaviour is testable without textures, physics, or a map — and the test was verified to fail against the pre-fix logic, not just pass against the new one.
 
 ### Regenerating art
 

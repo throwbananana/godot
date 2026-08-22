@@ -4,6 +4,7 @@ extends Node2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 var cooldowns: Dictionary = {}
 
@@ -44,7 +45,16 @@ func _on_body_entered(body: Node2D) -> void:
 	if cooldowns.has(body_id) and cooldowns[body_id] > 0.0:
 		return
 
-	var is_unit = (body.is_in_group("player") or body.is_in_group("enemies") or body.is_in_group("player_carriage"))
+	# 车厢不能自己传送。它的位置每个物理帧都被 leader 的历史路径整段覆写
+	# (train_carriage.gd::_physics_process), 所以把一节车厢挪到别处根本不成立 ——
+	# 下一帧就被拉回队列里。之前没挡住, 于是车厢压过传送门时会: 在地图另一头白播
+	# 一次传送音效和特效、烧掉 2 秒冷却、跑一次 0.12 秒缩到 0.01 的挤压动画,
+	# 还顺手清空自己的历史, 把跟在它后面的那节车厢一起打乱。
+	# 整列车的传送由机车触发, 见下面的 teleport_train_chain()。
+	if "leader_node" in body and is_instance_valid(body.leader_node):
+		return
+
+	var is_unit = (body.is_in_group("player") or body.is_in_group("enemies"))
 	var is_bullet = body.is_in_group("bullet") or body.is_in_group("bullets") or ("shooter" in body)
 
 	if not is_unit and not is_bullet:
@@ -72,23 +82,19 @@ func _on_body_entered(body: Node2D) -> void:
 			if is_instance_valid(body):
 				body.global_position = target_pos
 
-				# A leader's history_positions/history_rotations (see
-				# train_follow_helper.gd) still hold every pre-teleport
-				# sample. Left alone, a trailing carriage would sample
-				# "follow_distance behind the leader's current position"
-				# straight across the teleport discontinuity -- lerping
-				# between the wormhole entrance and a potentially distant
-				# exit, which is how a carriage previously ended up flung
-				# off toward (or past) the map edge. Clearing the history
-				# here means the very next sample has nothing to walk back
-				# through, so TrainFollowHelper falls back to the leader's
-				# brand-new post-teleport position -- the carriage pops in
-				# right behind the leader and un-stacks naturally over the
-				# next fraction of a second as fresh history accumulates,
-				# same as the leader's own pop-in scale tween below.
-				if "history_positions" in body and "history_rotations" in body:
-					body.history_positions.clear()
-					body.history_rotations.clear()
+				# 整列车一起搬过来, 而不是只处理机车自己。
+				#
+				# 这里以前是 body.history_positions.clear() 两行, 并不够:
+				#   - 清空后 sample_at_distance 拿到空数组会返回 {}, 第一节车厢
+				#     那一帧完全不动; 下一帧历史只剩一个点, 它又会精确叠在机车
+				#     身上 —— 和当时注释里写的"出现在 leader 正后方"不一样。
+				#   - 更要命的是只清了机车。第二节车厢跟的是第一节, 而第一节的
+				#     历史里仍然留着"传送前最后一点 -> 传送后第一点"那条跨图线段,
+				#     采样时第一条就撞上它, 于是被插值到入口和出口之间的连线上,
+				#     穿墙横跨半张地图。问题没修好, 只是从第一节挪到了第二节。
+				# teleport_train_chain() 给链上每一节都重铺一条笔直的合成尾迹,
+				# 整列车在出口处直接以正确队形成形。
+				TrainFollowHelper.teleport_train_chain(body)
 
 				# Exit sound & burst VFX
 				SoundManager.play_teleport(get_tree())
