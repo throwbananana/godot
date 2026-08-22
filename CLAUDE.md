@@ -47,7 +47,13 @@ $blender = "C:\steam\steamapps\common\Blender\blender.exe"
 & $blender --background --python tools/build_sokpop_clay_ui.py
 python tools/analyze_render_and_colors.py    # QA: per-asset clipping / luminance / saturation
 python tools/qa_tank_models_and_clipping.py  # QA: tank sprite bounding-box / clipping check
+python tools/qa_style_consistency.py         # QA: the regression suite — run this after any re-render
+python tools/qa_style_consistency.py --vs HEAD   # …plus a per-sprite diff against a git ref
 ```
+
+`qa_style_consistency.py` needs no Blender (numpy + Pillow only) and exits non-zero on `[FAIL]`, matching the `tools/test_*.gd` convention. Each check encodes a defect that actually shipped: `blank` (the nine grey-square UI icons from a missing `clear_scene()`), `seam` (tile_trees leaking background at every grid vertex), `frame` (props silently rendered 0.82× too small by the wrong `ortho_scale`), `clip`, `palette`. Both `blank` and `seam` are self-tested — restoring the pre-fix sprite makes them fail with the original diagnosis.
+
+`clip` and `palette` report **`[WARN]` only, by design** — they cannot infer intent. `clip` can't distinguish a clipped shape from deliberate one-sided composition (`diorama_*` fills its bottom edge and leaves the top empty). `palette` measures contrast against the actual terrain tiles rather than saturation, because saturation is the wrong proxy: `enemy_missile` sits at 16% saturation yet reads perfectly on sand (dark body, huge luminance gap), while `enemy_armor` at 44% is the one that blends in. Whole-sprite colour distance is still only a proxy — a tank's dark treads and outline carry much of its silhouette — so it flags hue collisions for a human to judge, and never fails the build.
 
 **Never run the unified script just to change one asset.** `build_all_sokpop_assets_unified.py::main()` re-renders all 240 tank frames plus every tile/building/power-up, so it will silently overwrite any uncommitted or untracked sprite work elsewhere in the tree. For tanks, use the targeted path instead — it imports `PLAYER_PALETTES` / `ENEMY_PALETTES` from the unified script (single source of truth, no duplicated palette):
 
