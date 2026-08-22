@@ -19,6 +19,7 @@ from sokpop_common import (
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
+    TILE_PLATE_BLEED,
 )
 
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR) if os.path.basename(SCRIPT_DIR) == 'tools' else SCRIPT_DIR
@@ -39,7 +40,7 @@ def build_desert_sand_tile():
     # 基础底板 (Full Bleed)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.05))
     base = bpy.context.active_object
-    base.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.1)
+    base.scale = (TILE_PLATE_BLEED, TILE_PLATE_BLEED, 0.1)
     base.data.materials.append(mat_sand)
     apply_uniform_clay_bevel(base, width=0.02, segments=2, jitter=0.008)
     objs.append(base)

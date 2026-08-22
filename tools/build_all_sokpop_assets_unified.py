@@ -21,6 +21,7 @@ from sokpop_common import (  # noqa: E402
     ORTHO_SCALE_DEFAULT,
     ORTHO_SCALE_TANK,
     TILE_FULL_BLEED,
+    TILE_PLATE_BLEED,
     MAX_ASSET_RADIUS,
 )
 
@@ -362,68 +363,155 @@ def build_sokpop_brick():
     # 1. Full-Bleed Mortar Base Plate (3.34 units -> 0px gap between adjacent tiles)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.1))
     base = bpy.context.active_object
-    base.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.20)
+    base.scale = (TILE_PLATE_BLEED, TILE_PLATE_BLEED, 0.20)
     base.data.materials.append(mat_cream)
     apply_uniform_clay_bevel(base, width=0.08, segments=3, jitter=0.0)
     objs.append(base)
 
-    # 2. 4 Rows of Clay Bricks spanning edge-to-edge
-    row_configs = [
-        [(-0.84, 1.54), (0.84, 1.54)],
-        [(-1.26, 0.70), (0.0, 1.54), (1.26, 0.70)],
-        [(-0.84, 1.54), (0.84, 1.54)],
-        [(-1.26, 0.70), (0.0, 1.54), (1.26, 0.70)],
-    ]
-    y_coords = [-1.22, -0.41, 0.41, 1.22]
-    for r_idx, row in enumerate(row_configs):
-        y = y_coords[r_idx]
-        for (x, w_size) in row:
-            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, 0.12))
-            b = bpy.context.active_object
-            b.scale = (w_size, 0.62, 0.28)
-            b.data.materials.append(mat_clay)
-            apply_uniform_clay_bevel(b, width=0.08, segments=3, jitter=0.012)
-            objs.append(b)
+    # 2. 砖块排布 —— 必须*严格按画幅周期*对齐, 否则拼缝处会多出一道粗砖缝。
+    #
+    # 旧排布是手写的近似值 (y=±1.22/±0.41, x=±0.84/±1.26, 砖长 1.54/0.70),
+    # 每一处都差一点点, 累计效果是:
+    #   竖直: 砖高 0.62, 内部砖缝 0.19, 但顶边只剩 0.12、底边也 0.12 ——
+    #         上下拼起来是 0.24 的缝, 比内部粗 26%, 于是每 48px 出现一道
+    #         明显的横向暗带 (实测上下边色差 33.08)。
+    #   水平: 内部砖缝 0.14, 而左右边各只剩 0.04, 拼起来 0.08, 比内部*细*一半。
+    #
+    # 现在全部由周期推导。画幅宽 P=3.30 (相机 ortho), 半宽 H=1.65:
+    #   竖直 4 行 -> 行距 P/4 = 0.825, 砖高 0.62 => 砖缝恒为 0.205, 含跨缝处;
+    #   水平砖距 P/2 = 1.65, 砖长 1.65-0.14 = 1.51 => 砖缝恒为 0.14。
+    # 奇数行的砖心落在 0 和 ±H: 落在 ±H 的那块正好*骑在拼缝上*, 左右各画半块,
+    # 拼起来就是一整块跨缝的砖 —— 这才是真正的顺砌 (running bond), 而不是
+    # 每块瓦片各自凑一个近似的砖墙。
+    P = ORTHO_SCALE_DEFAULT
+    H = P * 0.5
+    MORTAR_X = 0.14
+    BRICK_LEN = P * 0.5 - MORTAR_X     # 1.51
+    BRICK_H = 0.62
+    row_pitch = P / 4.0                # 0.825
+
+    base_centers = []
+    for r_idx in range(4):
+        y = -H + (r_idx + 0.5) * row_pitch
+        if r_idx % 2 == 0:
+            xs = [-P * 0.25, P * 0.25]             # ±0.825
+        else:
+            xs = [0.0, -H, H]                      # 中间一块 + 骑缝的那块
+        for x in xs:
+            base_centers.append((x, y))
+
+    # 3. 把邻居瓦片的砖也摆出来 —— 这才是上下拼缝那道亮暗突变的真正原因。
+    #
+    # 砖高出砖缝 0.26, 太阳仰角 35°, 所以每块砖投出 0.26/tan(35°) = 0.371 长的
+    # 影子, 比 0.205 的砖缝还长 —— 一块砖的影子足以盖满旁边整条砖缝。
+    # 瓦片内部没问题 (每条砖缝两侧都有砖), 但画幅边上就不行了: 本该把下边缘
+    # 砖缝压暗的那块砖属于*邻居瓦片*, 而渲染时场景里根本没有它。于是同一条
+    # 砖缝, 上边缘渲成暗的、下边缘渲成亮的, 拼起来就是一道 36 的突变
+    # (比瓦片内部最大的梯度 33 还大, 也就是比砖块自己的边缘还扎眼)。
+    #
+    # 解法是把这块瓦片当作*无限砖墙的一部分*来渲: 周围补一圈周期副本, 只留
+    # 影子够得着画幅的那些 (阈值 H+0.9 已远大于 0.371 的影长)。
+    # 这对任何"有高度差 + 定向光"的满幅瓦片都成立, 不止砖块。
+    # 必须去重: 奇数行的砖心里有 -H 和 +H 两块, 而 -H 平移 +P 正好落在 +H 上。
+    # 不去重就会有两块完全重合的立方体, Cycles 下 z-fighting, 渲出来是一片
+    # 规律分布的深褐色砖 —— 第一次改完铺开一看就是这个症状。
+    reach = H + 0.9
+    seen = set()
+    all_centers = []
+    for dx in (-P, 0.0, P):
+        for dy in (-P, 0.0, P):
+            for (x, y) in base_centers:
+                nx, ny = x + dx, y + dy
+                if abs(nx) > reach or abs(ny) > reach:
+                    continue
+                key = (round(nx, 3), round(ny, 3))
+                if key in seen:
+                    continue
+                seen.add(key)
+                all_centers.append((nx, ny))
+
+    for (x, y) in all_centers:
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, 0.12))
+        b = bpy.context.active_object
+        b.scale = (BRICK_LEN, BRICK_H, 0.28)
+        b.data.materials.append(mat_clay)
+        # jitter 会破坏周期性 —— 骑缝那块砖的左右两半必须严丝合缝对上,
+        # 顶点抖动是随机的, 一抖两边就错开, 拼缝处露出锯齿。
+        apply_uniform_clay_bevel(b, width=0.08, segments=3, jitter=0.0)
+        objs.append(b)
     return objs
 
 def build_sokpop_steel():
+    """不可摧毁的钢墙。
+
+    两处改动都不是审美偏好, 是有依据的:
+
+    1. **中央那块金盘去掉了。** 金/黄在本项目里是*敌方专用词汇* —— enemy_power /
+       enemy_armor / enemy_basic 的描边都是金色 (见 ENEMY_PALETTES 的注释)。
+       而这块瓦片原本顶着一个半径 0.75 的大金盘, 是全游戏面积最大的金色表面:
+       地形穿着敌人的衣服。量化上它也确实过头 —— "中心区域相对整块的平均色偏"
+       高达 51, 其余瓦片都在 1~14 之间, 铺开后整片钢墙读起来是一张波尔卡圆点
+       桌布, 不是钢。现在换成压暗的钢制凸台, 靠明暗而不是靠色相做出中心。
+
+    2. **铆钉挪到画幅四角和四边中点上。** 原来在 ±1.25, 距边 0.4 —— 铺开后
+       相邻四块瓦片的四颗铆钉挤成一簇, 于是网格顶点上出现一团四点花纹, 反而
+       把瓦片边界标了出来。放到 ±H 之后, 四块瓦片各出四分之一颗, 正好拼成
+       *一颗*铆钉钉在网格顶点上, 读起来就是一整片连续的铆接钢板。
+       (和 build_sokpop_trees 里边界树冠是同一个思路。)
+    """
     objs = []
-    mat_plate = create_clay_mat("m_us_p", (0.78, 0.82, 0.88, 1.0))
-    mat_gold = create_clay_mat("m_us_g", (0.95, 0.78, 0.22, 1.0))
-    mat_stripe = create_clay_mat("m_us_s", (0.95, 0.72, 0.18, 1.0))
+    P = ORTHO_SCALE_DEFAULT
+    H = P * 0.5
+    # 去掉金色之后必须重新拉开明度, 否则整块钢是一片没有层次的浅灰紫:
+    #   - 48px 显示尺寸下, 只靠色相差的结构会全部糊掉;
+    #   - 更要紧的是它会和 tile_ice (0.76,0.90,0.96 的浅冰蓝) 撞明度。原本那个
+    #     大金盘顺带承担了"一眼区分钢和冰"的功能, 拿掉之后这件事得由明度接手。
+    # 于是底板压暗、铆钉提亮: 暗底 + 亮铆钉读起来是"沉的铁", 冰是"透的亮",
+    # 两者在明度上分开, 不再依赖色相。
+    mat_plate = create_clay_mat("m_us_p", (0.70, 0.74, 0.83, 1.0))
+    mat_rib = create_clay_mat("m_us_r", (0.60, 0.64, 0.75, 1.0))
+    mat_boss = create_clay_mat("m_us_b", (0.44, 0.48, 0.60, 1.0), roughness=0.55)
+    mat_rivet = create_clay_mat("m_us_v", (0.84, 0.87, 0.93, 1.0), roughness=0.40)
 
     # 1. Full-Bleed Steel Base Plate
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     plate = bpy.context.active_object
-    plate.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.35)
+    plate.scale = (TILE_PLATE_BLEED, TILE_PLATE_BLEED, 0.35)
     plate.data.materials.append(mat_plate)
     apply_uniform_clay_bevel(plate, width=0.12, segments=4, jitter=0.0)
     objs.append(plate)
 
     # 2. Reinforcement Cross Ribs
-    for (sx, sy) in [(TILE_FULL_BLEED, 0.46), (0.46, TILE_FULL_BLEED)]:
+    for (sx, sy) in [(TILE_PLATE_BLEED, 0.46), (0.46, TILE_PLATE_BLEED)]:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.18))
         rib = bpy.context.active_object
         rib.scale = (sx, sy, 0.12)
-        rib.data.materials.append(mat_plate)
+        rib.data.materials.append(mat_rib)
         apply_uniform_clay_bevel(rib, width=0.06, segments=2, jitter=0.0)
         objs.append(rib)
 
-    # 3. Center Gold Insignia Boss
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.75, depth=0.18, vertices=16, location=(0, 0, 0.22))
-    inner = bpy.context.active_object
-    inner.data.materials.append(mat_stripe)
-    apply_uniform_clay_bevel(inner, width=0.08, segments=3, jitter=0.0)
-    objs.append(inner)
+    # 3. 中央钢制凸台 (原来是金盘)
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.52, depth=0.20, vertices=8, location=(0, 0, 0.22))
+    boss = bpy.context.active_object
+    boss.data.materials.append(mat_boss)
+    apply_uniform_clay_bevel(boss, width=0.06, segments=3, jitter=0.0)
+    objs.append(boss)
 
-    # 4. Corner Rivet Bolts
-    for rx in [-1.25, 1.25]:
-        for ry in [-1.25, 1.25]:
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.16, location=(rx, ry, 0.20))
-            bolt = bpy.context.active_object
-            bolt.data.materials.append(mat_gold)
-            bpy.ops.object.shade_smooth()
-            objs.append(bolt)
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.26, depth=0.12, vertices=8, location=(0, 0, 0.32))
+    boss_top = bpy.context.active_object
+    boss_top.data.materials.append(mat_rivet)
+    apply_uniform_clay_bevel(boss_top, width=0.04, segments=2, jitter=0.0)
+    objs.append(boss_top)
+
+    # 4. 铆钉 —— 骑在画幅边线上, 拼起来才是一颗
+    rivet_pos = [(-H, -H), (H, -H), (-H, H), (H, H),
+                 (0.0, -H), (0.0, H), (-H, 0.0), (H, 0.0)]
+    for (rx, ry) in rivet_pos:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.17, location=(rx, ry, 0.20))
+        bolt = bpy.context.active_object
+        bolt.data.materials.append(mat_rivet)
+        bpy.ops.object.shade_smooth()
+        objs.append(bolt)
     return objs
 
 def build_sokpop_water(frame=0):
@@ -437,7 +525,7 @@ def build_sokpop_water(frame=0):
     # 1. Full-Bleed Deep River Basin Base Block
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.06))
     base = bpy.context.active_object
-    base.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.32)
+    base.scale = (TILE_PLATE_BLEED, TILE_PLATE_BLEED, 0.32)
     base.data.materials.append(mat_deep_water)
     apply_uniform_clay_bevel(base, width=0.10, segments=3, jitter=0.0)
     objs.append(base)
@@ -448,7 +536,24 @@ def build_sokpop_water(frame=0):
     tile_period = ORTHO_SCALE_DEFAULT  # 3.30
     freq = (2.0 * math.pi * 2.0) / tile_period  # exactly 2 periods per tile width -> seamless across borders
 
-    half_span = TILE_FULL_BLEED * 0.5
+    # 波形本身的周期 (一块瓦片里正好两个) —— 接缝的一切都要对齐到它
+    wave_period = tile_period * 0.5    # 1.65
+    half_frame = tile_period * 0.5     # 1.65, 相机实际看到的半宽
+
+    # 缎带要生成到画幅*外*整整一个波长, 并且采样格必须能整除波长。
+    #
+    # 旧写法是 x∈[-1.67, 1.67] 配 steps=44: 一来缎带端面几乎就压在画幅边线上
+    # (只出去 0.02), 二来 3.34/43 的采样间距根本不是波长的整数分之一, 于是
+    # 分段折线逼近出的波形在左右两条边上*不一样* —— 正弦本身在 ±1.65 是严格
+    # 对得上的 (相差 4π), 但折线逼近的误差对不上。实测左右边色差 24.87, 且
+    # 集中在波形所在的那几行, 底板行几乎为零, 正是这个原因。
+    #
+    # 现在: 跨度 4 个波长, 96 段 -> 每段 = 波长/24, 折线逼近严格周期,
+    # ±1.65 处必然一致。
+    span_ext = half_frame + wave_period          # 3.30
+    steps_ext = 96                               # 6.60 / 96 = 1.65/24
+
+    half_span = span_ext
 
     wave_tiers = [
         # (name, y_base, amp, phase_offset, width_y, height_z, z_base)
@@ -465,27 +570,30 @@ def build_sokpop_water(frame=0):
         # Main wave body ribbon spanning full tile width without tapering
         wv = create_wavy_ribbon(f"{name}_Body", y_base, amp, freq, cur_phase,
                                 width_y=wy, height_z=hz, z_base=zb,
-                                x_min=-half_span, x_max=half_span, steps=44, taper=False)
+                                x_min=-half_span, x_max=half_span, steps=steps_ext, taper=False)
         wv.data.materials.append(mat_mid_water)
         objs.append(wv)
 
         # Upper wave crest highlight ribbon
         wv_crest = create_wavy_ribbon(f"{name}_Crest", y_base, amp, freq, cur_phase,
                                       width_y=wy * 0.38, height_z=hz * 0.60, z_base=zb + hz * 0.32,
-                                      x_min=-half_span, x_max=half_span, steps=44, taper=False)
+                                      x_min=-half_span, x_max=half_span, steps=steps_ext, taper=False)
         wv_crest.data.materials.append(mat_light_water)
         objs.append(wv_crest)
 
-        # Delicate white clay foam caps along the wave peaks inside the tile
-        for peak_k in [0, 1]:
-            target_ang = (0.5 + 2.0 * peak_k) * math.pi - cur_phase
-            peak_x = target_ang / freq
-            while peak_x < -half_span: peak_x += tile_period
-            while peak_x > half_span:  peak_x -= tile_period
+        # 浪尖白沫。峰值每 wave_period 出现一次, 所以按波长枚举, 而不是像旧写法
+        # 那样只取两个峰再按 tile_period(3.30) 回绕 —— 回绕步长是波长的两倍,
+        # 会漏掉一半的峰, 而且靠近边缘的峰被 |x|<=1.30 直接丢掉, 于是左边有沫、
+        # 右边没有。这里画到画幅外一点, 让骑在拼缝上的白沫两边各露一半。
+        x0 = (0.5 * math.pi - cur_phase) / freq
+        k_lo = int(math.floor((-half_frame - 0.30 - x0) / wave_period))
+        k_hi = int(math.ceil((half_frame + 0.30 - x0) / wave_period))
+        for k in range(k_lo, k_hi + 1):
+            peak_x = x0 + k * wave_period
 
             flen = 0.52
-            if -1.30 <= peak_x <= 1.30:
-                fm = create_wavy_ribbon(f"{name}_Foam_{peak_k}", y_base, amp, freq, cur_phase,
+            if -(half_frame + 0.30) <= peak_x <= (half_frame + 0.30):
+                fm = create_wavy_ribbon(f"{name}_Foam_{k}", y_base, amp, freq, cur_phase,
                                         width_y=0.065, height_z=0.04, z_base=zb + hz * 0.45,
                                         x_min=peak_x - flen * 0.5, x_max=peak_x + flen * 0.5, steps=16, taper=True)
                 fm.data.materials.append(mat_foam)
@@ -547,13 +655,56 @@ def build_sokpop_trees():
     # 为什么球心放在边线上而不是把原有的球放大: 相邻两块瓦片拼接时, 各自的
     # 半个球正好凑成一整棵跨缝的树, 缝两侧的形体自然连续 —— 森林本来就该这样,
     # 而单纯放大树冠只会让每块瓦片各自变胖, 缝还在。
-    _HB = TILE_FULL_BLEED * 0.5
+    # _HB 必须是*相机画幅*的半宽, 不是底板满幅尺寸的一半。
+    # 原来写的是 TILE_FULL_BLEED/2 = 1.67, 但相机 ortho 只有 3.30, 半宽 1.65 ——
+    # 差的这 0.02 单位 (约 1.5px) 会让边界树冠稍稍偏出画幅, 更要命的是它破坏了
+    # 周期性: 按 3.30 平铺时, +1.67 的球对应到邻居那边是 -1.63, 和本块自己
+    # -1.67 的球差 0.04, 拼缝处于是多出一道细微的重影。
+    _P = ORTHO_SCALE_DEFAULT
+    _HB = _P * 0.5
+    # 边界环必须*连续*, 而且必须是画幅边线上的最高面。
+    #
+    # 原来只在 t=±0.35 和四角放球, 中间 x≈±1.03 那一段是空的 —— 那里露出来的
+    # 是底层树冠 (±0.95, r0.88) 的侧面。而底层树冠不是周期排布的: 上边缘看到的
+    # 是 (0.95,0.95) 那颗球的 +y 侧, 下边缘看到的是 (0.95,-0.95) 那颗球的 -y 侧,
+    # 定向光下这两侧本来就不一样亮, 于是拼缝处出现一道明暗错位。实测上下拼接
+    # 梯度 8.3 正是集中在 x≈±1.03 这两段 (其余列只有 2.4)。
+    #
+    # 补齐 t=±1.05 让环连续, 并把整个环抬到 z=0.42: 边线上的最高面因此全部由
+    # 边界环承担, 而边界环是严格按画幅周期摆的 —— 上下两边看到的是*同一颗球*
+    # 的两半 (本块的 +_HB 与 -_HB 互为周期副本), 明暗自然对得上。
+    _RZ = 0.42
     for (bx, by) in [(-_HB, -_HB), (_HB, -_HB), (-_HB, _HB), (_HB, _HB)]:
-        spheres.append((bx, by, 0.34, 0.62, mat_matcha))
-    for t in (-0.35, 0.35):
-        spheres += [(_HB, t, 0.34, 0.58, mat_matcha), (-_HB, t, 0.34, 0.58, mat_matcha),
-                    (t, _HB, 0.34, 0.58, mat_matcha), (t, -_HB, 0.34, 0.58, mat_matcha)]
-    for x, y, z, r, m in spheres:
+        spheres.append((bx, by, _RZ, 0.64, mat_matcha))
+    for t in (-1.05, -0.35, 0.35, 1.05):
+        spheres += [(_HB, t, _RZ, 0.60, mat_matcha), (-_HB, t, _RZ, 0.60, mat_matcha),
+                    (t, _HB, _RZ, 0.60, mat_matcha), (t, -_HB, _RZ, 0.60, mat_matcha)]
+
+    # 和砖块同理: 把邻居瓦片的树冠也摆出来, 让画幅边缘的遮挡和投影连续。
+    # 树冠是球, 高度差比砖块还大, 缺了邻居就等于边缘的树"半边悬空", 明暗对不上
+    # (实测上下拼缝梯度 9.88, 而瓦片内部最大梯度只有 2.41 —— 树冠本身是平滑的,
+    # 所以任何一点突变都格外显眼)。
+    # 去重: 边界球按周期平移后会和本块已有的球重合, 重复几何没意义。
+    # 剔除半径要按*影长*算, 不是按"看不看得见"。树冠顶到 z≈1.97, 太阳仰角 35°,
+    # 影长 1.97/tan(35°) ≈ 2.81 —— 邻居那个大穹顶自己完全在画幅外, 它的影子却
+    # 照样能斜着盖进来。先前按 _HB+1.0=2.65 剔除, 正好把这些穹顶副本剔掉了,
+    # 于是上下拼缝只从 9.88 降到 8.31。放宽到覆盖影长即可。
+    _reach = _HB + 2.9
+    _seen = set()
+    _emit = []
+    for dx in (-_P, 0.0, _P):
+        for dy in (-_P, 0.0, _P):
+            for (x, y, z, r, m) in spheres:
+                nx, ny = x + dx, y + dy
+                if abs(nx) > _reach or abs(ny) > _reach:
+                    continue
+                key = (round(nx, 3), round(ny, 3), round(z, 3), round(r, 3))
+                if key in _seen:
+                    continue
+                _seen.add(key)
+                _emit.append((nx, ny, z, r, m))
+
+    for x, y, z, r, m in _emit:
         bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(x, y, z))
         b = bpy.context.active_object
         b.data.materials.append(m)

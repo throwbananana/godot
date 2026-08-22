@@ -25,6 +25,24 @@ ORTHO_SCALE_TANK    = 3.6       # 坦克画幅宽度 (单位, 彻底解决前伸
 TILE_FULL_BLEED     = 3.34      # 瓦片底板满幅尺寸 (略超 3.30，消除相邻网格 6.4px 黑缝，实现 100% 满幅无缝拼接)
 MAX_ASSET_RADIUS    = 1.60      # 中心旋转资源的安全最大半径
 
+# 满幅底板专用尺寸。TILE_FULL_BLEED(3.34) 对底板来说*不够大*:
+#
+# 画幅宽 3.30 -> 半宽 1.65; 底板半宽只有 1.67, 只多出 0.02。可底板是要倒角的
+# (砖 0.08 / 钢 0.12 / 水 0.10), 倒角宽度远大于那 0.02 —— 于是那圈圆角连同它的
+# 明暗全都留在画面*里面*, 每块瓦片都自带一道镶边。铺成网格后就是一片"绗缝被
+# 子": 实测上下边色差 砖 23.73 / 钢 21.87 (满分 255)。
+#
+# 底板半宽必须 >= 画幅半宽 + 倒角宽度, 倒角才会整个落到画幅外:
+#   1.65 + 0.12(最宽的钢) = 1.77 -> 底板尺寸至少 3.54, 取 3.64 留余量。
+#
+# 注意这*不会*改变可见图案的比例 —— 砖块/铆钉的坐标是各自独立写死的, 变大的
+# 只有那块本来就该溢出画幅的底板。
+#
+# 为什么不直接改 TILE_FULL_BLEED: 它有 37 处引用, 散布在一堆本次并不重渲的
+# 脚本里。改了它, 那些脚本下次一跑就会渲出和已提交美术不一样的东西, 而且没人
+# 会注意到 —— 正是 CLAUDE.md 里"陈旧脚本悄悄改掉美术"那类事故。
+TILE_PLATE_BLEED    = 3.64
+
 # 道具/小建筑画幅。这个数是考古出来的, 不是拍的:
 # refine_all_assets.py / refine_buildings_and_tanks.py 一直用 ORTHO_SCALE_DEFAULT
 # 渲这 8 个资源 (star/bomb/shovel/clock/helmet/life/repair_station/turret_gun),
@@ -202,8 +220,23 @@ def warn_if_stray_meshes(context=""):
 
 
 def create_sokpop_lighting(ortho_scale=3.3, sun_energy=0.9,
-                           ambient_strength=0.85):
+                           ambient_strength=0.85, seamless=False):
     """正交顶视相机 + 压平光比的暖阳/环境光/塑形补光。
+
+    seamless=True 供*满幅地形瓦片*使用: 去掉两盏点光源, 只留太阳 + 环境光。
+
+    理由是几何上的, 不是口味问题。点光源的照度随距离平方衰减, 所以它在瓦片
+    内部造出一条位置梯度 —— KeyLight 在 (-2.5,-4,5), RimLight 在 (0,+5,4.5),
+    于是 +Y 边被轮廓光打亮而 -Y 边根本照不到。瓦片是自己挨着自己铺的, 上边
+    接下边、左边接右边, 任何位置梯度都会在拼缝处变成一条突变的网格线。实测
+    上下边色差: 砖 23.73 / 钢 21.87 / 冰 20.96 (满分 255), 铺开后肉眼可见。
+
+    太阳光没有这个问题: 平行光在平面上每个 (x,y) 的照度完全相同, 只随法线
+    变化 —— 倒角和凹凸的立体感全部保留, 丢掉的只有那条梯度。
+
+    亮度补偿: 两盏点光在瓦片处合计约 0.31 W/m² (110W@6.87 + 70W@6.73, 各按
+    E=P/4πr² 估), 相对 太阳 0.9 + 环境 0.85 大约是 15%。所以这里把环境光和
+    太阳各提一点补回来, 而不是让地形整体变暗。
 
     光比取向: 环境光为主 (0.85) + 弱主光 (0.9 W/m²)。
     Sokpop 的形体靠轮廓和色块区分, 不靠明暗层次 —— 深光比会把饱和色的暗部一路
@@ -231,6 +264,10 @@ def create_sokpop_lighting(ortho_scale=3.3, sun_energy=0.9,
     cam_obj.location = (0, 0, 10)
     cam_obj.rotation_euler = (0, 0, 0)
 
+    if seamless:
+        sun_energy *= 1.10
+        ambient_strength *= 1.08
+
     # 1. 暖调主日光
     sun_data = bpy.data.lights.new('Sun', 'SUN')
     sun_data.energy = sun_energy
@@ -250,6 +287,10 @@ def create_sokpop_lighting(ortho_scale=3.3, sun_energy=0.9,
         # 偏冷但别太蓝 —— 太蓝会把黏土暗部染成脏紫色
         bg.inputs['Color'].default_value = srgb_to_linear((0.70, 0.72, 0.78, 1.0))
         bg.inputs['Strength'].default_value = ambient_strength
+
+    # 满幅瓦片到此为止 —— 下面两盏点光正是拼缝网格线的来源
+    if seamless:
+        return
 
     # 3. 柔和正面塑形补光 (Key Fill)
     key_data = bpy.data.lights.new('KeyFill', 'POINT')

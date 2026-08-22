@@ -141,6 +141,81 @@ def check_seam():
     print(f"    检查 {checked} 张满幅瓦片, {n} 张漏光")
 
 
+# ---------------------------------------------------------------- tileseam
+
+# 已知仍有接缝、但*故意不修*的瓦片。降级成 WARN 而不是直接从检查里排除, 也不是
+# 放着让它 FAIL —— 一个总是红的门禁等于没有门禁, 很快就没人看了。
+#
+# 这三张的共同点是: 修它们需要的不是改代码, 而是先做一个美术决策。
+TILESEAM_EXEMPT = {
+    # 孤儿资源: 渲出已提交美术的那个脚本已经被删了, 现存实现只能复现轮廓、
+    # 复现不了着色 (d_rgb 最高到 31)。重渲一次就等于拿已知可用的美术去换一版
+    # 没人审过的。详见 CLAUDE.md "16 orphaned assets"。
+    "tile_ice.png": "孤儿资源, 无脚本可复现",
+    "tile_conveyor.png": "孤儿资源, 无脚本可复现",
+    # 会发光的动画瓦片: 四帧之间辉光强度本来就在变, 这一版没有重渲它。
+    "tile_electric_wall_f3.png": "发光动画瓦片, 本轮未重渲",
+}
+
+
+def check_tileseam():
+    """满幅瓦片拼接处不该出现瓦片内部没有的*突变*。
+
+    和 check_seam 抓的不是一回事: 那个抓的是 alpha 漏背景 (几何没盖住),
+    这个抓的是颜色接不上 —— 图是不透明的, 但拼起来能看见一条网格线。
+
+    为什么不能简单地比首行和末行: 瓦片上的东西是有高度的立体, 在定向光下
+    "砖上方的砖缝"和"砖下方的砖缝"本来就该不一样, 拼起来这两半正好凑成完整
+    的一条缝。直接相减会把这个正常现象报成巨大的接缝 (砖块实测 36)。
+    所以改成看*梯度*: 接缝处的行间差, 和瓦片内部所有行间差的分布比。只要接缝
+    的梯度落在内部梯度的正常范围里, 人眼就挑不出那条线。
+
+    这条检查固化的是这一轮修掉的三个真实缺陷:
+      - 底板倒角留在画幅内 (TILE_FULL_BLEED 3.34 只比画幅 3.30 多 0.02,
+        而倒角宽 0.08~0.12), 每块瓦片自带一圈镶边 -> 绗缝被子;
+      - 砖块投影长 0.371 > 砖缝 0.205, 而投影的施主砖属于邻居瓦片, 渲染时
+        场景里没有它 -> 同一条砖缝上暗下亮;
+      - 水波折线逼近的采样格不是波长的整数分之一 -> 左右两边波形对不上。
+    """
+    print("\n--- tileseam: 瓦片拼接处的颜色突变 ---")
+    n = checked = 0
+    exempt_hit = set()
+    for p in all_sprites("tiles"):
+        im = load(p)
+        arr = np.asarray(im, np.float32)
+        a = arr[..., 3]
+        border = np.concatenate([a[0, :], a[-1, :], a[:, 0], a[:, -1]])
+        if border.mean() < 200:
+            continue          # 不是满幅瓦片
+        checked += 1
+        al = arr[..., 3:4] / 255.0
+        c = arr[..., :3] * al + 128.0 * (1 - al)
+        for axis, tag in ((0, "上下"), (1, "左右")):
+            x = c if axis == 0 else np.transpose(c, (1, 0, 2))
+            seam = float(np.abs(x[0] - x[-1]).mean())
+            internal = np.abs(np.diff(x, axis=0)).mean(axis=(1, 2))
+            p95 = float(np.percentile(internal, 95))
+            mx = float(internal.max())
+            # 容忍下限 6.0: 纯色瓦片内部梯度接近 0, 不给个地板任何渲染噪声都会报警
+            name = os.path.basename(p)
+            if seam > max(mx, 6.0):
+                if name in TILESEAM_EXEMPT:
+                    exempt_hit.add(name)
+                    warn(f"{rel_of(p)}: {tag}拼接梯度 {seam:.1f} (已知未修, "
+                         f"{TILESEAM_EXEMPT[name]})")
+                else:
+                    fail(f"{rel_of(p)}: {tag}拼接梯度 {seam:.1f}, 超过瓦片内部最大梯度 "
+                         f"{mx:.1f} —— 铺开后是一条肉眼可见的网格线")
+                    n += 1
+            elif seam > max(p95, 6.0):
+                warn(f"{rel_of(p)}: {tag}拼接梯度 {seam:.1f} (内部 p95={p95:.1f})")
+
+    stale = sorted(set(TILESEAM_EXEMPT) - exempt_hit)
+    if stale:
+        print(f"    [提示] 豁免名单里这些已经不再接缝, 可以删掉了: {', '.join(stale)}")
+    print(f"    检查 {checked} 张满幅瓦片, {n} 处可见接缝")
+
+
 # ---------------------------------------------------------------- frame
 
 # 同一组里的资源应当共用画幅, 因此包围盒尺寸不该差太多。
@@ -338,6 +413,7 @@ def check_vs(ref):
 CHECKS = {
     "blank": check_blank,
     "seam": check_seam,
+    "tileseam": check_tileseam,
     "frame": check_frame,
     "clip": check_clip,
     "palette": check_palette,
