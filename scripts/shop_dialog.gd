@@ -16,7 +16,20 @@ signal closed
 @onready var toast_label: Label = $VBox/ToastLabel
 
 var current_shop_items: Array[Dictionary] = []
-var reroll_cost: int = 20
+
+## 刷新费用: 每次进店从 REROLL_BASE 起, 每刷一次涨 REROLL_STEP。
+##
+## 以前是固定 20 G 且可以无限刷。货架的设计是"11 种强化里随机上架 6 种",
+## 也就是说"这次没抽到想要的"本该是一个真实的取舍。但实测中后期一层的金币
+## 收入就有 600-680 G —— 等于一层的收入够刷三十次, 那条随机上架的约束就
+## 完全是装饰: 想要什么刷到出为止即可。
+##
+## 递增之后, 刷新变成"要不要为了指定的一件东西, 放弃买两三件别的", 这才是
+## 原本想要的取舍。基数保持 20 不变, 所以第一次刷新的手感和以前一样。
+const REROLL_BASE: int = 20
+const REROLL_STEP: int = 25
+var reroll_cost: int = REROLL_BASE
+var reroll_count: int = 0
 
 ## Builder Controller structures used to cost battle gold at the moment you
 ## placed them; they're shop-only stock now (see GameState.structure_inventory
@@ -53,6 +66,9 @@ func _ready() -> void:
 
 func setup_shop() -> void:
 	visible = true
+	# 每次进店重置刷新费用 —— 涨价只在**同一次**进店内累积, 不跨商店惩罚。
+	reroll_count = 0
+	reroll_cost = REROLL_BASE
 	_generate_shop_inventory()
 	_update_ui()
 
@@ -161,6 +177,7 @@ func _generate_shop_inventory() -> void:
 	all_items.shuffle()
 	for i in range(min(6, all_items.size())):
 		var it = all_items[i].duplicate()
+		it["cost"] = _price_for(int(it["cost"]))
 		it["sold_out"] = false
 		current_shop_items.append(it)
 
@@ -168,8 +185,26 @@ func _generate_shop_inventory() -> void:
 	# shuffle-and-pick-6 above.
 	for b in BUILDING_ITEMS:
 		var it = b.duplicate()
+		it["cost"] = _price_for(int(it["cost"]))
 		it["sold_out"] = false
 		current_shop_items.append(it)
+
+
+## 售价随楼层缩放, 用的是 enemy.gd 给奖励用的同一条 floor_mult。
+##
+## 表里写死的价格是"第 1 层的价格"。收入侧是一路涨的: 敌人的 gold_value 从
+## 单只均 18.9 涨到 141 (换的敌人种类更贵, 再乘 floor_mult), 于是一层的期望
+## 金币从 91 G 涨到 678 G —— 而售价一动不动。实测一整幕能拿到约 7550 G,
+## 而最优路线中位数 3-4 个商店、每个货架全买光也才 ~1200 G, 也就是说将近一半
+## 的金币根本没有东西可买。金币在中后期不再是一个需要权衡的资源。
+##
+## 这里刻意复用 1 + floor * 0.08 而不是另拟一条曲线, 理由和当初给敌人血量
+## 接上 floor_mult 一样: 奖励涨而成本不涨, 本身就是失配。注意它只补上约 2.1 倍,
+## 而收入涨了约 7.5 倍 —— 缺口没有补平, 剩下的部分是需要人拍板的手感取舍,
+## 不该由这一行悄悄决定。
+static func _price_for(base_cost: int) -> int:
+	var floor_mult := 1.0 + float(GameState.current_floor) * 0.08
+	return int(round(float(base_cost) * floor_mult))
 
 ## 商店卖的是"给队伍"的东西, 不是"给 1 号位"的东西。
 ##
@@ -371,10 +406,12 @@ func _on_reroll_pressed() -> void:
 		return
 
 	GameState.gold -= reroll_cost
+	reroll_count += 1
+	reroll_cost = REROLL_BASE + REROLL_STEP * reroll_count
 	SoundManager.play_pickup(get_tree())
 	_generate_shop_inventory()
 	_update_ui()
-	_show_toast("军火商已更换全新货架！")
+	_show_toast("军火商已更换全新货架！(下次刷新 %d G)" % reroll_cost)
 
 func _on_leave_pressed() -> void:
 	visible = false

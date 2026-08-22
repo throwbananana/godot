@@ -300,6 +300,27 @@ static func _generate_spire_map() -> void:
 				pool.shuffle()
 				floor_types.append(pool[0])
 
+	# 保底: 一幕之内至少要有一个商店。
+	#
+	# 每层只从 band 池里抽**一行**, 而好几行整行都不含 shop —— 实测 300 局里
+	# 有 0.3% 的图整幅都没有商店, 另有 4% 只有一个。平时这只是运气差, 但
+	# 商店是 GameState.structure_inventory 的**唯一**来源
+	# (add_structure_stock 全项目只被 shop_dialog.gd 调用), 所以"这一幕没有
+	# 商店"等于"这一幕整个建造系统不存在" —— 热键栏空着, 买不到也造不出任何
+	# 东西, 而玩家无从知道这是随机结果还是功能坏了。
+	#
+	# 补的位置放在 early_mid 一带而不是靠后: 建材要早点拿到才有得用。
+	var has_shop := false
+	for types in floor_types:
+		if "shop" in types:
+			has_shop = true
+			break
+	if not has_shop:
+		var target := clampi(int(round(float(max_floors) * 0.3)), 1, max_floors - 2)
+		var row: Array = floor_types[target]
+		if not row.is_empty():
+			row[randi() % row.size()] = "shop"
+
 	for f_idx in range(floor_types.size()):
 		var types = floor_types[f_idx]
 		var count = types.size()

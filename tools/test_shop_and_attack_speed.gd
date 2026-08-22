@@ -67,10 +67,15 @@ func _run_tests() -> void:
 	print("✓ Item purchase and gold deduction verified.")
 
 	# Test Reroll
+	# 报价必须在**调用之前**读下来: 刷新费用现在会在同一次进店内递增
+	# (REROLL_BASE + REROLL_STEP * n, 见 shop_dialog.gd), 所以调用之后的
+	# shop_inst.reroll_cost 已经是下一次的价, 不是刚扣掉的那一笔。
 	var old_gold = GameState.gold
+	var paid = shop_inst.reroll_cost
 	shop_inst._on_reroll_pressed()
-	assert(GameState.gold == old_gold - shop_inst.reroll_cost, "Reroll cost should be deducted")
-	print("✓ Shop inventory reroll verified.")
+	assert(GameState.gold == old_gold - paid, "Reroll cost should be deducted")
+	assert(shop_inst.reroll_cost > paid, "Reroll cost should escalate within a visit")
+	print("✓ Shop inventory reroll verified (paid %d, next %d)." % [paid, shop_inst.reroll_cost])
 
 	print("\n🎉 ALL SHOP SYSTEM & ATTACK SPEED TESTS PASSED SUCCESSFULLY! 🎉\n")
 	quit(0)
