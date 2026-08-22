@@ -39,14 +39,14 @@ func _process(delta: float) -> void:
 		sprite.scale = Vector2(pulse, pulse)
 		sprite.modulate = Color(1.2, 1.8, 1.0, 1.0)
 		if lock_indicator:
-			lock_indicator.text = "🔓 [触碰开启]"
+			lock_indicator.text = "[触碰开启]"
 			lock_indicator.modulate = Color(0.4, 1.0, 0.5)
 	else:
 		var pulse = 0.1875 + sin(Time.get_ticks_msec() * 0.005) * 0.008
 		sprite.scale = Vector2(pulse, pulse)
 		sprite.modulate = Color(1.0, 0.95, 0.85, 1.0)
 		if lock_indicator:
-			lock_indicator.text = "🔒 [需金钥匙]"
+			lock_indicator.text = "[需金钥匙]"
 			lock_indicator.modulate = Color(1.0, 0.8, 0.3)
 
 func _on_body_entered(body: Node2D) -> void:

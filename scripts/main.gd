@@ -10,6 +10,7 @@ const BuilderController = preload("res://scripts/builder_controller.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const MapTemplates = preload("res://scripts/map_templates.gd")
+const MapGenerator = preload("res://scripts/map_generator.gd")
 const DarknessFog = preload("res://scripts/darkness_fog.gd")
 const FallingBombHazard = preload("res://scripts/falling_bomb_hazard.gd")
 
@@ -48,6 +49,11 @@ var diamond_gem_scene: PackedScene
 var street_lamp_scene: PackedScene
 var electric_wall_scene: PackedScene
 var oil_barrel_scene: PackedScene
+var signal_jammer_tower_scene: PackedScene
+var factory_scene: PackedScene
+var drifting_supplies_scene: PackedScene
+var factory_instances: Array[Node] = [] # tracked for the battle-end gold/XP reward multiplier
+var battle_gold_earned: int = 0 # reset in start_game(), read by the Factory reward multiplier at _game_over()
 var has_treasure_key: bool = false
 var key_has_dropped: bool = false
 var key_hidden_target_type: String = "block" # "block" or "enemy"
@@ -87,6 +93,7 @@ var enemy_spawn_points: Array[Vector2] = [
 var p1_spawn_point: Vector2 = Vector2(4.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 var p2_spawn_point: Vector2 = Vector2(8.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 var water_sprites: Array[Sprite2D] = []
+var water_bodies: Array[StaticBody2D] = [] # used by player.gd's Amphibious Hull perk for add_collision_exception_with()
 var water_frame: int = 0
 var water_anim_timer: float = 0.0
 
@@ -110,14 +117,23 @@ func hit_stop(duration_sec: float = 0.05) -> void:
 @onready var actors_container: Node2D = $GameArea/ActorsContainer
 @onready var builder_ctrl: BuilderController = $GameArea/BuilderController
 
-@onready var hud_score: Label = $HUD/SidePanel/VBox/ScoreLabel
-@onready var hud_lives: Label = $HUD/SidePanel/VBox/LivesLabel
-@onready var hud_enemies: Label = $HUD/SidePanel/VBox/EnemiesLabel
+@onready var hud_score: Label = $HUD/SidePanel/VBox/ScoreBox/ScoreLabel
+@onready var hud_lives: Label = $HUD/SidePanel/VBox/LivesBox/LivesLabel
+@onready var hud_enemies: Label = $HUD/SidePanel/VBox/EnemiesBox/EnemiesLabel
 @onready var hud_rpg_level: Label = $HUD/SidePanel/VBox/RPGLevelLabel
 @onready var hud_rpg_xp: ProgressBar = $HUD/SidePanel/VBox/XPBar
-@onready var hud_gold: Label = $HUD/SidePanel/VBox/GoldLabel
-@onready var hud_p1_hp: Label = $HUD/SidePanel/VBox/P1HPLabel
-@onready var hud_p2_hp: Label = $HUD/SidePanel/VBox/P2HPLabel
+@onready var hud_gold: Label = $HUD/SidePanel/VBox/GoldBox/GoldLabel
+@onready var hud_p1_hp: Label = $HUD/SidePanel/VBox/P1HPBox/P1HPLabel
+@onready var hud_p2_hp: Label = $HUD/SidePanel/VBox/P2HPBox/P2HPLabel
+@onready var hud_p2_hp_box: HBoxContainer = $HUD/SidePanel/VBox/P2HPBox
+@onready var hud_score_icon: TextureRect = $HUD/SidePanel/VBox/ScoreBox/ScoreIcon
+@onready var hud_lives_icon: TextureRect = $HUD/SidePanel/VBox/LivesBox/LivesIcon
+@onready var hud_enemies_icon: TextureRect = $HUD/SidePanel/VBox/EnemiesBox/EnemiesIcon
+@onready var hud_gold_icon: TextureRect = $HUD/SidePanel/VBox/GoldBox/GoldIcon
+@onready var hud_p1_hp_icon: TextureRect = $HUD/SidePanel/VBox/P1HPBox/P1HPIcon
+@onready var hud_p2_hp_icon: TextureRect = $HUD/SidePanel/VBox/P2HPBox/P2HPIcon
+@onready var hud_controls_icon: TextureRect = $HUD/SidePanel/VBox/ControlsBox/ControlsIcon
+@onready var pause_icon: TextureRect = $HUD/PauseMenu/VBox/PauseIcon
 @onready var hud_stats: Label = $HUD/SidePanel/VBox/StatsLabel
 @onready var hud_toast: Label = $HUD/SidePanel/VBox/ToastLabel
 @onready var hud_status: Label = $HUD/CenterMessage
@@ -136,6 +152,13 @@ var hud_boss_bar: Control = null
 var hud_boss_fill: TextureProgressBar = null
 var hud_boss_label: Label = null
 var active_boss_instance: Node2D = null
+
+var victory_modal_root: Control = null
+var victory_modal_banner: TextureRect = null
+var victory_modal_title: Label = null
+var victory_modal_desc: Label = null
+var victory_modal_stats: VBoxContainer = null
+var victory_modal_button: Button = null
 
 func _ready() -> void:
 	player_scene = load("res://scenes/player.tscn")
@@ -156,6 +179,9 @@ func _ready() -> void:
 	street_lamp_scene = load("res://scenes/buildings/street_lamp.tscn")
 	electric_wall_scene = load("res://scenes/buildings/electric_wall.tscn")
 	oil_barrel_scene = load("res://scenes/buildings/oil_barrel.tscn")
+	signal_jammer_tower_scene = load("res://scenes/buildings/signal_jammer_tower.tscn")
+	factory_scene = load("res://scenes/buildings/factory.tscn")
+	drifting_supplies_scene = load("res://scenes/drifting_supplies.tscn")
 
 	var upg_scene = load("res://scenes/upgrade_selection_dialog.tscn")
 	if upg_scene:
@@ -185,6 +211,16 @@ func _ready() -> void:
 	UIThemeHelper.apply_clay_panel($HUD/SidePanel)
 	UIThemeHelper.apply_clay_panel(pause_menu)
 	UIThemeHelper.apply_clay_progressbar(hud_rpg_xp)
+	
+	if hud_score_icon: hud_score_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_score_trophy.png")
+	if hud_lives_icon: hud_lives_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/hp_heart_full.png")
+	if hud_enemies_icon: hud_enemies_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_enemy_radar.png")
+	if hud_gold_icon: hud_gold_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_badge_gold.png")
+	if hud_p1_hp_icon: hud_p1_hp_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_tank_p1.png")
+	if hud_p2_hp_icon: hud_p2_hp_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_tank_p2.png")
+	if hud_controls_icon: hud_controls_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_controls.png")
+	if pause_icon: pause_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_pause.png")
+	
 	hud_hotbar = UIThemeHelper.create_hotbar_ui($HUD)
 
 	var boss_dict = UIThemeHelper.create_boss_bar($HUD)
@@ -192,12 +228,21 @@ func _ready() -> void:
 	hud_boss_fill = boss_dict["prog"]
 	hud_boss_label = boss_dict["label"]
 
+	var modal_dict = UIThemeHelper.create_victory_defeat_modal($HUD)
+	victory_modal_root = modal_dict["root"]
+	victory_modal_banner = modal_dict["banner"]
+	victory_modal_title = modal_dict["title"]
+	victory_modal_desc = modal_dict["desc"]
+	victory_modal_stats = modal_dict["stats_box"]
+	victory_modal_button = modal_dict["button"]
+	victory_modal_button.pressed.connect(_on_button_action)
+
 	UIThemeHelper.apply_clay_button(btn_restart)
 	btn_restart.pressed.connect(_on_button_action)
 
-	UIThemeHelper.apply_clay_button(btn_resume)
-	UIThemeHelper.apply_clay_button(btn_restart_stage)
-	UIThemeHelper.apply_clay_button(btn_quit_menu)
+	UIThemeHelper.apply_icon_button(btn_resume, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(22, 22))
+	UIThemeHelper.apply_icon_button(btn_restart_stage, "res://assets/sprites/ui/ui_icon_mode_arcade.png", Vector2(22, 22))
+	UIThemeHelper.apply_icon_button(btn_quit_menu, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(22, 22))
 
 	btn_resume.pressed.connect(_toggle_pause)
 	btn_restart_stage.pressed.connect(func():
@@ -239,10 +284,13 @@ func start_game() -> void:
 	enemies_alive = 0
 	is_game_over = false
 	is_victory = false
+	battle_gold_earned = 0
 	shovel_timer = 0.0
 	is_shovel_active = false
 	hud_status.visible = false
 	btn_restart.visible = false
+	if victory_modal_root:
+		victory_modal_root.visible = false
 
 	is_night_mode_active = false
 	is_bomb_rain_active = false
@@ -284,6 +332,22 @@ func start_game() -> void:
 			total_enemies = 12
 			spawn_interval = 2.5
 			show_toast("FLOOR %d: TACTICAL ENGAGEMENT" % (GameState.current_floor + 1))
+	elif GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
+		# Seed the global RNG stream from today's date so every randf()/randi()
+		# call from here on (map layout, enemy rolls, spawn positions) plays
+		# out identically for everyone who runs the challenge today -- a
+		# fair, comparable "one shot" score attempt, not just "randomize now".
+		seed(GameState.get_daily_seed())
+		p1_lives = 1
+		p2_lives = 0
+		total_enemies = 99 # effectively endless -- the run ends when you die, not when enemies run out
+		spawn_interval = 2.2
+		rpg_mgr.reset()
+		var today_best = GameState.get_daily_best_score()
+		if today_best > 0:
+			show_toast("☠️ 每日挑战：只有一条命！今日最高分 %06d" % today_best)
+		else:
+			show_toast("☠️ 每日挑战：只有一条命，随机地图与随机敌人，尽力而为！")
 	else:
 		p1_lives = 3
 		p2_lives = 3
@@ -297,9 +361,9 @@ func start_game() -> void:
 	_spawn_player(1)
 	if GameState.player_count == 2:
 		_spawn_player(2)
-		hud_p2_hp.visible = true
+		if hud_p2_hp_box: hud_p2_hp_box.visible = true
 	else:
-		hud_p2_hp.visible = false
+		if hud_p2_hp_box: hud_p2_hp_box.visible = false
 
 	if is_night_mode_active:
 		darkness_fog_instance = DarknessFog.new()
@@ -312,6 +376,7 @@ func start_game() -> void:
 
 func add_gold(amount: int) -> void:
 	rpg_mgr.add_gold(amount)
+	battle_gold_earned += amount
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		rpg_mgr.sync_to_game_state()
 	show_toast("+%d GOLD!" % amount)
@@ -329,7 +394,15 @@ func _on_rpg_level_up(new_lvl: int) -> void:
 
 	if upgrade_dialog and is_instance_valid(upgrade_dialog):
 		var was_empty = pending_upgrade_players.is_empty()
-		var new_players: Array[int] = [1, 2] if GameState.player_count == 2 else [1]
+		# A ternary between two untyped array literals ([1,2] / [1]) doesn't
+		# coerce to Array[int] at runtime -- Godot throws "Trying to assign
+		# an array of type Array to a variable of type Array[int]" the
+		# instant this line executes. Assigning each literal directly to the
+		# already-typed variable (instead of picking between them via `if
+		# ... else` first) does convert correctly.
+		var new_players: Array[int] = [1]
+		if GameState.player_count == 2:
+			new_players = [1, 2]
 		pending_upgrade_players.append_array(new_players)
 		if was_empty:
 			upgrade_dialog.show_upgrade_options(rpg_mgr, pending_upgrade_players[0])
@@ -355,6 +428,8 @@ func _on_upgrade_option_selected(opt: Dictionary, player_id: int) -> void:
 
 func _clear_all() -> void:
 	water_sprites.clear()
+	water_bodies.clear()
+	factory_instances.clear()
 	if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
 		darkness_fog_instance.queue_free()
 		darkness_fog_instance = null
@@ -374,7 +449,18 @@ func _build_map() -> void:
 	_create_border_wall(Vector2(map_pixel_w / 2.0, -TILE_SIZE / 2.0), Vector2(map_pixel_w + TILE_SIZE * 2, TILE_SIZE))
 	_create_border_wall(Vector2(map_pixel_w / 2.0, map_pixel_h + TILE_SIZE / 2.0), Vector2(map_pixel_w + TILE_SIZE * 2, TILE_SIZE))
 
-	var layout = MapTemplates.get_layout_for_stage(GameState.current_floor, GameState.battle_type, GameState.current_act)
+	var layout: Array
+	if GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
+		# Fully procedural terrain (not one of the handcrafted templates) --
+		# "random tiles" is the point of the mode. Biome is randomized too
+		# (global RNG was already seed()-ed from today's date in start_game()),
+		# but the generator itself takes an explicit custom_seed since it
+		# spins up its own local RandomNumberGenerator rather than using the
+		# global randi()/randf() stream.
+		var daily_act = randi_range(1, 3)
+		layout = MapGenerator.generate_map(daily_act, MapGenerator.Symmetry.HORIZONTAL, GameState.get_daily_seed())
+	else:
+		layout = MapTemplates.get_layout_for_stage(GameState.current_floor, GameState.battle_type, GameState.current_act)
 	current_map_layout = layout
 
 	for r in range(layout.size()):
@@ -435,6 +521,12 @@ func _build_map() -> void:
 				_spawn_electric_wall(pos)
 			elif tile_type == 26:
 				_spawn_oil_barrel(pos)
+			elif tile_type == 27:
+				_spawn_signal_jammer_tower(pos)
+			elif tile_type == 28:
+				_spawn_factory(pos)
+			elif tile_type == 29:
+				_spawn_drifting_supplies(pos)
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters)
 	if (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
@@ -645,6 +737,7 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 
 	if type == "water":
 		water_sprites.append(spr)
+		water_bodies.append(body)
 
 	var col = CollisionShape2D.new()
 	var shape = RectangleShape2D.new()
@@ -653,6 +746,32 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 	body.add_child(col)
 
 	map_container.add_child(body)
+
+	if type == "water":
+		# Sibling Area2D purely for overlap *detection* (on_enter_water/
+		# on_exit_water) -- the StaticBody2D above still physically blocks
+		# everyone by default. Amphibious Hull grants a collision exception
+		# against the StaticBody2D itself (player.gd::_apply_rpg_stats), so
+		# it needs this separate Area2D to know when it's actually "in"
+		# water for the land-only speed penalty, same as the sand/ice areas
+		# below use body_entered/exited to track is_on_sand/is_on_ice.
+		var water_area = Area2D.new()
+		water_area.position = pos
+		water_area.z_index = -1
+		var area_col = CollisionShape2D.new()
+		var area_shape = RectangleShape2D.new()
+		area_shape.size = Vector2(TILE_SIZE - 2, TILE_SIZE - 2)
+		area_col.shape = area_shape
+		water_area.add_child(area_col)
+		water_area.body_entered.connect(func(b):
+			if is_instance_valid(b) and b.has_method("on_enter_water"):
+				b.on_enter_water()
+		)
+		water_area.body_exited.connect(func(b):
+			if is_instance_valid(b) and b.has_method("on_exit_water"):
+				b.on_exit_water()
+		)
+		map_container.add_child(water_area)
 
 func _spawn_moving_platform(pos: Vector2, axis: Vector2 = Vector2.RIGHT, dist: float = 144.0, speed: float = 48.0) -> void:
 	if not moving_platform_scene:
@@ -731,6 +850,44 @@ func _spawn_oil_barrel(pos: Vector2) -> void:
 		barrel.position = pos
 		actors_container.add_child(barrel)
 
+func _spawn_signal_jammer_tower(pos: Vector2) -> void:
+	if not signal_jammer_tower_scene:
+		signal_jammer_tower_scene = load("res://scenes/buildings/signal_jammer_tower.tscn")
+	if signal_jammer_tower_scene:
+		var jammer = signal_jammer_tower_scene.instantiate()
+		jammer.position = pos
+		actors_container.add_child(jammer)
+
+func _spawn_factory(pos: Vector2) -> void:
+	if not factory_scene:
+		factory_scene = load("res://scenes/buildings/factory.tscn")
+	if factory_scene:
+		var factory = factory_scene.instantiate()
+		factory.position = pos
+		actors_container.add_child(factory)
+		factory_instances.append(factory)
+
+func _spawn_drifting_supplies(pos: Vector2) -> void:
+	# Decorative water backdrop with NO collision body -- unlike a real water
+	# tile (_spawn_tile("water", ...)), this cell is deliberately walkable so
+	# any tank (not just Amphibious Hull owners) can reach the crate on it.
+	# Registered into water_sprites so it animates in sync with real water.
+	var spr = Sprite2D.new()
+	if tex_water_frames.size() > 0:
+		spr.texture = tex_water_frames[0]
+	spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
+	spr.position = pos
+	spr.z_index = -1
+	map_container.add_child(spr)
+	water_sprites.append(spr)
+
+	if not drifting_supplies_scene:
+		drifting_supplies_scene = load("res://scenes/drifting_supplies.tscn")
+	if drifting_supplies_scene:
+		var crate = drifting_supplies_scene.instantiate()
+		crate.position = pos
+		actors_container.add_child(crate)
+
 func _setup_challenge_treasure() -> void:
 	has_treasure_key = false
 	key_has_dropped = false
@@ -794,8 +951,8 @@ func _drop_treasure_key(drop_pos: Vector2) -> void:
 		treasure_key_scene = load("res://scenes/treasure_key.tscn")
 	if treasure_key_scene:
 		var key = treasure_key_scene.instantiate()
-		actors_container.add_child(key)
 		key.global_position = drop_pos
+		actors_container.call_deferred("add_child", key)
 		SoundManager.play_level_up(get_tree())
 		VFXAnimator.spawn_teleport_burst(actors_container, drop_pos)
 		show_toast("🔑 发现神秘金钥匙！快去触碰战场宝箱！")
@@ -829,16 +986,16 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 		var coin_scene = load("res://scenes/gold_coin.tscn")
 		if coin_scene and actors_container:
 			var coin = coin_scene.instantiate()
-			actors_container.add_child(coin)
 			coin.global_position = pos
+			actors_container.call_deferred("add_child", coin)
 	elif roll < 0.88:
 		# Rare Diamond Gem (+60G + 30XP)
 		if not diamond_gem_scene:
 			diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
 		if diamond_gem_scene and actors_container:
 			var dia = diamond_gem_scene.instantiate()
-			actors_container.add_child(dia)
 			dia.global_position = pos
+			actors_container.call_deferred("add_child", dia)
 	else:
 		# Rare Power-up (Star / Bomb / Clock / Helmet / Life / Shovel / Missile / Timed Bomb)
 		if powerup_scene and actors_container:
@@ -847,7 +1004,7 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 			types.shuffle()
 			p_inst.setup(types[0])
 			p_inst.position = pos
-			actors_container.add_child(p_inst)
+			actors_container.call_deferred("add_child", p_inst)
 			show_toast("✨ 砖块暗藏极品道具！")
 
 func get_random_empty_tile_position() -> Vector2:
@@ -1028,6 +1185,44 @@ func _spawn_falling_bomb() -> void:
 	bomb_hazard.position = target_pos
 	actors_container.add_child(bomb_hazard)
 
+## Power tier -> earliest per-act floor_idx it's allowed to roll on. Applied
+## uniformly to the battle/elite/boss tables in _request_spawn_enemy() below
+## so "harder" encounter types can't front-load an early elite/boss node with
+## enemies the player has no counterplay for yet. Types absent from this dict
+## (BASIC, FAST, ARMOR/DESERT/WARP, TRAIN_BOSS, BOSS) are unrestricted --
+## the themed types are act signatures gated by _band_pool()/act instead.
+##
+## Tiers are grouped by actual mechanic, not just raw stats:
+##   Floor 1 -- tankier/faster reskins of the basic direct-fire loop, nothing
+##              new to read (POWER: 2hp+faster bullet, SUICIDE: no gun, just
+##              a fast contact-detonate rush, ARMOR: 4hp sponge).
+##   Floor 3 -- BOMBER: still direct threat, but adds a timed-delay AoE the
+##              player has to track after the enemy has already moved on.
+##   Floor 5 -- genuinely new counterplay required: AIRCRAFT ignores every
+##              wall/water tile on the map (ex-Floor-1 bug -- it used to be
+##              gated as if it were a plain reskin, which is why it could
+##              show up in Act 1), MIRAGE turns invisible, BATTLESHIP/LASER
+##              hit in an AoE/piercing line instead of a single bullet.
+##   Floor 8 -- MISSILE/WARP: off-screen-telegraphed AoE strikes and
+##              teleporting mobility -- the actual "boss-adjacent" tier.
+const ENEMY_MIN_FLOOR: Dictionary = {
+	EnemyTank.EnemyType.POWER: 1,
+	EnemyTank.EnemyType.SUICIDE: 1,
+	EnemyTank.EnemyType.ARMOR: 1,
+	EnemyTank.EnemyType.BOMBER: 3,
+	EnemyTank.EnemyType.AIRCRAFT: 5,
+	EnemyTank.EnemyType.MIRAGE: 5,
+	EnemyTank.EnemyType.BATTLESHIP: 5,
+	EnemyTank.EnemyType.LASER: 5,
+	EnemyTank.EnemyType.MISSILE: 8,
+	EnemyTank.EnemyType.WARP: 8,
+}
+
+func _gate_enemy_type(type: EnemyTank.EnemyType, floor_idx: int) -> EnemyTank.EnemyType:
+	if floor_idx >= ENEMY_MIN_FLOOR.get(type, 0):
+		return type
+	return EnemyTank.EnemyType.FAST if floor_idx >= 1 else EnemyTank.EnemyType.BASIC
+
 func _request_spawn_enemy() -> void:
 	if enemies_spawned >= total_enemies or enemy_spawn_points.is_empty():
 		return
@@ -1040,6 +1235,18 @@ func _request_spawn_enemy() -> void:
 	var r = randf()
 	var floor_idx = GameState.current_floor
 
+	# Terrain-themed "signature" enemy slot -- kept to one type per act so a
+	# new silhouette (not a hidden stat buff) is what signals "this act is
+	# different": Act1 plains/rivers get no special terrain tank (falls back
+	# to ARMOR, already this table's default filler), Act2 desert maps get
+	# DESERT, Act3 glacial/warp maps get WARP. Previously DESERT was tied
+	# only to floor_idx==2 with no act check, so it could spawn on Act1/Act3
+	# maps that have no desert tiles at all.
+	var themed_type = EnemyTank.EnemyType.ARMOR
+	match GameState.get_visual_act():
+		2: themed_type = EnemyTank.EnemyType.DESERT
+		3: themed_type = EnemyTank.EnemyType.WARP
+
 	var has_water = false
 	if current_map_layout and current_map_layout.size() > 0:
 		for row in current_map_layout:
@@ -1047,7 +1254,13 @@ func _request_spawn_enemy() -> void:
 				has_water = true
 				break
 
-	if GameState.battle_type == "boss":
+	if GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
+		# Uniformly random across the whole roster, no floor-tier gate --
+		# unpredictability is the entire point of "random enemies" here,
+		# not a curated ramp-up like the campaign floors get.
+		var all_types = EnemyTank.EnemyType.values()
+		type = all_types[randi() % all_types.size()]
+	elif GameState.battle_type == "boss":
 		if enemies_spawned == 0:
 			type = EnemyTank.EnemyType.TRAIN_BOSS
 			show_toast("🚂 ARMORED TRAIN FORTRESS DETECTED! 🚂")
@@ -1062,7 +1275,7 @@ func _request_spawn_enemy() -> void:
 		elif r < 0.60: type = EnemyTank.EnemyType.MISSILE
 		elif r < 0.75: type = EnemyTank.EnemyType.BOMBER
 		elif r < 0.88: type = EnemyTank.EnemyType.LASER
-		else: type = EnemyTank.EnemyType.POWER
+		else: type = EnemyTank.EnemyType.WARP if GameState.get_visual_act() == 3 else EnemyTank.EnemyType.POWER
 	elif GameState.battle_type == "elite":
 		if enemies_spawned == 0:
 			type = EnemyTank.EnemyType.TRAIN_BOSS
@@ -1074,7 +1287,7 @@ func _request_spawn_enemy() -> void:
 		elif r < 0.65: type = EnemyTank.EnemyType.MISSILE
 		elif r < 0.80: type = EnemyTank.EnemyType.BOMBER
 		elif r < 0.90: type = EnemyTank.EnemyType.LASER
-		else: type = EnemyTank.EnemyType.ARMOR
+		else: type = themed_type
 	else:
 		match floor_idx:
 			0:
@@ -1086,7 +1299,7 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.92: type = EnemyTank.EnemyType.SUICIDE
 				else: type = EnemyTank.EnemyType.AIRCRAFT
 			2:
-				if r < 0.25: type = EnemyTank.EnemyType.DESERT
+				if r < 0.25: type = themed_type
 				elif r < 0.45: type = EnemyTank.EnemyType.FAST
 				elif r < 0.62: type = EnemyTank.EnemyType.SUICIDE
 				elif r < 0.76: type = EnemyTank.EnemyType.BOMBER
@@ -1116,6 +1329,16 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.75: type = EnemyTank.EnemyType.MISSILE
 				elif r < 0.88: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
+
+	# Floor-gate the roll above -- the boss/elite tables (unlike the plain
+	# "battle" one) never checked floor_idx, so an early Act1 elite fight
+	# (first possible around floor_idx 4) could roll a MISSILE/BOMBER truck
+	# well before the player has any counterplay for it. TRAIN_BOSS/BOSS and
+	# the current act's themed_type are exempt -- they're encounter identity
+	# (the elite's boss escort, the act finale, the act's signature silhouette),
+	# not power-tier filler.
+	if GameState.mode != GameState.GameMode.DAILY_CHALLENGE and type != EnemyTank.EnemyType.TRAIN_BOSS and type != EnemyTank.EnemyType.BOSS and type != themed_type:
+		type = _gate_enemy_type(type, floor_idx)
 
 	var spawn_index = enemies_spawned
 	var star = spawnstar_scene.instantiate()
@@ -1168,7 +1391,7 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = drop_pos
-		actors_container.add_child(p_inst)
+		actors_container.call_deferred("add_child", p_inst)
 		show_toast("BONUS ITEM DROPPED!")
 
 	if enemies_spawned >= total_enemies and enemies_alive <= 0:
@@ -1215,8 +1438,8 @@ func _on_player_destroyed(pid: int) -> void:
 			for i in range(coin_count):
 				var coin = coin_scene.instantiate()
 				var offset = Vector2(randf_range(-28.0, 28.0), randf_range(-28.0, 28.0))
-				actors_container.add_child(coin)
 				coin.global_position = death_pos + offset
+				actors_container.call_deferred("add_child", coin)
 
 	show_toast("⚠️ P%d 战车损毁！装甲星级重置，损失 %dG 金币！" % [pid, lost_gold])
 
@@ -1239,6 +1462,64 @@ func _on_base_destroyed() -> void:
 	hit_stop(0.08)
 	_game_over(false)
 
+## Factory map building: doubles this battle's earned gold+XP if at least one
+## Factory instance survived to the end, halves it if every Factory on the
+## map was destroyed. No-op if the map had no Factory. Applies to
+## battle_gold_earned/rpg_mgr.xp_earned_this_battle -- everything earned this
+## battle, including any mission-completion bonus already granted above --
+## not the player's full running totals.
+func _apply_factory_reward_multiplier() -> void:
+	if factory_instances.is_empty() or not rpg_mgr:
+		return
+
+	var any_factory_alive = false
+	for f in factory_instances:
+		if is_instance_valid(f):
+			any_factory_alive = true
+			break
+
+	var mult = 2.0 if any_factory_alive else 0.5
+	var gold_delta = int(round(battle_gold_earned * (mult - 1.0)))
+	var xp_delta = int(round(rpg_mgr.xp_earned_this_battle * (mult - 1.0)))
+
+	if gold_delta != 0:
+		rpg_mgr.gold = maxi(0, rpg_mgr.gold + gold_delta)
+		rpg_mgr.gold_changed.emit(rpg_mgr.gold)
+	if xp_delta > 0:
+		rpg_mgr.add_xp(xp_delta) # may cascade a level-up, same as any other XP grant
+	elif xp_delta < 0:
+		rpg_mgr.current_xp = maxi(0, rpg_mgr.current_xp + xp_delta) # clamp only -- no delevel mechanic exists
+
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		rpg_mgr.sync_to_game_state()
+
+	if any_factory_alive:
+		show_toast("🏭 工厂保存完好！本局奖励翻倍！")
+	else:
+		show_toast("🏭 工厂被摧毁！本局奖励减半！")
+
+func _create_modal_stat_row(icon_path: String, text_str: String) -> HBoxContainer:
+	var hbox = HBoxContainer.new()
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 10)
+
+	var icon_rect = TextureRect.new()
+	icon_rect.custom_minimum_size = Vector2(24, 24)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var tex = TextureHelper.get_tex(icon_path)
+	if tex:
+		icon_rect.texture = tex
+	hbox.add_child(icon_rect)
+
+	var lbl = Label.new()
+	lbl.text = text_str
+	lbl.add_theme_font_size_override("font_size", 13)
+	lbl.add_theme_color_override("font_color", Color(0.92, 0.90, 0.85))
+	hbox.add_child(lbl)
+
+	return hbox
+
 func _game_over(victory: bool) -> void:
 	if is_game_over or is_victory:
 		return
@@ -1252,48 +1533,99 @@ func _game_over(victory: bool) -> void:
 		if p2_instance and is_instance_valid(p2_instance):
 			GameState.p2_tier = p2_instance.upgrade_tier
 
+	var btn_action_text = "CONTINUE"
+	var modal_title_str = ""
+	var modal_desc_str = ""
+
 	if victory:
 		is_victory = true
 		SoundManager.play_victory(get_tree())
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
+			var campaign_complete = false
 			if GameState.battle_type == "boss":
 				if GameState.current_act < GameState.max_acts:
-					hud_status.text = "🏆 ACT %d CONQUERED! 🏆\n%s SECURED!" % [GameState.current_act, GameState.get_act_name(GameState.current_act)]
-					hud_status.modulate = Color(0.98, 0.85, 0.35)
-					btn_restart.text = "PROCEED TO ACT %d ->" % (GameState.current_act + 1)
-					GameState.save_campaign()
+					modal_title_str = "🏆 ACT %d CONQUERED! 🏆" % GameState.current_act
+					modal_desc_str = "%s 要塞已彻底肃清攻克！" % GameState.get_act_name(GameState.current_act)
+					btn_action_text = "PROCEED TO ACT %d ->" % (GameState.current_act + 1)
 				else:
-					hud_status.text = "👑 GRAND DEMO VICTORY! 👑\nALL 3 MAJOR ACTS CONQUERED!"
-					hud_status.modulate = Color(0.98, 0.82, 0.35)
-					btn_restart.text = "RETURN TO TITLE"
-					GameState.delete_saved_game()
+					modal_title_str = "👑 GRAND VICTORY! 👑"
+					modal_desc_str = "全部 %d 大战役关卡通关！传奇战车指挥官！" % GameState.max_acts
+					btn_action_text = "RETURN TO TITLE"
+					campaign_complete = true
 			elif GameState.battle_type == "challenge":
 				add_gold(150)
 				rpg_mgr.add_xp(100)
-				hud_status.text = "🏆 CHALLENGE COMPLETE! 🏆\n+150G & +100XP BONUS AWARDED!"
-				hud_status.modulate = Color(0.98, 0.82, 0.35)
-				btn_restart.text = "CONTINUE CLIMBING"
-				GameState.save_campaign()
+				modal_title_str = "🏆 CHALLENGE COMPLETE! 🏆"
+				modal_desc_str = "战术极限挑战大成功！额外斩获 +150G 与 +100XP！"
+				btn_action_text = "CONTINUE CLIMBING"
 			else:
-				hud_status.text = "VICTORY!\nSECTOR SECURED"
-				hud_status.modulate = Color(0.58, 0.86, 0.6)
-				btn_restart.text = "CONTINUE CLIMBING"
+				modal_title_str = "★ SECTOR SECURED ★"
+				modal_desc_str = "当前战区敌对势力全数歼灭！防线稳固！"
+				btn_action_text = "CONTINUE CLIMBING"
+
+			_apply_factory_reward_multiplier()
+
+			if campaign_complete:
+				GameState.delete_saved_game()
+			else:
 				GameState.save_campaign()
+		elif GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
+			# Only reachable by actually clearing all 99 enemies without dying --
+			# still counts as a (very impressive) score submission.
+			var is_record = GameState.submit_daily_score(score)
+			modal_title_str = "🏆 DAILY CHALLENGE CLEARED! 🏆"
+			modal_desc_str = "今日挑战被你打穿了！最终得分 %06d%s" % [score, "（新纪录！）" if is_record else ""]
+			btn_action_text = "RETURN TO TITLE"
 		else:
-			hud_status.text = "VICTORY!\nSTAGE CLEARED"
-			hud_status.modulate = Color(0.58, 0.86, 0.6)
-			btn_restart.text = "PLAY AGAIN"
+			modal_title_str = "★ STAGE CLEARED ★"
+			modal_desc_str = "双人街机模式本关肃清！"
+			btn_action_text = "PLAY AGAIN"
 	else:
 		is_game_over = true
 		SoundManager.play_game_over(get_tree())
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
 			GameState.delete_saved_game()
-		hud_status.text = "GAME OVER\nBASE DESTROYED"
-		hud_status.modulate = Color(0.88, 0.42, 0.4)
-		btn_restart.text = "RETURN TO MENU"
-	
-	hud_status.visible = true
-	btn_restart.visible = true
+		if GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
+			var is_record = GameState.submit_daily_score(score)
+			modal_title_str = "☠️ DAILY CHALLENGE OVER ☠️"
+			modal_desc_str = "今日挑战结束，最终得分 %06d%s" % [score, "（新纪录！）" if is_record else "（今日最高分 %06d）" % GameState.get_daily_best_score()]
+			btn_action_text = "RETURN TO TITLE"
+		else:
+			modal_title_str = "DEFEAT (防线陷落)"
+			modal_desc_str = "基地要塞被敌军重炮摧毁或战车全毁！"
+			btn_action_text = "RETURN TO MENU"
+
+	if victory_modal_root:
+		victory_modal_root.visible = true
+		for c in victory_modal_stats.get_children():
+			c.queue_free()
+
+		var row_score = _create_modal_stat_row("res://assets/sprites/ui/ui_icon_score_trophy.png", "战役总得分 (Score): %06d" % score)
+		var row_kills = _create_modal_stat_row("res://assets/sprites/ui/ui_icon_enemy_radar.png", "歼灭敌军数量 (Kills): %d 辆" % enemies_spawned)
+		var row_gold = _create_modal_stat_row("res://assets/sprites/ui/ui_badge_gold.png", "战役缴获黄金 (Gold): %d G" % battle_gold_earned)
+		victory_modal_stats.add_child(row_score)
+		victory_modal_stats.add_child(row_kills)
+		victory_modal_stats.add_child(row_gold)
+
+		if victory:
+			victory_modal_banner.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_banner_victory.png")
+			victory_modal_title.text = modal_title_str
+			victory_modal_title.modulate = Color(1.0, 0.90, 0.35)
+			victory_modal_desc.text = modal_desc_str
+			UIThemeHelper.apply_icon_button(victory_modal_button, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(24, 24))
+			victory_modal_button.text = btn_action_text
+		else:
+			victory_modal_banner.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_banner_gameover.png")
+			victory_modal_title.text = modal_title_str
+			victory_modal_title.modulate = Color(0.95, 0.35, 0.35)
+			victory_modal_desc.text = modal_desc_str
+			UIThemeHelper.apply_icon_button(victory_modal_button, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(24, 24))
+			victory_modal_button.text = btn_action_text
+	else:
+		hud_status.text = modal_title_str + "\n" + modal_desc_str
+		hud_status.visible = true
+		btn_restart.text = btn_action_text
+		btn_restart.visible = true
 
 func _on_button_action() -> void:
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
@@ -1309,6 +1641,12 @@ func _on_button_action() -> void:
 				get_tree().change_scene_to_file("res://scenes/spire_map.tscn")
 		else:
 			get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+	elif GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
+		# Unlike Arcade's "loop on itself" restart, a daily run ending should
+		# go back to the title -- replaying today's seed again isn't the
+		# point (there's no server-side lock on it, but the button flow
+		# shouldn't invite grinding a one-shot mode for a better roll).
+		get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
 	else:
 		start_game()
 
@@ -1324,34 +1662,34 @@ func _update_hud() -> void:
 func _branch_tag(player_id: int) -> String:
 	match rpg_mgr.get_branch(player_id):
 		"speed":
-			return "⚡SPEED T%d" % rpg_mgr.get_branch_tier(player_id)
+			return "SPEED T%d" % rpg_mgr.get_branch_tier(player_id)
 		"heavy":
-			return "💥HEAVY T%d" % rpg_mgr.get_branch_tier(player_id)
+			return "HEAVY T%d" % rpg_mgr.get_branch_tier(player_id)
 		"train":
-			return "🚂TRAIN T%d" % rpg_mgr.get_branch_tier(player_id)
+			return "TRAIN T%d" % rpg_mgr.get_branch_tier(player_id)
 		_:
 			return "DEFAULT"
 
 func _update_rpg_hud() -> void:
 	if hud_rpg_level:
-		hud_rpg_level.text = "★ LV.%d [%s]" % [rpg_mgr.level, _branch_tag(1)]
+		hud_rpg_level.text = "LV.%d [%s]" % [rpg_mgr.level, _branch_tag(1)]
 	if hud_rpg_xp:
 		hud_rpg_xp.max_value = rpg_mgr.xp_to_next
 		hud_rpg_xp.value = rpg_mgr.current_xp
 	if hud_gold:
-		hud_gold.text = "🪙 GOLD: %d G" % rpg_mgr.gold
+		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
 	if hud_p1_hp and p1_instance and is_instance_valid(p1_instance):
 		hud_p1_hp.text = "P1 [YEL] HP: %d / %d [%s]" % [p1_instance.current_health, p1_instance.max_health, _branch_tag(1)]
 	if hud_p2_hp and p2_instance and is_instance_valid(p2_instance):
 		hud_p2_hp.text = "P2 [GRN] HP: %d / %d [%s]" % [p2_instance.current_health, p2_instance.max_health, _branch_tag(2)]
 	if hud_stats:
 		if GameState.player_count == 2:
-			hud_stats.text = "P1 ⚔️%d ⚡+%d%% | P2 ⚔️%d ⚡+%d%%" % [
+			hud_stats.text = "P1 ATK:%d SPD:+%d%% | P2 ATK:%d SPD:+%d%%" % [
 				rpg_mgr.get_atk_damage(1), int((rpg_mgr.get_speed_multiplier(1) - 1.0) * 100),
 				rpg_mgr.get_atk_damage(2), int((rpg_mgr.get_speed_multiplier(2) - 1.0) * 100)
 			]
 		else:
-			hud_stats.text = "⚔️ ATK: %d | ⚡ SPD: +%d%%\n❤️ REGEN: +%.1f/s" % [
+			hud_stats.text = "ATK: %d | SPD: +%d%%\nREGEN: +%.1f/s" % [
 				rpg_mgr.get_atk_damage(1),
 				int((rpg_mgr.get_speed_multiplier(1) - 1.0) * 100),
 				rpg_mgr.get_regen_rate(1)

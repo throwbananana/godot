@@ -28,14 +28,14 @@ theme_override_constants/separation = 2
 [node name="TitleLabel" type="Label" parent="VBox/Header"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 17
-text = "⚔️ TACTICAL ENGAGEMENT: OUTSKIRTS PATROL"
+text = "TACTICAL ENGAGEMENT: OUTSKIRTS PATROL"
 horizontal_alignment = 1
 
 [node name="SubTitleLabel" type="Label" parent="VBox/Header"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.78, 0.45, 1)
 theme_override_font_sizes/font_size = 12
-text = "THREAT LEVEL: ★☆☆☆☆ | ENEMY BATTALION: 12 UNITS"
+text = "THREAT LEVEL: TACTICAL | ENEMY BATTALION: 12 UNITS"
 horizontal_alignment = 1
 
 [node name="HSeparator1" type="HSeparator" parent="VBox"]
@@ -54,7 +54,7 @@ theme_override_constants/separation = 3
 layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.85, 0.95, 1)
 theme_override_font_sizes/font_size = 11
-text = "🗺️ 战场地形环境 (TERRAIN & HAZARDS):"
+text = "战场地形环境 (TERRAIN & HAZARDS):"
 
 [node name="TerrainList" type="HBoxContainer" parent="VBox/Sections/TerrainSection"]
 layout_mode = 2
@@ -68,7 +68,7 @@ theme_override_constants/separation = 3
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.55, 0.55, 1)
 theme_override_font_sizes/font_size = 11
-text = "🎯 侦察敌军阵容 (ENEMY RECONNAISSANCE):"
+text = "侦察敌军阵容 (ENEMY RECONNAISSANCE):"
 
 [node name="EnemyList" type="HBoxContainer" parent="VBox/Sections/EnemySection"]
 layout_mode = 2
@@ -82,7 +82,7 @@ theme_override_constants/separation = 3
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.85, 0.45, 1)
 theme_override_font_sizes/font_size = 11
-text = "🎁 战场空投与战利品 (POTENTIAL DROPS & REWARDS):"
+text = "战场空投与战利品 (POTENTIAL DROPS & REWARDS):"
 
 [node name="DropList" type="HBoxContainer" parent="VBox/Sections/DropSection"]
 layout_mode = 2
@@ -101,10 +101,10 @@ custom_minimum_size = Vector2(180, 36)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.3, 1.2, 0.4, 1)
 theme_override_font_sizes/font_size = 14
-text = "⚔️ 出击 (START MISSION)"
+text = "出击 (START MISSION)"
 
 [node name="CancelButton" type="Button" parent="VBox/Actions"]
 custom_minimum_size = Vector2(120, 36)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "✕ 返回 (BACK)"
+text = "返回 (BACK)"

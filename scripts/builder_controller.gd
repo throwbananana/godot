@@ -6,18 +6,23 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 
 enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB }
 
-var costs = {
-	StructureType.TURRET: 80,
-	StructureType.FORTIFIED_WALL: 25,
-	StructureType.ELECTRIC_WALL: 50,
-	StructureType.STREET_LAMP: 45,
-	StructureType.OIL_BARREL: 55,
-	StructureType.LANDMINE: 40,
-	StructureType.REPAIR_STATION: 120,
-	StructureType.SHIELD_STATION: 100,
-	StructureType.WIND_BLOWER: 70,
-	StructureType.MISSILE_STRIKE: 90,
-	StructureType.TIMED_BOMB: 60
+## Battle-placement no longer spends gold directly (see GameState.structure_inventory) --
+## these structures are shop-only stock now: buy N in shop_dialog.gd's Building
+## Supplies section (persists across battles), each placement here consumes
+## one unit. structure_ids maps each StructureType to the string key
+## GameState.structure_inventory and shop_dialog.gd's BUILDING_ITEMS use.
+var structure_ids = {
+	StructureType.TURRET: "turret",
+	StructureType.FORTIFIED_WALL: "fortified_wall",
+	StructureType.ELECTRIC_WALL: "electric_wall",
+	StructureType.STREET_LAMP: "street_lamp",
+	StructureType.OIL_BARREL: "oil_barrel",
+	StructureType.LANDMINE: "landmine",
+	StructureType.REPAIR_STATION: "repair_station",
+	StructureType.SHIELD_STATION: "shield_station",
+	StructureType.WIND_BLOWER: "wind_blower",
+	StructureType.MISSILE_STRIKE: "missile_strike",
+	StructureType.TIMED_BOMB: "timed_bomb"
 }
 
 @onready var preview_sprite_p1: Sprite2D = $PreviewSprite
@@ -37,7 +42,6 @@ var timed_bomb_scene: PackedScene
 
 # Per-player hotbar state so P1 and P2 never clobber each other's selection.
 var selection_by_pid: Dictionary = {1: StructureType.NONE, 2: StructureType.NONE}
-var index_by_pid: Dictionary = {1: -1, 2: -1} # -1 = NONE
 
 var structure_list: Array[StructureType] = [
 	StructureType.TURRET,
@@ -54,17 +58,17 @@ var structure_list: Array[StructureType] = [
 ]
 
 var structure_names = {
-	StructureType.TURRET: "🔫 DEFENSE TURRET",
-	StructureType.FORTIFIED_WALL: "🧱 FORTIFIED WALL",
-	StructureType.ELECTRIC_WALL: "⚡ ELECTRIC WALL",
-	StructureType.STREET_LAMP: "💡 STREET LAMP",
-	StructureType.OIL_BARREL: "🛢️ OIL BARREL",
-	StructureType.LANDMINE: "💣 EMP LANDMINE",
-	StructureType.REPAIR_STATION: "🔧 REPAIR BEACON",
-	StructureType.SHIELD_STATION: "🛡️ SHIELD RECHARGER",
-	StructureType.WIND_BLOWER: "💨 WIND TURBINE",
-	StructureType.MISSILE_STRIKE: "🚀 TACTICAL MISSILE",
-	StructureType.TIMED_BOMB: "💣 TIMED BOMB"
+	StructureType.TURRET: "DEFENSE TURRET",
+	StructureType.FORTIFIED_WALL: "FORTIFIED WALL",
+	StructureType.ELECTRIC_WALL: "ELECTRIC WALL",
+	StructureType.STREET_LAMP: "STREET LAMP",
+	StructureType.OIL_BARREL: "OIL BARREL",
+	StructureType.LANDMINE: "EMP LANDMINE",
+	StructureType.REPAIR_STATION: "REPAIR BEACON",
+	StructureType.SHIELD_STATION: "SHIELD RECHARGER",
+	StructureType.WIND_BLOWER: "WIND TURBINE",
+	StructureType.MISSILE_STRIKE: "TACTICAL MISSILE",
+	StructureType.TIMED_BOMB: "TIMED BOMB"
 }
 
 func _ready() -> void:
@@ -89,49 +93,75 @@ func _ready() -> void:
 func _preview_sprite(pid: int) -> Sprite2D:
 	return preview_sprite_p1 if pid == 1 else preview_sprite_p2
 
+## Only structures with GameState stock > 0 -- the hotbar (and cycling
+## through it) should only ever offer things you actually have, not the full
+## fixed catalog regardless of what's in inventory. Recomputed on every call
+## since stock changes mid-battle (placing one, buying more next visit).
+func _get_available_structures() -> Array[StructureType]:
+	var avail: Array[StructureType] = []
+	for t in structure_list:
+		if GameState.get_structure_stock(structure_ids.get(t, "")) > 0:
+			avail.append(t)
+	return avail
+
+func _show_no_stock_toast(pid: int) -> void:
+	var main_scene = get_tree().current_scene
+	if main_scene and main_scene.has_method("show_toast"):
+		main_scene.show_toast("P%d 没有可用道具库存 —— 请去商店购买！" % pid)
+
 func cycle_prev(pid: int = 1) -> void:
-	var idx: int = index_by_pid.get(pid, -1)
-	if selection_by_pid.get(pid, StructureType.NONE) == StructureType.NONE or idx < 0:
-		idx = structure_list.size() - 1
-	else:
-		idx = (idx - 1 + structure_list.size()) % structure_list.size()
-	index_by_pid[pid] = idx
-	select_structure(structure_list[idx], pid)
+	var avail = _get_available_structures()
+	if avail.is_empty():
+		_show_no_stock_toast(pid)
+		select_structure(StructureType.NONE, pid)
+		return
+	var idx = avail.find(selection_by_pid.get(pid, StructureType.NONE))
+	idx = avail.size() - 1 if idx <= 0 else idx - 1
+	select_structure(avail[idx], pid)
 	_notify_selection(pid)
 
 func cycle_next(pid: int = 1) -> void:
-	var idx: int = index_by_pid.get(pid, -1)
-	if selection_by_pid.get(pid, StructureType.NONE) == StructureType.NONE or idx < 0:
-		idx = 0
-	else:
-		idx = (idx + 1) % structure_list.size()
-	index_by_pid[pid] = idx
-	select_structure(structure_list[idx], pid)
+	var avail = _get_available_structures()
+	if avail.is_empty():
+		_show_no_stock_toast(pid)
+		select_structure(StructureType.NONE, pid)
+		return
+	var idx = avail.find(selection_by_pid.get(pid, StructureType.NONE))
+	idx = (idx + 1) % avail.size()
+	select_structure(avail[idx], pid)
 	_notify_selection(pid)
 
 func _notify_selection(pid: int) -> void:
 	var selection = selection_by_pid.get(pid, StructureType.NONE)
 	var name_tag = structure_names.get(selection, "UNKNOWN")
-	var cost_val = costs.get(selection, 0)
+	var stock = GameState.get_structure_stock(structure_ids.get(selection, ""))
 	var main_scene = get_tree().current_scene
 	if main_scene and main_scene.has_method("show_toast"):
 		var place_key = "F" if pid == 1 else "K"
-		main_scene.show_toast("P%d [%s] (%dG) | [%s] 放置" % [pid, name_tag, cost_val, place_key])
+		main_scene.show_toast("P%d [%s] (库存 x%d) | [%s] 放置" % [pid, name_tag, stock, place_key])
 
 func select_structure(type: StructureType, pid: int = 1) -> void:
-	selection_by_pid[pid] = type
-	var preview_sprite = _preview_sprite(pid)
 	var main_scene = get_tree().current_scene
-	if type == StructureType.NONE:
-		index_by_pid[pid] = -1
-		preview_sprite.visible = false
-		if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and pid == 1:
-			UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, -1)
+
+	# Guards every entry point (hotbar cycling already filters to in-stock
+	# items via _get_available_structures(), but the quick number-key
+	# shortcuts below call select_structure() directly) -- you can never end
+	# up with a zero-stock structure selected.
+	if type != StructureType.NONE and GameState.get_structure_stock(structure_ids.get(type, "")) <= 0:
+		if main_scene and main_scene.has_method("show_toast"):
+			main_scene.show_toast("库存不足，无法选择 [%s] —— 请去商店购买" % structure_names.get(type, "UNKNOWN"))
 		return
 
-	index_by_pid[pid] = structure_list.find(type)
+	selection_by_pid[pid] = type
+	var preview_sprite = _preview_sprite(pid)
+	if type == StructureType.NONE:
+		preview_sprite.visible = false
+		if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and pid == 1:
+			UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, "")
+		return
+
 	if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and pid == 1:
-		UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, index_by_pid[pid])
+		UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, structure_ids.get(type, ""))
 
 	preview_sprite.visible = true
 	var tex_path = ""
@@ -173,7 +203,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				cycle_next(1) # Open hotbar
 			else:
 				_try_place_current(1)
-		elif event.keycode == KEY_ESCAPE or event.keycode == KEY_R:
+		elif event.keycode == KEY_R:
+			# ESC deliberately NOT bound here -- main.gd's _unhandled_input
+			# also treats ESC (Godot's default "ui_cancel" action) as the
+			# pause-menu toggle, and both handlers used to fire on the same
+			# keypress: cancelling the selection AND opening the pause menu
+			# at once. R is the sole dedicated cancel key now.
 			select_structure(StructureType.NONE, 1)
 
 		# P2 Controls: [U] ◀ Prev | [O] ▶ Next | [K] Place
@@ -210,11 +245,9 @@ func _process(_delta: float) -> void:
 		preview_sprite.global_position = place_pos
 
 		var is_valid = _is_placement_valid(place_pos)
-		var main = get_tree().current_scene
-		var cost = costs.get(selection, 999)
-		var can_afford = (main.rpg_mgr.gold >= cost) if (main and main.rpg_mgr) else false
+		var has_stock = GameState.get_structure_stock(structure_ids.get(selection, "")) > 0
 
-		if can_afford and is_valid:
+		if has_stock and is_valid:
 			preview_sprite.modulate = Color(0.3, 1.8, 0.4, 0.70)
 		else:
 			preview_sprite.modulate = Color(2.5, 0.2, 0.2, 0.70)
@@ -264,11 +297,14 @@ func _try_place_current(pid: int) -> void:
 		return
 
 	var main = get_tree().current_scene
-	var cost = costs.get(selection, 999)
-	if not main or not main.rpg_mgr or not main.rpg_mgr.spend_gold(cost):
+	var struct_id = structure_ids.get(selection, "")
+	if not main or not GameState.consume_structure_stock(struct_id):
 		if main and main.has_method("show_toast"):
-			main.show_toast("NOT ENOUGH GOLD! NEED %dG" % cost)
+			main.show_toast("库存不足！去商店购买 [%s]" % structure_names.get(selection, "UNKNOWN"))
 		return
+
+	if pid == 1 and "hud_hotbar" in main and main.hud_hotbar:
+		UIThemeHelper.update_hotbar_stock(main.hud_hotbar)
 
 	if selection == StructureType.MISSILE_STRIKE:
 		if missile_strike_scene:
@@ -280,7 +316,7 @@ func _try_place_current(pid: int) -> void:
 			strike.global_position = place_pos
 		SoundManager.play_shot(get_tree())
 		if main.has_method("show_toast"):
-			main.show_toast("🚀 呼叫战术导弹打击！(-%dG)" % cost)
+			main.show_toast("呼叫战术导弹打击！(剩余库存 x%d)" % GameState.get_structure_stock(struct_id))
 		return
 
 	if selection == StructureType.TIMED_BOMB:
@@ -294,7 +330,7 @@ func _try_place_current(pid: int) -> void:
 			bomb.global_position = place_pos
 		SoundManager.play_build(get_tree())
 		if main.has_method("show_toast"):
-			main.show_toast("💣 放置定时炸弹！(-%dG)" % cost)
+			main.show_toast("放置定时炸弹！(剩余库存 x%d)" % GameState.get_structure_stock(struct_id))
 		return
 
 	var new_struct: Node2D = null
@@ -348,4 +384,4 @@ func _try_place_current(pid: int) -> void:
 		new_struct.global_position = place_pos
 		SoundManager.play_build(get_tree())
 		if main.has_method("show_toast"):
-			main.show_toast("PLACED %s (-%dG)" % [name_str, cost])
+			main.show_toast("PLACED %s (剩余库存 x%d)" % [name_str, GameState.get_structure_stock(struct_id)])

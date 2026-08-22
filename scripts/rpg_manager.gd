@@ -10,6 +10,7 @@ var level: int = 1
 var current_xp: int = 0
 var xp_to_next: int = 100
 var gold: int = 100
+var xp_earned_this_battle: int = 0 # reset at battle start, read by main.gd's Factory reward multiplier
 
 # 属性点加成
 var atk_bonus: int = 0      # 攻击力加成
@@ -22,12 +23,16 @@ var builder_lvl: int = 0    # 防御工程强化
 # RPG 分支流派与特性 (P1)
 var tank_branch: String = "default" # "default", "speed", "heavy", "train"
 var branch_tier: int = 0            # 0=基础, 1=一阶进阶, 2=二阶终极
-var unlocked_perks: Array[String] = []
+var unlocked_perks: Dictionary = {} # perk_id -> stack count, see GameState.PERK_MAX_STACKS
 
 # RPG 分支流派与特性 (P2 - 双人合作各自独立选择)
 var p2_tank_branch: String = "default"
 var p2_branch_tier: int = 0
-var p2_unlocked_perks: Array[String] = []
+var p2_unlocked_perks: Dictionary = {}
+
+# 每额外一层叠加的边际价值递减曲线 (第1层100%/第2层65%/第3层45%)，避免线性
+# 叠 3 层的数值感觉失控，同时仍然让每一次选择都有明确增量。
+const PERK_STACK_CURVE := [1.0, 0.65, 0.45]
 
 func get_branch(player_id: int = 1) -> String:
 	return tank_branch if player_id == 1 else p2_tank_branch
@@ -40,6 +45,7 @@ func reset() -> void:
 	current_xp = 0
 	xp_to_next = 100
 	gold = 100
+	xp_earned_this_battle = 0
 	atk_bonus = 0
 	fire_rate_lvl = 0
 	speed_lvl = 0
@@ -62,6 +68,7 @@ func sync_from_game_state() -> void:
 	current_xp = GameState.player_xp
 	xp_to_next = GameState.xp_to_next if GameState.xp_to_next > 0 else int(100.0 * pow(1.22, level - 1))
 	gold = GameState.gold
+	xp_earned_this_battle = 0
 	atk_bonus = GameState.atk_bonus
 	fire_rate_lvl = GameState.fire_rate_lvl
 	speed_lvl = GameState.speed_lvl
@@ -128,16 +135,33 @@ func promote_branch_tier(player_id: int = 1) -> void:
 	branch_changed.emit(player_id, get_branch(player_id), get_branch_tier(player_id))
 	stats_changed.emit()
 
-func add_perk(perk_id: String, player_id: int = 1) -> void:
+## Returns false (no-op) once perk_id is already at GameState.max_stacks_for_perk.
+func add_perk(perk_id: String, player_id: int = 1) -> bool:
 	var perks = unlocked_perks if player_id == 1 else p2_unlocked_perks
-	if not perks.has(perk_id):
-		perks.append(perk_id)
-		sync_to_game_state()
-		stats_changed.emit()
+	var cur = int(perks.get(perk_id, 0))
+	if cur >= GameState.max_stacks_for_perk(perk_id):
+		return false
+	perks[perk_id] = cur + 1
+	sync_to_game_state()
+	stats_changed.emit()
+	return true
 
 func has_perk(perk_id: String, player_id: int = 1) -> bool:
+	return get_perk_stacks(perk_id, player_id) > 0
+
+func get_perk_stacks(perk_id: String, player_id: int = 1) -> int:
 	var perks = unlocked_perks if player_id == 1 else p2_unlocked_perks
-	return perks.has(perk_id)
+	return int(perks.get(perk_id, 0))
+
+## base * how many stacks owned, run through PERK_STACK_CURVE so each
+## additional copy of the same perk still matters but tapers off instead of
+## scaling linearly (3 stacks of rapid_loader is +65% total, not +90%).
+func get_perk_value(perk_id: String, base: float, player_id: int = 1) -> float:
+	var stacks = get_perk_stacks(perk_id, player_id)
+	var total := 0.0
+	for i in range(mini(stacks, PERK_STACK_CURVE.size())):
+		total += base * PERK_STACK_CURVE[i]
+	return total
 
 func add_gold(amount: int) -> void:
 	gold += amount
@@ -151,6 +175,7 @@ func spend_gold(amount: int) -> bool:
 	return false
 
 func add_xp(amount: int) -> void:
+	xp_earned_this_battle += amount
 	current_xp += amount
 	while current_xp >= xp_to_next:
 		current_xp -= xp_to_next
@@ -181,8 +206,7 @@ func get_player_max_hp(player_id: int = 1) -> int:
 		hp += 2 + tier * 2
 	elif branch == "train":
 		hp += 1 + tier
-	if has_perk("titan_plating", player_id):
-		hp += 2
+	hp += int(round(get_perk_value("titan_plating", 2.0, player_id)))
 	return hp
 
 func get_speed_multiplier(player_id: int = 1) -> float:
@@ -193,8 +217,7 @@ func get_speed_multiplier(player_id: int = 1) -> float:
 		mult += 0.30 + float(tier) * 0.15
 	elif branch == "heavy":
 		mult -= 0.10 # 重装型较重，稍显沉稳
-	if has_perk("nitro_booster", player_id):
-		mult += 0.18
+	mult += get_perk_value("nitro_booster", 0.18, player_id)
 	return maxf(0.5, mult)
 
 func get_fire_cooldown_mult(player_id: int = 1) -> float:
@@ -205,8 +228,7 @@ func get_fire_cooldown_mult(player_id: int = 1) -> float:
 		rate += 0.70 + float(tier) * 0.40 # 极高射速
 	elif branch == "heavy":
 		rate *= 0.85 # 重型巨炮单发威猛，装填稍慢
-	if has_perk("rapid_loader", player_id):
-		rate += 0.30
+	rate += get_perk_value("rapid_loader", 0.30, player_id)
 	return 1.0 / rate
 
 func get_atk_damage(player_id: int = 1) -> int:
@@ -215,14 +237,12 @@ func get_atk_damage(player_id: int = 1) -> int:
 	var dmg = 1 + atk_bonus
 	if branch == "heavy":
 		dmg += 2 + tier * 2
-	if has_perk("high_explosive", player_id):
-		dmg += 2
+	dmg += int(round(get_perk_value("high_explosive", 2.0, player_id)))
 	return dmg
 
 func get_regen_rate(player_id: int = 1) -> float:
 	var rate = float(regen_lvl) * 0.25
-	if has_perk("nano_repair", player_id):
-		rate += 0.50
+	rate += get_perk_value("nano_repair", 0.50, player_id)
 	return rate
 
 func get_building_hp_mult() -> float:

@@ -1786,6 +1786,39 @@ def build_sokpop_bullet(is_plasma=False):
 
 # ==================== MASTER BATCH RENDER ====================
 
+# ==================== 坦克调色板 (模块级, 供定向重渲复用) ====================
+# 这两张表以前是 main() 里的局部变量, 于是"只重渲某一种坦克"就无处下手 ——
+# 只能整脚本跑一遍, 把 240 帧连同工作区里尚未提交的改动一起覆盖掉。
+# 提到模块级后, tools/rerender_tanks.py 可以直接 import 这份唯一的真源, 按名字
+# 渲染子集, 不必复制一份会和这里发散的调色板。
+#
+# 色相分配 (避免任何两个单位在战场上撞色):
+#   玩家 P1  黄 / 橙 / 绿 / 蓝      玩家 P2  绿-青系
+#   enemy_fast 青   enemy_power 红   enemy_armor 深绿   enemy_train 暗紫灰
+#   enemy_basic 紫罗兰 —— 见下方注释
+PLAYER_PALETTES = {
+    "player_tier0": {"body": (0.98, 0.80, 0.22, 1.0), "turret": (1.0, 0.86, 0.35, 1.0), "trim": (0.38, 0.75, 0.45, 1.0), "b_cnt": 1, "blen": 0.95, "bthick": 0.19, "heavy": False, "plasma": False},
+    "player_tier1": {"body": (0.98, 0.58, 0.26, 1.0), "turret": (1.0, 0.70, 0.36, 1.0), "trim": (0.98, 0.38, 0.48, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.20, "heavy": False, "plasma": False},
+    "player_tier2": {"body": (0.38, 0.78, 0.45, 1.0), "turret": (0.48, 0.85, 0.55, 1.0), "trim": (0.98, 0.80, 0.25, 1.0), "b_cnt": 2, "blen": 1.08, "bthick": 0.16, "heavy": True, "plasma": False},
+    "player_tier3": {"body": (0.28, 0.62, 0.95, 1.0), "turret": (0.38, 0.72, 0.98, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.25, "bthick": 0.24, "heavy": True, "plasma": True},
+}
+
+ENEMY_PALETTES = {
+    # enemy_basic 原本是 (0.75, 0.78, 0.84) 近中性灰蓝, 实测饱和度 15.3% ——
+    # 全部 30 组坦克里最低的一组, 而它偏偏是出场次数最多的敌人。它压在灰紫色
+    # tile_steel 和灰白砖缝上时几乎没有色相分离, 也和"靠敌人种类而不是隐藏数值
+    # 区分难度"的原则相悖: baseline 敌人首先得是个一眼能认出的剪影。
+    # 改用紫罗兰: 玩家占了黄/橙/绿/蓝, 其余敌人占了青/红/深绿, 地形占了赤陶橙、
+    # 浅薰衣草灰、沙黄、冰蓝、树绿 —— 紫罗兰是唯一没被占用又不会和地形撞的色相,
+    # 且明度压得比 tile_steel 低, 即使在紫灰色钢墙前也有明暗分离。
+    # 描边沿用金色: enemy_power / enemy_armor 都是金/黄描边, 这是既有的"敌方"语汇。
+    "enemy_basic": {"body": (0.54, 0.36, 0.74, 1.0), "turret": (0.64, 0.47, 0.84, 1.0), "trim": (0.98, 0.80, 0.30, 1.0), "b_cnt": 1, "blen": 0.92, "bthick": 0.16, "heavy": False},
+    "enemy_fast": {"body": (0.26, 0.75, 0.88, 1.0), "turret": (0.42, 0.82, 0.95, 1.0), "trim": (0.98, 0.95, 0.95, 1.0), "b_cnt": 1, "blen": 1.15, "bthick": 0.15, "heavy": False},
+    "enemy_power": {"body": (0.92, 0.32, 0.38, 1.0), "turret": (0.98, 0.45, 0.48, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.25, "bthick": 0.22, "heavy": False},
+    "enemy_armor": {"body": (0.28, 0.62, 0.38, 1.0), "turret": (0.38, 0.72, 0.48, 1.0), "trim": (0.90, 0.85, 0.35, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.24, "heavy": True},
+}
+
+
 def main():
     clear_scene()
     setup_render_settings(rx=256, ry=256)
@@ -1793,12 +1826,7 @@ def main():
     reset_jitter_seed(1000)
 
     print(">>> 1. Rendering Unified Sokpop Tanks (6-Frame Smooth Loop, Ortho Scale 3.6)...")
-    player_palettes = {
-        "player_tier0": {"body": (0.98, 0.80, 0.22, 1.0), "turret": (1.0, 0.86, 0.35, 1.0), "trim": (0.38, 0.75, 0.45, 1.0), "b_cnt": 1, "blen": 0.95, "bthick": 0.19, "heavy": False, "plasma": False},
-        "player_tier1": {"body": (0.98, 0.58, 0.26, 1.0), "turret": (1.0, 0.70, 0.36, 1.0), "trim": (0.98, 0.38, 0.48, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.20, "heavy": False, "plasma": False},
-        "player_tier2": {"body": (0.38, 0.78, 0.45, 1.0), "turret": (0.48, 0.85, 0.55, 1.0), "trim": (0.98, 0.80, 0.25, 1.0), "b_cnt": 2, "blen": 1.08, "bthick": 0.16, "heavy": True, "plasma": False},
-        "player_tier3": {"body": (0.28, 0.62, 0.95, 1.0), "turret": (0.38, 0.72, 0.98, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.25, "bthick": 0.24, "heavy": True, "plasma": True},
-    }
+    player_palettes = PLAYER_PALETTES
     for name, cfg in player_palettes.items():
         for frame in range(6):
             objs = build_sokpop_tank(
@@ -1808,12 +1836,7 @@ def main():
             )
             render_and_clean(objs, os.path.join(SPRITES_TANKS, f"{name}_f{frame}.png"))
 
-    enemies = {
-        "enemy_basic": {"body": (0.75, 0.78, 0.84, 1.0), "turret": (0.84, 0.86, 0.90, 1.0), "trim": (0.95, 0.42, 0.52, 1.0), "b_cnt": 1, "blen": 0.92, "bthick": 0.16, "heavy": False},
-        "enemy_fast": {"body": (0.26, 0.75, 0.88, 1.0), "turret": (0.42, 0.82, 0.95, 1.0), "trim": (0.98, 0.95, 0.95, 1.0), "b_cnt": 1, "blen": 1.15, "bthick": 0.15, "heavy": False},
-        "enemy_power": {"body": (0.92, 0.32, 0.38, 1.0), "turret": (0.98, 0.45, 0.48, 1.0), "trim": (0.98, 0.82, 0.22, 1.0), "b_cnt": 1, "blen": 1.25, "bthick": 0.22, "heavy": False},
-        "enemy_armor": {"body": (0.28, 0.62, 0.38, 1.0), "turret": (0.38, 0.72, 0.48, 1.0), "trim": (0.90, 0.85, 0.35, 1.0), "b_cnt": 1, "blen": 1.18, "bthick": 0.24, "heavy": True},
-    }
+    enemies = ENEMY_PALETTES
     for name, cfg in enemies.items():
         for frame in range(6):
             objs = build_sokpop_tank(

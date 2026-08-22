@@ -5,6 +5,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const PowerUp = preload("res://scripts/power_up.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal destroyed(pid: int)
 signal fired_bullet
@@ -18,7 +19,10 @@ signal health_changed(pid: int, curr: int, max_hp: int)
 var upgrade_tier: int = 0
 var max_health: int = 1
 var current_health: int = 1
+var is_dying: bool = false
 var can_fire: bool = true
+var history_positions: Array[Vector2] = []
+var history_rotations: Array[float] = []
 var fire_timer: float = 0.0
 var facing_direction: Vector2 = Vector2.UP
 var is_invulnerable: bool = false
@@ -28,6 +32,11 @@ var is_on_sand: bool = false
 var sand_overlap_count: int = 0
 var is_on_ice: bool = false
 var ice_overlap_count: int = 0
+var is_on_water: bool = false
+var water_overlap_count: int = 0
+var amphibious_hull_applied: bool = false # avoids re-adding the same collision exceptions every _apply_rpg_stats() call
+var is_jammed: bool = false
+var jam_overlap_count: int = 0
 var is_on_platform: bool = false
 var slide_direction: Vector2 = Vector2.ZERO
 var ice_particle_timer: float = 0.0
@@ -96,6 +105,16 @@ func _apply_rpg_stats() -> void:
 		if current_health > max_health or max_health > prev_max:
 			current_health = max_health
 		health_changed.emit(player_id, current_health, max_health)
+
+		# Amphibious Hull: let this tank physically enter water tiles. Exceptions
+		# are additive and idempotent (Godot no-ops re-adding the same pair), so
+		# it's safe to call this every _apply_rpg_stats() -- only actually does
+		# anything the first time since the perk can't be un-bought this run.
+		if not amphibious_hull_applied and main.rpg_mgr.has_perk("amphibious_hull", player_id) and "water_bodies" in main:
+			for water_body in main.water_bodies:
+				if is_instance_valid(water_body):
+					add_collision_exception_with(water_body)
+			amphibious_hull_applied = true
 
 func heal(amount: int) -> void:
 	current_health = mini(current_health + amount, max_health)
@@ -182,11 +201,28 @@ func apply_powerup(type: PowerUp.Type) -> void:
 	var p_name = "P1" if player_id == 1 else "P2"
 	match type:
 		PowerUp.Type.STAR:
-			upgrade_tier = mini(upgrade_tier + 1, 3)
-			_update_tier_appearance()
-			VFXAnimator.spawn_shockwave(get_parent(), global_position)
-			var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
-			powerup_collected.emit("[%s] STAR UPGRADE: %s!" % [p_name, rank_name])
+			# upgrade_tier only does anything in the "default" branch weapon
+			# path (_shoot()'s default match arm) -- once a branch is picked
+			# (which happens at the player's very first level-up, no skip
+			# option), bumping it further is a silent no-op. Redirect to a
+			# live +1 ATK on the same RPGManager instance the battle already
+			# reads from, mirroring GameState.grant_star_tier_reward's logic
+			# for the shop/event entry points that touch GameState directly
+			# instead (no live RPGManager exists on the spire map).
+			var branch = main.rpg_mgr.get_branch(player_id) if (main and main.rpg_mgr) else "default"
+			if branch == "default":
+				upgrade_tier = mini(upgrade_tier + 1, 3)
+				_update_tier_appearance()
+				VFXAnimator.spawn_shockwave(get_parent(), global_position)
+				var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
+				powerup_collected.emit("[%s] STAR UPGRADE: %s!" % [p_name, rank_name])
+			else:
+				if main and main.rpg_mgr:
+					main.rpg_mgr.atk_bonus += 1
+					main.rpg_mgr.sync_to_game_state()
+					main.rpg_mgr.stats_changed.emit()
+				VFXAnimator.spawn_shockwave(get_parent(), global_position)
+				powerup_collected.emit("[%s] STAR UPGRADE: +1 永久攻击力!" % p_name)
 		PowerUp.Type.HELMET:
 			set_invulnerable(10.0)
 			powerup_collected.emit("[%s] HELMET SHIELD (10s)" % p_name)
@@ -236,8 +272,8 @@ func apply_powerup(type: PowerUp.Type) -> void:
 					bomb.countdown = 2.0
 					bomb.blast_range = 4 # Extended 4-tile blast for powerup!
 					bomb.damage = 5
-					get_parent().add_child(bomb)
 					bomb.global_position = global_position + facing_direction * offset
+					get_parent().call_deferred("add_child", bomb)
 			SoundManager.play_build(get_tree())
 			powerup_collected.emit("[%s] 💣 强化十字连环定时炸弹！" % p_name)
 
@@ -308,7 +344,14 @@ func _physics_process(delta: float) -> void:
 		input_vec = Vector2.LEFT
 	elif Input.is_action_pressed(act_right):
 		input_vec = Vector2.RIGHT
-	
+
+	# Signal Jammer Tower map hazard: inverting input_vec here reverses both
+	# movement AND firing in one place, since facing_direction (which drives
+	# rotation, bullet spawn direction, and ice-slide direction below) is
+	# always derived from input_vec, never read independently.
+	if is_jammed:
+		input_vec = -input_vec
+
 	var speed_mult = 1.0
 	var is_speed_branch = (main and main.rpg_mgr and main.rpg_mgr.get_branch(player_id) == "speed")
 
@@ -323,6 +366,13 @@ func _physics_process(delta: float) -> void:
 			speed_mult *= 0.90 # Minimal sand drag
 		else:
 			speed_mult *= 0.50 # Normal sand drag
+
+	# Amphibious Hull shop perk: the tradeoff for being able to enter water at
+	# all is a permanent -50% speed penalty everywhere else (heavier hull,
+	# sealed hatches). Only applies on land -- no penalty while actually
+	# swimming, since the whole point of the upgrade is to be capable there.
+	if not is_on_water and main and main.rpg_mgr and main.rpg_mgr.has_perk("amphibious_hull", player_id):
+		speed_mult *= 0.50
 
 	var current_speed = base_speed * speed_mult
 
@@ -368,6 +418,7 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 
 	move_and_slide()
+	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
 
 	# Hitting a solid obstacle stops ice sliding
 	if is_on_ice and get_slide_collision_count() > 0:
@@ -528,6 +579,9 @@ func take_damage(amount: int) -> void:
 		_die()
 
 func _die() -> void:
+	if is_dying:
+		return
+	is_dying = true
 	for c in attached_carriages:
 		if is_instance_valid(c):
 			c.queue_free()
@@ -559,3 +613,19 @@ func on_exit_ice() -> void:
 	is_on_ice = (ice_overlap_count > 0)
 	if not is_on_ice:
 		slide_direction = Vector2.ZERO
+
+func on_enter_water() -> void:
+	water_overlap_count += 1
+	is_on_water = true
+
+func on_exit_water() -> void:
+	water_overlap_count = max(0, water_overlap_count - 1)
+	is_on_water = (water_overlap_count > 0)
+
+func on_enter_jam() -> void:
+	jam_overlap_count += 1
+	is_jammed = true
+
+func on_exit_jam() -> void:
+	jam_overlap_count = max(0, jam_overlap_count - 1)
+	is_jammed = (jam_overlap_count > 0)

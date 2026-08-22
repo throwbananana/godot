@@ -38,16 +38,22 @@ func setup(type: String) -> void:
 		icon_path = "res://assets/sprites/ui/diorama_rest.png"
 		title_label.text = "FORWARD REPAIR OUTPOST (CAMPFIRE)"
 		desc_label.text = "You reached a secured allied outpost. Choose your preparation for the battles ahead:"
-		btn_1.text = "1. 🛠 Full Vehicle Overhaul (+1 Max HP & Fortify)"
-		btn_2.text = "2. ⚡ Gunsmith Calibration (+1 ATK Bonus)"
-		btn_3.text = "3. ❤️ Request Reinforcements (+1 Extra Life)"
+		btn_1.text = "1. Full Vehicle Overhaul (+1 Max HP & Fortify)"
+		btn_2.text = "2. Gunsmith Calibration (+1 ATK Bonus)"
+		btn_3.text = "3. Request Reinforcements (+1 Extra Life)"
+		UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/perk_armor.png", Vector2(22, 22))
+		UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_atk.png", Vector2(22, 22))
+		UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/hp_heart_full.png", Vector2(22, 22))
 	elif type == "shop":
 		icon_path = "res://assets/sprites/ui/diorama_shop.png"
 		title_label.text = "BLACK MARKET ARMS DEALER"
 		desc_label.text = "The arms dealer offers military-grade prototypes. (Current Gold: %dG)" % GameState.gold
-		btn_1.text = "1. ⭐ Star Weapon Module (100G) -> Tier Up!"
-		btn_2.text = "2. 🛡 Forcefield Generator (60G) -> +2 Max HP"
-		btn_3.text = "3. ❤️ Heavy Supply Crate (80G) -> +2 Extra Lives"
+		btn_1.text = "1. Star Weapon Module (100G) -> Tier Up!"
+		btn_2.text = "2. Forcefield Generator (60G) -> +2 Max HP"
+		btn_3.text = "3. Heavy Supply Crate (80G) -> +2 Extra Lives"
+		UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/powerups/star.png", Vector2(22, 22))
+		UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_shield.png", Vector2(22, 22))
+		UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/hp_heart_full.png", Vector2(22, 22))
 	elif type == "event":
 		icon_path = "res://assets/sprites/ui/diorama_event.png"
 		var event_types = ["depot", "mechanic", "singularity", "glacier_cache", "bounty"]
@@ -57,33 +63,48 @@ func setup(type: String) -> void:
 			"depot":
 				title_label.text = "ABANDONED MUNITIONS DEPOT (MYSTERY)"
 				desc_label.text = "You discovered an intact munitions vault buried beneath the ruins:"
-				btn_1.text = "1. 📦 Scavenge High-Caliber Ammo (+100G, +60 XP)"
-				btn_2.text = "2. 🧪 Overclock Engine Reactor (+1 SPD Permanent)"
-				btn_3.text = "3. ⏩ Weapon Star Upgrade (+1 Tier Upgrade)"
+				btn_1.text = "1. Scavenge High-Caliber Ammo (+100G, +60 XP)"
+				btn_2.text = "2. Overclock Engine Reactor (+1 SPD Permanent)"
+				btn_3.text = "3. Weapon Star Upgrade (+1 Tier Upgrade)"
+				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/ui_icon_gift.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_speed.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/powerups/star.png", Vector2(22, 22))
 			"mechanic":
 				title_label.text = "WANDERING COMBAT MECHANIC (ENCOUNTER)"
 				desc_label.text = "A friendly scavenger engineer offers to upgrade your chassis on the spot:"
-				btn_1.text = "1. 🛡️ Heavy Exoskeleton Plating (+2 Max HP)"
-				btn_2.text = "2. ⚡ Calibrate Fire Control (+1 Fire Rate Level)"
-				btn_3.text = "3. 🔨 Tactical Clay Crusher Perk (Gain Clay Crusher)"
+				btn_1.text = "1. Heavy Exoskeleton Plating (+2 Max HP)"
+				btn_2.text = "2. Calibrate Fire Control (+1 Fire Rate Level)"
+				btn_3.text = "3. Tactical Clay Crusher Perk (Gain Clay Crusher)"
+				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/perk_armor.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_laser.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/perk_ricochet.png", Vector2(22, 22))
 			"singularity":
 				title_label.text = "COSMIC SINGULARITY ANOMALY (EVENT)"
 				desc_label.text = "A pulsating dimensional rift hums with unstable spatial energy:"
-				btn_1.text = "1. 🌀 Siphon Warp Energy (Gain Warp Drive Perk)"
-				btn_2.text = "2. 🌌 Spatial Transmutation (+150 Gold, +80 XP)"
-				btn_3.text = "3. ❤️ Dimensional Blessing (+2 Extra Lives)"
+				btn_1.text = "1. Siphon Warp Energy (Gain Warp Drive Perk)"
+				btn_2.text = "2. Spatial Transmutation (+150 Gold, +80 XP)"
+				btn_3.text = "3. Dimensional Blessing (+2 Extra Lives)"
+				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/perk_laser.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/ui_badge_gold.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/hp_heart_full.png", Vector2(22, 22))
 			"glacier_cache":
 				title_label.text = "FROZEN GLACIER SUPPLY CRATE (DISCOVERY)"
 				desc_label.text = "You broke through an icy glacier wall revealing cryo-preserved tech:"
-				btn_1.text = "1. ❄️ Equip Frost Cleats Perk (Gain Frost Cleats)"
-				btn_2.text = "2. ⚡ Cryo-Powered Capacitor (+1 ATK Bonus)"
-				btn_3.text = "3. 🛠️ Defrost & Emergency Repair (+1 Life, +50G)"
+				btn_1.text = "1. Equip Frost Cleats Perk (Gain Frost Cleats)"
+				btn_2.text = "2. Cryo-Powered Capacitor (+1 ATK Bonus)"
+				btn_3.text = "3. Defrost & Emergency Repair (+1 Life, +50G)"
+				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/perk_speed.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_atk.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/ui_icon_wrench.png", Vector2(22, 22))
 			"bounty":
 				title_label.text = "ROGUE COMBAT CONTRACT (BLACK OPS)"
 				desc_label.text = "An encrypted distress beacon broadcasts a high-priority bounty assignment:"
-				btn_1.text = "1. 💰 Accept Elite Bounty (+140 Gold, +100 XP)"
-				btn_2.text = "2. 🧲 Install Magnetic Salvage Core (Gain Magnetic Salvage)"
-				btn_3.text = "3. 🚢 Acquire Ferry Artillery Module (Gain Ferry Artillery)"
+				btn_1.text = "1. Accept Elite Bounty (+140 Gold, +100 XP)"
+				btn_2.text = "2. Install Magnetic Salvage Core (Gain Magnetic Salvage)"
+				btn_3.text = "3. Acquire Ferry Artillery Module (Gain Ferry Artillery)"
+				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/ui_badge_gold.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_gold.png", Vector2(22, 22))
+				UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/perk_atk.png", Vector2(22, 22))
 
 	var tex = TextureHelper.get_tex(icon_path)
 	if tex and icon_sprite:
@@ -95,15 +116,14 @@ func _grant_life(amount: int) -> void:
 		GameState.p2_lives += amount
 
 func _grant_tier_up() -> void:
-	GameState.player_tier = mini(GameState.player_tier + 1, 3)
+	GameState.grant_star_tier_reward(1)
 	if GameState.player_count == 2:
-		GameState.p2_tier = mini(GameState.p2_tier + 1, 3)
+		GameState.grant_star_tier_reward(2)
 
 func _grant_perk(perk_name: String) -> void:
-	if not GameState.unlocked_perks.has(perk_name):
-		GameState.unlocked_perks.append(perk_name)
-	if GameState.player_count == 2 and not GameState.p2_unlocked_perks.has(perk_name):
-		GameState.p2_unlocked_perks.append(perk_name)
+	GameState.grant_perk_stack(perk_name, 1)
+	if GameState.player_count == 2:
+		GameState.grant_perk_stack(perk_name, 2)
 
 func _on_choice(idx: int) -> void:
 	SoundManager.play_hit_steel(get_tree())

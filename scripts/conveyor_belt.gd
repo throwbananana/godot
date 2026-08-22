@@ -26,6 +26,8 @@ func set_direction(dir: Direction) -> void:
 	_update_direction()
 
 func _update_direction() -> void:
+	if not is_node_ready() or not sprite:
+		return
 	match direction:
 		Direction.UP:
 			move_vec = Vector2.UP

@@ -18,10 +18,31 @@ signal closed
 var current_shop_items: Array[Dictionary] = []
 var reroll_cost: int = 20
 
+## Builder Controller structures used to cost battle gold at the moment you
+## placed them; they're shop-only stock now (see GameState.structure_inventory
+## + builder_controller.gd). Always shown in full every shop visit (not
+## shuffled/limited to 6 like the stat-upgrade pool below) -- these are core
+## tactical tools, not flavor, so restocking them needs to be reliable rather
+## than an RNG roll. Costs carried over unchanged from the old per-placement
+## prices. ids match builder_controller.gd::structure_ids exactly.
+const BUILDING_ITEMS: Array[Dictionary] = [
+	{"id": "turret", "name": "防御炮塔补给 (Defense Turret)", "desc": "购入 1 座防御炮塔库存，战斗中可用热键放置。", "cost": 80, "icon": "res://assets/sprites/buildings/turret_gun.png", "category": "BUILD"},
+	{"id": "fortified_wall", "name": "强化墙体补给 (Fortified Wall)", "desc": "购入 1 面强化墙体库存，战斗中可用热键放置。", "cost": 25, "icon": "res://assets/sprites/buildings/fortified_wall.png", "category": "BUILD"},
+	{"id": "electric_wall", "name": "高压电墙补给 (Electric Wall)", "desc": "购入 1 座高压电墙库存，战斗中可用热键放置。", "cost": 50, "icon": "res://assets/sprites/tiles/tile_electric_wall_f0.png", "category": "BUILD"},
+	{"id": "street_lamp", "name": "照明路灯补给 (Street Lamp)", "desc": "购入 1 座照明路灯库存，战斗中可用热键放置。", "cost": 45, "icon": "res://assets/sprites/buildings/street_lamp.png", "category": "BUILD"},
+	{"id": "oil_barrel", "name": "燃油桶补给 (Oil Barrel)", "desc": "购入 1 个燃油桶库存，战斗中可用热键放置。", "cost": 55, "icon": "res://assets/sprites/buildings/oil_barrel.png", "category": "BUILD"},
+	{"id": "landmine", "name": "反坦克地雷补给 (EMP Landmine)", "desc": "购入 1 枚反坦克地雷库存，战斗中可用热键放置。", "cost": 40, "icon": "res://assets/sprites/buildings/landmine.png", "category": "BUILD"},
+	{"id": "repair_station", "name": "维修站补给 (Repair Beacon)", "desc": "购入 1 座维修站库存，战斗中可用热键放置。", "cost": 120, "icon": "res://assets/sprites/buildings/repair_station.png", "category": "BUILD"},
+	{"id": "shield_station", "name": "护盾充能站补给 (Shield Recharger)", "desc": "购入 1 座护盾充能站库存，战斗中可用热键放置。", "cost": 100, "icon": "res://assets/sprites/buildings/shield_station.png", "category": "BUILD"},
+	{"id": "wind_blower", "name": "风力涡轮补给 (Wind Turbine)", "desc": "购入 1 座风力涡轮库存，战斗中可用热键放置。", "cost": 70, "icon": "res://assets/sprites/buildings/wind_blower.png", "category": "BUILD"},
+	{"id": "missile_strike", "name": "战术导弹补给 (Missile Strike)", "desc": "购入 1 次战术导弹打击库存，战斗中可用热键呼叫。", "cost": 90, "icon": "res://assets/sprites/powerups/missile_strike.png", "category": "BUILD"},
+	{"id": "timed_bomb", "name": "定时炸弹补给 (Timed Bomb)", "desc": "购入 1 枚定时炸弹库存，战斗中可用热键放置。", "cost": 60, "icon": "res://assets/sprites/buildings/prop_timed_bomb.png", "category": "BUILD"},
+]
+
 func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(self, Color(0.14, 0.12, 0.16, 0.98), 16)
-	UIThemeHelper.apply_clay_button(btn_reroll)
-	UIThemeHelper.apply_clay_button(btn_leave)
+	UIThemeHelper.apply_icon_button(btn_reroll, "res://assets/sprites/ui/ui_icon_shop_refresh.png", Vector2(20, 20))
+	UIThemeHelper.apply_icon_button(btn_leave, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(20, 20))
 
 	btn_reroll.pressed.connect(_on_reroll_pressed)
 	btn_leave.pressed.connect(_on_leave_pressed)
@@ -36,8 +57,8 @@ func setup_shop() -> void:
 	_update_ui()
 
 func _update_ui() -> void:
-	gold_label.text = "💰 YOUR GOLD: %d G" % GameState.gold
-	btn_reroll.text = "🔄 刷新货架 (Reroll %dG)" % reroll_cost
+	gold_label.text = "YOUR GOLD: %d G" % GameState.gold
+	btn_reroll.text = "刷新货架 (Reroll %dG)" % reroll_cost
 	btn_reroll.disabled = (GameState.gold < reroll_cost)
 	_render_item_cards()
 
@@ -46,7 +67,7 @@ func _generate_shop_inventory() -> void:
 	var all_items: Array[Dictionary] = [
 		{
 			"id": "star_tier",
-			"name": "⭐ 战车升阶模块 (Star Upgrade)",
+			"name": "战车升阶模块 (Star Upgrade)",
 			"desc": "提升战车阶级 (Tier Up)，增强火力与射击发数",
 			"cost": 95,
 			"icon": "res://assets/sprites/powerups/star.png",
@@ -54,7 +75,7 @@ func _generate_shop_inventory() -> void:
 		},
 		{
 			"id": "heavy_armor",
-			"name": "🛡️ 强化装甲钢板 (Armor Plating)",
+			"name": "强化装甲钢板 (Armor Plating)",
 			"desc": "+1 战车最大装甲上限 (Max HP +1)",
 			"cost": 65,
 			"icon": "res://assets/sprites/powerups/helmet.png",
@@ -62,7 +83,7 @@ func _generate_shop_inventory() -> void:
 		},
 		{
 			"id": "autoloader",
-			"name": "⚡ 自动装填机构 (Autoloader)",
+			"name": "自动装填机构 (Autoloader)",
 			"desc": "+10% 战车基础装填速度 (Fire Rate +10%)",
 			"cost": 70,
 			"icon": "res://assets/sprites/ui/badge_laser.png",
@@ -70,7 +91,7 @@ func _generate_shop_inventory() -> void:
 		},
 		{
 			"id": "turbo_engine",
-			"name": "🏎️ 涡轮增压引擎 (Turbo Engine)",
+			"name": "涡轮增压引擎 (Turbo Engine)",
 			"desc": "+6% 战车最高机动巡航航速 (Speed +6%)",
 			"cost": 55,
 			"icon": "res://assets/sprites/powerups/clock.png",
@@ -78,7 +99,7 @@ func _generate_shop_inventory() -> void:
 		},
 		{
 			"id": "extra_life",
-			"name": "❤️ 备用坦克增援 (Reserve Tank)",
+			"name": "备用坦克增援 (Reserve Tank)",
 			"desc": "+1 出战备用坦克生命 (Extra Life +1)",
 			"cost": 85,
 			"icon": "res://assets/sprites/powerups/life.png",
@@ -86,7 +107,7 @@ func _generate_shop_inventory() -> void:
 		},
 		{
 			"id": "steel_shovel",
-			"name": "⛏️ 基地全铁化加固 (Steel Reinforce)",
+			"name": "基地全铁化加固 (Steel Reinforce)",
 			"desc": "+1 基地防线工程学等级 (Base Defense Level +1)",
 			"cost": 50,
 			"icon": "res://assets/sprites/powerups/shovel.png",
@@ -94,7 +115,7 @@ func _generate_shop_inventory() -> void:
 		},
 		{
 			"id": "plasma_mod",
-			"name": "💥 穿甲高爆重弹 (Armor Piercer)",
+			"name": "穿甲高爆重弹 (Armor Piercer)",
 			"desc": "+1 永久主炮基础杀伤力 (ATK Bonus +1)",
 			"cost": 80,
 			"icon": "res://assets/sprites/effects/bullet_plasma.png",
@@ -102,11 +123,35 @@ func _generate_shop_inventory() -> void:
 		},
 		{
 			"id": "landmine_crate",
-			"name": "💣 战术反坦克地雷包 (Mine Crate)",
+			"name": "战术反坦克地雷包 (Mine Crate)",
 			"desc": "解锁布设反坦克地雷战术，+50 战役经验 (50 XP)",
 			"cost": 45,
 			"icon": "res://assets/sprites/powerups/landmine_prop.png",
 			"category": "TACTICAL"
+		},
+		{
+			"id": "ricochet_rounds",
+			"name": "反射炮弹 (Ricochet Rounds)",
+			"desc": "炮弹命中障碍后不会消失，而是随机弹向新方向继续飞行（可叠加购买，最多3层，层数=可反弹次数）。高风险：反弹后的炮弹会失去友军免疫，可能反过来打中你自己！",
+			"cost": 110,
+			"icon": "res://assets/sprites/powerups/ricochet_rounds.png",
+			"category": "RISK"
+		},
+		{
+			"id": "amphibious_hull",
+			"name": "两栖化改造 (Amphibious Hull)",
+			"desc": "战车加装水陆两用推进系统，终于可以下水通行！代价：改装后底盘变重，陆地机动速度永久 -50%（下水时无此惩罚）。",
+			"cost": 90,
+			"icon": "res://assets/sprites/powerups/amphibious_hull.png",
+			"category": "RISK"
+		},
+		{
+			"id": "armor_piercing_rounds",
+			"name": "贯穿装甲弹 (Armor-Piercing Rounds)",
+			"desc": "炮弹可直接洞穿一切可摧毁的墙体持续飞行，不再被击中的第一面墙拦下。高风险：弹芯经过特殊改造后无法再拦截敌方炮弹，来袭的炮弹会直接穿过你的子弹继续飞向你！",
+			"cost": 120,
+			"icon": "res://assets/sprites/powerups/armor_piercing_rounds.png",
+			"category": "RISK"
 		}
 	]
 
@@ -116,16 +161,42 @@ func _generate_shop_inventory() -> void:
 		it["sold_out"] = false
 		current_shop_items.append(it)
 
+	# Building supplies are appended in full, every visit -- not part of the
+	# shuffle-and-pick-6 above.
+	for b in BUILDING_ITEMS:
+		var it = b.duplicate()
+		it["sold_out"] = false
+		current_shop_items.append(it)
+
 func _can_buy_item(item_id: String) -> bool:
 	if item_id == "star_tier":
-		return GameState.player_tier < 3
+		# Only default-branch players actually cap at tier 3 (multi-shot/plasma
+		# progression). Once a branch is picked, this item redirects to a
+		# permanent +1 ATK (GameState.grant_star_tier_reward) which has no
+		# such cap -- same as the shop's other flat stat items.
+		return GameState.tank_branch != "default" or GameState.player_tier < 3
+	if item_id in ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds"]:
+		# These are perks (GameState.unlocked_perks), not flat stat fields --
+		# unlike the items above, repeat purchases across shop visits are
+		# capped by GameState.PERK_MAX_STACKS.
+		return int(GameState.unlocked_perks.get(item_id, 0)) < GameState.max_stacks_for_perk(item_id)
 	return true
 
 func _apply_item_purchase(item_id: String) -> void:
+	for b in BUILDING_ITEMS:
+		if b["id"] == item_id:
+			GameState.add_structure_stock(item_id, 1)
+			_show_toast("%s 已入库！当前库存 x%d，可在热键栏放置。" % [b["name"], GameState.get_structure_stock(item_id)])
+			return
+
 	match item_id:
 		"star_tier":
-			GameState.player_tier = mini(3, GameState.player_tier + 1)
-			_show_toast("战车成功升级至阶级 %d !" % (GameState.player_tier + 1))
+			var was_default = (GameState.tank_branch == "default")
+			GameState.grant_star_tier_reward(1)
+			if was_default:
+				_show_toast("战车成功升级至阶级 %d !" % (GameState.player_tier + 1))
+			else:
+				_show_toast("已选定专属流派，武器模块转化为永久攻击力 +1！")
 		"heavy_armor":
 			GameState.max_hp_lvl += 1
 			_show_toast("装甲升级！最大生命值 +1")
@@ -147,6 +218,16 @@ func _apply_item_purchase(item_id: String) -> void:
 		"landmine_crate":
 			GameState.player_xp += 50
 			_show_toast("获得地雷战术补给，经验 +50！")
+		"ricochet_rounds":
+			GameState.grant_perk_stack("ricochet_rounds", 1)
+			var bounces = int(GameState.unlocked_perks.get("ricochet_rounds", 0))
+			_show_toast("反射炮弹改装完成！当前可反弹 %d 次 —— 小心别被自己的流弹打中！" % bounces)
+		"amphibious_hull":
+			GameState.grant_perk_stack("amphibious_hull", 1)
+			_show_toast("两栖化改装完成！可以下水了，但陆地机动力永久 -50%！")
+		"armor_piercing_rounds":
+			GameState.grant_perk_stack("armor_piercing_rounds", 1)
+			_show_toast("贯穿装甲弹装填完毕！可洞穿墙体，但再也无法拦截敌方炮弹！")
 
 func _render_item_cards() -> void:
 	for child in items_grid.get_children():

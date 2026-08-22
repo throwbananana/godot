@@ -220,9 +220,14 @@ def build_laser_beam_vfx():
     mat_core = create_clay_mat("las_c", (1.0, 1.0, 1.0, 1.0), emission=(0.4, 0.9, 1.0, 1.0), emission_str=4.5)
     mat_halo = create_clay_mat("las_h", (0.15, 0.70, 0.98, 1.0), emission=(0.15, 0.70, 0.98, 1.0), emission_str=2.5)
 
-    # Core Beam
+    # Core Beam. Laid flat (rotated 90 deg about X) like every other barrel/
+    # beam cylinder in this pipeline -- primitive_cylinder_add's "depth" runs
+    # along local Z by default, which is straight at the top-down ortho
+    # camera, so an unrotated long cylinder here rendered as a small circle
+    # (only its end cap was ever visible) instead of an elongated beam line.
     bpy.ops.mesh.primitive_cylinder_add(radius=0.14, depth=3.2, vertices=16, location=(0, 0, 0))
     core = bpy.context.active_object
+    core.rotation_euler = (math.radians(90), 0, 0)
     core.data.materials.append(mat_core)
     bpy.ops.object.shade_smooth()
     objs.append(core)
@@ -230,6 +235,7 @@ def build_laser_beam_vfx():
     # Glow Halo
     bpy.ops.mesh.primitive_cylinder_add(radius=0.32, depth=3.2, vertices=16, location=(0, 0, 0))
     halo = bpy.context.active_object
+    halo.rotation_euler = (math.radians(90), 0, 0)
     halo.data.materials.append(mat_halo)
     bpy.ops.object.shade_smooth()
     objs.append(halo)

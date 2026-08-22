@@ -41,6 +41,7 @@ theme_override_constants/separation = 8
 
 [node name="TitleLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.98, 0.85, 0.35, 1)
 theme_override_font_sizes/font_size = 19
 text = "TANK BATTLE 2D"
 horizontal_alignment = 1
@@ -48,18 +49,50 @@ horizontal_alignment = 1
 [node name="HSeparator" type="HSeparator" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 
-[node name="ScoreLabel" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="ScoreBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ScoreIcon" type="TextureRect" parent="HUD/SidePanel/VBox/ScoreBox"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ScoreLabel" type="Label" parent="HUD/SidePanel/VBox/ScoreBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 text = "SCORE: 000000"
 
-[node name="LivesLabel" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="LivesBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LivesIcon" type="TextureRect" parent="HUD/SidePanel/VBox/LivesBox"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LivesLabel" type="Label" parent="HUD/SidePanel/VBox/LivesBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.58, 0.86, 0.6, 1)
 theme_override_font_sizes/font_size = 14
 text = "LIVES: 3"
 
-[node name="EnemiesLabel" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="EnemiesBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EnemiesIcon" type="TextureRect" parent="HUD/SidePanel/VBox/EnemiesBox"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="EnemiesLabel" type="Label" parent="HUD/SidePanel/VBox/EnemiesBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.45, 0.45, 1)
 theme_override_font_sizes/font_size = 14
 text = "ENEMIES: 20"
 
@@ -77,20 +110,50 @@ custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 show_percentage = false
 
-[node name="GoldLabel" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="GoldBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="GoldIcon" type="TextureRect" parent="HUD/SidePanel/VBox/GoldBox"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="GoldLabel" type="Label" parent="HUD/SidePanel/VBox/GoldBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
 theme_override_font_sizes/font_size = 14
 text = "GOLD: 100 G"
 
-[node name="P1HPLabel" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="P1HPBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="P1HPIcon" type="TextureRect" parent="HUD/SidePanel/VBox/P1HPBox"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="P1HPLabel" type="Label" parent="HUD/SidePanel/VBox/P1HPBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
 theme_override_font_sizes/font_size = 13
 text = "P1 [YEL] HP: 1 / 1"
 
-[node name="P2HPLabel" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="P2HPBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
 visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="P2HPIcon" type="TextureRect" parent="HUD/SidePanel/VBox/P2HPBox"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="P2HPLabel" type="Label" parent="HUD/SidePanel/VBox/P2HPBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.55, 0.85, 0.55, 1)
 theme_override_font_sizes/font_size = 13
@@ -114,14 +177,25 @@ autowrap_mode = 2
 [node name="HSeparator2" type="HSeparator" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
 
-[node name="ControlsInfo" type="Label" parent="HUD/SidePanel/VBox"]
+[node name="ControlsBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ControlsIcon" type="TextureRect" parent="HUD/SidePanel/VBox/ControlsBox"]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_vertical = 0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ControlsInfo" type="Label" parent="HUD/SidePanel/VBox/ControlsBox"]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.82, 0.78, 0.74, 1)
 theme_override_font_sizes/font_size = 10
-text = "• P1: W/A/S/D + Space (Shoot)
-• 道具/建造: [Q] ◀ | [E] ▶ 切换
-• 部署建造: [F] 键放置
-• P2: 方向键 + [U/O] 切换, [K] 放置"
+text = "P1: W/A/S/D + Space (Shoot)
+道具/建造: [Q/E] 切换, [F] 放置
+P2: 方向键 + [U/O] 切换, [K] 放置"
 
 [node name="CenterMessage" type="Label" parent="HUD"]
 visible = false
@@ -181,25 +255,32 @@ layout_mode = 2
 theme_override_constants/separation = 12
 alignment = 1
 
+[node name="PauseIcon" type="TextureRect" parent="HUD/PauseMenu/VBox"]
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+size_flags_horizontal = 4
+expand_mode = 1
+stretch_mode = 5
+
 [node name="PauseTitle" type="Label" parent="HUD/PauseMenu/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
 theme_override_font_sizes/font_size = 22
-text = "⏸ GAME PAUSED"
+text = "GAME PAUSED"
 horizontal_alignment = 1
 
 [node name="ResumeButton" type="Button" parent="HUD/PauseMenu/VBox"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
-text = "▶ RESUME (继续)"
+text = "RESUME (继续)"
 
 [node name="RestartStageButton" type="Button" parent="HUD/PauseMenu/VBox"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
-text = "↺ RESTART STAGE (重试本关)"
+text = "RESTART STAGE (重试本关)"
 
 [node name="QuitToMenuButton" type="Button" parent="HUD/PauseMenu/VBox"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
-text = "⌂ RETURN TO MENU (返回菜单)"
+text = "RETURN TO MENU (返回菜单)"
 

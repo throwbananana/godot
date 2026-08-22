@@ -127,6 +127,11 @@ def setup_stylize_compositor(levels=0, pixelate=0):
 
 def setup_render_settings(rx=256, ry=256, samples=28,
                           posterize_levels=0, pixelate=0):
+    # 这里是查漏的最佳位置: 各脚本都是 clear_scene() -> setup_render_settings()
+    # 开批, 中途切分辨率时上一批也已被 render_and_clean() 删干净, 所以正常流程
+    # 走到这一句时场景必然是空的, 不会误报。
+    warn_if_stray_meshes("setup_render_settings")
+
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
     if hasattr(scene, 'cycles'):
@@ -164,6 +169,26 @@ def setup_render_settings(rx=256, ry=256, samples=28,
     scene.view_settings.gamma = 1.0
 
     setup_stylize_compositor(posterize_levels, pixelate)
+
+
+def warn_if_stray_meshes(context=""):
+    """场景里若已有 mesh 就告警 —— 渲染事故的自曝装置。
+
+    create_sokpop_lighting() 只清相机和灯, 不清 mesh; render_and_clean() 也只删
+    调用方传进来的那一批。所以少调一次 clear_scene(), Blender 出厂场景的默认
+    立方体就会静默地挡在镜头前, 把整批资源渲成同一块灰方块 —— 这正是
+    build_ui_character_art_replacements.py 的九个 UI 图标发生过的事, 而且因为
+    渲染本身"成功"了, 一直到有人去量像素方差才被发现。
+
+    不抛异常: 有的脚本会在一批对象还在场时切分辨率重新布光, 那是合法用法。
+    这里只负责让异常状态在 stdout 上留下痕迹。
+    """
+    strays = [o.name for o in bpy.data.objects if o.type == 'MESH']
+    if strays:
+        shown = ", ".join(strays[:6]) + (" ..." if len(strays) > 6 else "")
+        print(f"[WARN] 场景中已存在 {len(strays)} 个 mesh{(' (' + context + ')') if context else ''}: {shown}")
+        print("[WARN] 若这不是有意为之, 说明漏了 clear_scene() —— 渲染结果可能被遮挡。")
+    return strays
 
 
 def create_sokpop_lighting(ortho_scale=3.3, sun_energy=0.9,

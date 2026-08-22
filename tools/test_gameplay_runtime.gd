@@ -44,6 +44,7 @@ func _run_tests() -> void:
 		print("  [FAIL] BuilderController node missing!")
 		quit(1)
 		return
+	GameState.add_structure_stock("turret", 1) # structures are shop-stock gated now, not gold-priced
 	builder.select_structure(BuilderController.StructureType.TURRET, 1)
 	if builder.selection_by_pid.get(1, BuilderController.StructureType.NONE) != BuilderController.StructureType.TURRET:
 		print("  [FAIL] Builder selection failed!")

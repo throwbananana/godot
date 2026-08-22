@@ -7,16 +7,33 @@ const GameState = preload("res://scripts/game_state.gd")
 const EventDialog = preload("res://scripts/event_dialog.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
-@onready var map_canvas: Control = $MapArea/MapCanvas
-@onready var lines_draw: Control = $MapArea/LinesDraw
+@onready var map_scroll: ScrollContainer = $MapArea/MapScroll
+@onready var map_inner: Control = $MapArea/MapScroll/MapInner
+@onready var map_canvas: Control = $MapArea/MapScroll/MapInner/MapCanvas
+@onready var lines_draw: Control = $MapArea/MapScroll/MapInner/LinesDraw
+
+# Floor nodes are positioned by pos_ratio.y (0..1) scaled against this
+# canvas's height (see game_state.gd::_generate_spire_map). With a fixed,
+# non-scrolling canvas that ratio math packed however many floors existed
+# into one fixed viewport height -- fine at the original max_floors=6, but
+# once floors went to 15 the same 0.78 fraction of height had to fit more
+# than double the rows, squeezing them closer together than the 64px node
+# buttons are tall (they started overlapping). Instead of shrinking nodes,
+# the canvas now grows with floor count and sits in a ScrollContainer.
+const ROW_HEIGHT_PX := 90.0
+const MIN_CANVAS_HEIGHT := 660.0
 @onready var event_dialog: PanelContainer = $EventDialog
 @onready var stage_preview_dialog: PanelContainer = $StagePreviewDialog
 @onready var shop_dialog: PanelContainer = $ShopDialog
 @onready var top_bar: PanelContainer = $TopBar
-@onready var hud_floor: Label = $TopBar/HBox/FloorLabel
-@onready var hud_gold: Label = $TopBar/HBox/GoldLabel
-@onready var hud_lives: Label = $TopBar/HBox/LivesLabel
-@onready var hud_tier: Label = $TopBar/HBox/TierLabel
+@onready var hud_floor: Label = $TopBar/HBox/FloorBox/FloorLabel
+@onready var hud_gold: Label = $TopBar/HBox/GoldBox/GoldLabel
+@onready var hud_lives: Label = $TopBar/HBox/LivesBox/LivesLabel
+@onready var hud_tier: Label = $TopBar/HBox/TierBox/TierLabel
+@onready var icon_floor: TextureRect = $TopBar/HBox/FloorBox/FloorIcon
+@onready var icon_gold: TextureRect = $TopBar/HBox/GoldBox/GoldIcon
+@onready var icon_lives: TextureRect = $TopBar/HBox/LivesBox/LivesIcon
+@onready var icon_tier: TextureRect = $TopBar/HBox/TierBox/TierIcon
 @onready var btn_back: Button = $TopBar/HBox/BackToMenuButton
 
 var node_buttons: Dictionary = {}
@@ -24,7 +41,13 @@ var active_rings: Array[Sprite2D] = []
 
 func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(top_bar, Color(0.18, 0.15, 0.20, 0.95), 12)
-	UIThemeHelper.apply_clay_button(btn_back)
+	UIThemeHelper.apply_icon_button(btn_back, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(22, 22))
+	
+	if icon_floor: icon_floor.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_terrain.png")
+	if icon_gold: icon_gold.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_badge_gold.png")
+	if icon_lives: icon_lives.texture = TextureHelper.get_tex("res://assets/sprites/ui/hp_heart_full.png")
+	if icon_tier: icon_tier.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_tank_p1.png")
+	
 	btn_back.pressed.connect(_on_back_to_menu)
 	event_dialog.closed.connect(_on_event_closed)
 	event_dialog.visible = false
@@ -51,7 +74,7 @@ func _on_back_to_menu() -> void:
 
 func _update_top_bar() -> void:
 	var act_name = GameState.get_act_name()
-	hud_floor.text = "[ACT %d/3] %s  |  FLOOR: %d/%d" % [GameState.current_act, act_name, GameState.current_floor + 1, GameState.max_floors]
+	hud_floor.text = "[ACT %d/%d] %s  |  FLOOR: %d/%d" % [GameState.current_act, GameState.max_acts, act_name, GameState.current_floor + 1, GameState.max_floors]
 	hud_gold.text = "GOLD: %d G" % GameState.gold
 	if GameState.player_count == 1:
 		hud_lives.text = "LIVES: %d" % GameState.player_lives
@@ -65,14 +88,27 @@ func _update_top_bar() -> void:
 func _branch_label(branch: String, tier: int, default_tier_idx: int) -> String:
 	match branch:
 		"speed":
-			return "⚡ SPEED T%d" % tier
+			return "SPEED T%d" % tier
 		"heavy":
-			return "💥 HEAVY T%d" % tier
+			return "HEAVY T%d" % tier
 		"train":
-			return "🚂 TRAIN T%d" % tier
+			return "TRAIN T%d" % tier
 		_:
 			var tier_names = ["SCOUT", "STRIKER", "TWIN-GUN", "PLASMA DREAD"]
 			return tier_names[default_tier_idx]
+
+## Viewport width (stable regardless of container layout timing) x a canvas
+## height that grows with GameState.max_floors, so per-floor spacing stays
+## constant instead of shrinking as more floors get added. Also stamps the
+## computed height onto MapInner so the ScrollContainer knows how far it can
+## scroll -- callers don't need to do that separately.
+func _compute_map_size() -> Vector2:
+	var w = get_viewport().get_visible_rect().size.x
+	if w <= 0:
+		w = 1024.0
+	var h = maxf(MIN_CANVAS_HEIGHT, float(GameState.max_floors) * ROW_HEIGHT_PX)
+	map_inner.custom_minimum_size = Vector2(w, h)
+	return Vector2(w, h)
 
 func _build_spire_ui() -> void:
 	for child in map_canvas.get_children():
@@ -80,9 +116,7 @@ func _build_spire_ui() -> void:
 	node_buttons.clear()
 	active_rings.clear()
 
-	var map_size = map_canvas.size
-	if map_size.x <= 0:
-		map_size = Vector2(1024, 660)
+	var map_size = _compute_map_size()
 
 	for node_id in GameState.spire_nodes.keys():
 		var data = GameState.spire_nodes[node_id]
@@ -135,10 +169,30 @@ func _build_spire_ui() -> void:
 		node_buttons[node_id] = btn
 
 	lines_draw.queue_redraw()
+	_scroll_to_current_floor(map_size)
+
+## Floor 0 sits near the bottom of the canvas and the boss floor near the
+## top (see the pos_ratio formula in game_state.gd). ScrollContainer opens
+## scrolled to the top by default, which on a 15-floor map means the player
+## lands on the boss end of the climb instead of where they actually are --
+## center the view on their current (or starting) floor instead.
+func _scroll_to_current_floor(map_size: Vector2) -> void:
+	var target_node_id = GameState.current_node_id
+	if target_node_id == "" :
+		for node_id in GameState.spire_nodes.keys():
+			if GameState.spire_nodes[node_id]["floor"] == 0:
+				target_node_id = node_id
+				break
+	if not GameState.spire_nodes.has(target_node_id):
+		return
+
+	var target_y = GameState.spire_nodes[target_node_id]["pos_ratio"].y * map_size.y
+	var viewport_h = map_scroll.size.y if map_scroll.size.y > 0 else 600.0
+	var max_scroll = maxf(0.0, map_size.y - viewport_h)
+	map_scroll.scroll_vertical = int(clampf(target_y - viewport_h / 2.0, 0.0, max_scroll))
 
 func _on_draw_lines() -> void:
-	var map_size = map_canvas.size
-	if map_size.x <= 0: map_size = Vector2(1024, 660)
+	var map_size = _compute_map_size()
 
 	for conn in GameState.spire_connections:
 		var n_from = GameState.spire_nodes.get(conn["from"])

@@ -279,17 +279,25 @@ def build_oil_barrel(burning: bool = False):
 # ==============================================================================
 def main():
     print("=== Starting 3D Modeling & Rendering for Street Lamp, Electric Wall, and Oil Barrel ===")
-    setup_render_settings(rx=256, ry=256)
+
+    # NOTE: clear_scene() is bpy.ops.wm.read_factory_settings(use_empty=True),
+    # which resets scene.render.resolution_x/y back to Blender's 1920x1080
+    # factory default. setup_render_settings(256, 256) must therefore be
+    # re-applied after every clear_scene() call, not once up front -- that
+    # ordering bug is why street_lamp/oil_barrel/electric_wall previously
+    # rendered at 1920x1080 instead of the project-wide 256x256 tile canvas.
 
     # 1. Street Lamp (Lit & Unlit)
     print("Rendering: street_lamp.png...")
     clear_scene()
+    setup_render_settings(rx=256, ry=256)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
     objs = build_street_lamp(lit=True)
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "street_lamp.png"))
 
     print("Rendering: street_lamp_lit.png...")
     clear_scene()
+    setup_render_settings(rx=256, ry=256)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
     objs = build_street_lamp(lit=True)
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "street_lamp_lit.png"))
@@ -299,6 +307,7 @@ def main():
         out_name = "tile_electric_wall_f%d.png" % f
         print("Rendering: %s..." % out_name)
         clear_scene()
+        setup_render_settings(rx=256, ry=256)
         create_sokpop_lighting(ortho_scale=TILE_FULL_BLEED)
         objs = build_electric_wall(frame_idx=f)
         render_and_clean(objs, os.path.join(SPRITES_TILES, out_name))
@@ -306,12 +315,14 @@ def main():
     # 3. Oil Barrel (Standard & Burning)
     print("Rendering: oil_barrel.png...")
     clear_scene()
+    setup_render_settings(rx=256, ry=256)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
     objs = build_oil_barrel(burning=False)
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "oil_barrel.png"))
 
     print("Rendering: oil_barrel_burning.png...")
     clear_scene()
+    setup_render_settings(rx=256, ry=256)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
     objs = build_oil_barrel(burning=True)
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "oil_barrel_burning.png"))

@@ -71,31 +71,38 @@ custom_minimum_size = Vector2(360, 48)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.88, 0.35, 1)
 theme_override_font_sizes/font_size = 18
-text = "▶ CONTINUE CAMPAIGN (继续战役)"
+text = "CONTINUE CAMPAIGN (继续战役)"
 
 [node name="Campaign1PButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
 custom_minimum_size = Vector2(360, 46)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.93, 0.7, 1)
 theme_override_font_sizes/font_size = 17
-text = "🏰 1P SINGLE CAMPAIGN (单人战役)"
+text = "1P SINGLE CAMPAIGN (单人战役)"
 
 [node name="Campaign2PButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
 custom_minimum_size = Vector2(360, 46)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.86, 0.6, 1)
 theme_override_font_sizes/font_size = 17
-text = "👥 2P CO-OP CAMPAIGN (双人战役)"
+text = "2P CO-OP CAMPAIGN (双人战役)"
 
 [node name="Arcade2PButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
 custom_minimum_size = Vector2(360, 44)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
-text = "⚡ 2P CO-OP ARCADE (双人街机)"
+text = "2P CO-OP ARCADE (双人街机)"
+
+[node name="DailyChallengeButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.68, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "DAILY CHALLENGE (每日挑战)"
 
 [node name="QuitButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
 custom_minimum_size = Vector2(360, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.48, 0.44, 1)
 theme_override_font_sizes/font_size = 15
-text = "EXIT GAME"
+text = "EXIT GAME (退出游戏)"

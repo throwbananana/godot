@@ -29,6 +29,9 @@ extends RefCounted
 # 24 = Street Lamp (Illumination beacon, reveals area in Night Mode)
 # 25 = Electric Wall (High-voltage barrier: shocks & damages any tank touching it)
 # 26 = Explosive Oil Barrel (Volatile fuel drum: explodes when hit, destroys 3x3 surrounding tiles & units)
+# 27 = Signal Jammer Tower (Destructible. Reverses the PLAYER's movement/aim input for anyone standing in its radius -- enemies unaffected. Destroying it frees anyone still caught inside.)
+# 28 = Factory (Destructible escort objective, 16 HP. Surviving to the end of the battle doubles this battle's gold+XP reward; every Factory on the map being destroyed halves it instead.)
+# 29 = Drifting Supplies (Water-look tile that is NOT collision-blocking -- "treated as ground" so any tank can walk onto it -- with a one-time gold+XP crate sitting on top. Doubles as a walkable stepping-stone across an otherwise impassable water tile 3.)
 
 # 1. 经典十字交叉防线 (Classic Crossroad - with Reinforced Hard Clay Chokepoints)
 const TEMPLATE_CLASSIC = [
@@ -812,9 +815,148 @@ const TEMPLATE_SOLAR_TITAN_SANCTUM = [
 	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]
 
+# 49. 三角洲打捞航线 (Naval Salvage Route) -- TEMPLATE_NAVAL_DELTA with Drifting
+# Supplies pockets cut into the water right beside its existing open flank
+# lanes (cols 0/3 and 9/12 in rows 1-2, 9-10), so the loot is a safe,
+# guaranteed-reachable detour off a route that was already walkable, not a
+# gamble on whether some deep-water cell connects to anything.
+const TEMPLATE_NAVAL_SALVAGE_ROUTE = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 29, 29, 0, 8, 8, 13, 8, 8, 0, 29, 29, 0],
+	[0, 29, 29, 0, 8, 8, 0, 8, 8, 0, 29, 29, 0],
+	[0, 3, 3, 22, 2, 0, 0, 0, 2, 22, 3, 3, 0],
+	[3, 3, 3, 3, 2, 8, 22, 8, 2, 3, 3, 3, 3],
+	[3, 3, 3, 3, 0, 8, 13, 8, 0, 3, 3, 3, 3],
+	[0, 10, 0, 3, 3, 2, 13, 2, 3, 3, 0, 23, 0],
+	[3, 3, 3, 3, 0, 8, 13, 8, 0, 3, 3, 3, 3],
+	[3, 3, 3, 3, 2, 8, 22, 8, 2, 3, 3, 3, 3],
+	[0, 3, 3, 22, 2, 0, 0, 0, 2, 22, 3, 3, 0],
+	[0, 29, 29, 0, 8, 8, 0, 8, 8, 0, 29, 29, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 50. 双湖打捞群岛 (Twin Lakes Salvage) -- TEMPLATE_TWIN_ISLANDS with Drifting
+# Supplies cut into the top/bottom lake edges directly beside the existing
+# open flank columns (col 3 / col 9), for the same reason as above: a safe
+# lakeside detour, not an isolated pocket in the middle of open water.
+const TEMPLATE_TWIN_LAKES_SALVAGE = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 8, 8, 0, 29, 3, 3, 3, 29, 0, 8, 8, 0],
+	[0, 8, 8, 0, 29, 3, 3, 3, 29, 0, 8, 8, 0],
+	[0, 12, 0, 0, 3, 3, 3, 3, 3, 0, 0, 12, 0],
+	[0, 2, 2, 0, 10, 0, 0, 0, 10, 0, 2, 2, 0],
+	[0, 2, 2, 0, 29, 3, 8, 3, 29, 0, 2, 2, 0],
+	[0, 0, 0, 0, 3, 3, 2, 3, 3, 0, 0, 0, 0],
+	[0, 2, 2, 0, 29, 3, 8, 3, 29, 0, 2, 2, 0],
+	[0, 2, 2, 0, 10, 0, 0, 0, 10, 0, 2, 2, 0],
+	[0, 12, 0, 0, 29, 3, 3, 3, 29, 0, 0, 12, 0],
+	[0, 8, 8, 0, 3, 3, 3, 3, 3, 0, 8, 8, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 47. 信号干扰前哨 (Jammer Outpost) -- TEMPLATE_CLASSIC with a Signal Jammer
+# Tower guarding the river chokepoint: destroy it from range, or push
+# straight through and fight with reversed controls.
+const TEMPLATE_JAMMER_OUTPOST = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 8, 0, 8, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 8, 0, 8, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 2, 2, 2, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 0, 27, 0, 0, 1, 0, 1, 0],
+	[0, 0, 0, 0, 0, 8, 8, 8, 0, 0, 0, 0, 0],
+	[2, 2, 0, 1, 1, 3, 3, 3, 1, 1, 0, 2, 2],
+	[0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 0, 27, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 2, 0, 2, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 8, 0, 8, 0, 1, 0, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 48. 中央工厂护卫战 (Factory Escort) -- TEMPLATE_CHECKERBOARD with a Factory
+# sitting in the protected center pond, hard clay on all four sides funnels
+# approaches instead of leaving it exposed on an open board.
+const TEMPLATE_FACTORY_ESCORT = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 8, 0, 2, 0, 8, 0, 8, 0, 2, 0, 8, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 2, 0, 8, 0, 2, 0, 2, 0, 8, 0, 2, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 8, 0, 2, 0, 8, 8, 8, 0, 2, 0, 8, 0],
+	[0, 0, 0, 0, 0, 8, 28, 8, 0, 0, 0, 0, 0],
+	[0, 2, 0, 8, 0, 8, 8, 8, 0, 8, 0, 2, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 8, 0, 2, 0, 2, 0, 2, 0, 2, 0, 8, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 2, 0, 8, 0, 0, 0, 0, 0, 8, 0, 2, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+## Per-template floor_idx gate, mirroring the enemy tier table in main.gd's
+## ENEMY_MIN_FLOOR -- pools below draw by `floor_idx % pool.size()`, which
+## previously meant a "kitchen sink" template (5+ combined mechanics, or a
+## jammer/factory encounter) could show up as early as floor_idx 1 purely by
+## index luck. Tiers here are by mechanic count (see the tools/Explore audit
+## that produced this table), not template name:
+##   Floor 0 (ungated) -- plain terrain, at most one of hard clay/landmine/
+##                        sand, nothing the player has to learn mid-fight.
+##   Floor 2 -- exactly one or two environmental mechanics (ice, a single
+##              wormhole, a shield+wind pair, or a standalone jammer/factory
+##              encounter).
+##   Floor 5 -- three or more combined mechanics, or any street-lamp/
+##              electric-wall/oil-barrel building combo map.
+## Keyed by template array identity (Dictionary compares Array keys by
+## content, and no two templates share a layout, so this resolves uniquely).
+const TEMPLATE_MIN_FLOOR: Dictionary = {
+	TEMPLATE_GLACIER_ICE: 2, TEMPLATE_VOID_FERRY: 2, TEMPLATE_COSMIC_WORMHOLES: 2,
+	TEMPLATE_WARP_GLACIER: 2, TEMPLATE_VOID_CANAL: 2, TEMPLATE_DESERT_LABYRINTH: 2,
+	TEMPLATE_METEOR_CRATER: 2, TEMPLATE_TWIN_ISLANDS: 2, TEMPLATE_ELITE_CITADEL: 2,
+	TEMPLATE_SHIELD_OUTPOST: 2, TEMPLATE_SHIELD_LABYRINTH: 2,
+	TEMPLATE_JAMMER_OUTPOST: 2, TEMPLATE_FACTORY_ESCORT: 2,
+
+	TEMPLATE_WIND_TEMPEST: 5, TEMPLATE_CYCLONE_ARENA: 5, TEMPLATE_WARP_TURBINE_VALLEY: 5,
+	TEMPLATE_CONVEYOR_FACTORY: 5, TEMPLATE_JUMP_ARCHIPELAGO: 5, TEMPLATE_TURBINE_CONVEYOR_LAB: 5,
+	TEMPLATE_NEO_TITAN_BASTION: 5, TEMPLATE_CONVEYOR_PINBALL: 5, TEMPLATE_WARP_CITADEL_APEX: 5,
+	TEMPLATE_NAVAL_DELTA: 5, TEMPLATE_MIRAGE_JUNGLE_MAZE: 5, TEMPLATE_AIR_NAVAL_STRAITS: 5,
+	TEMPLATE_DEMOLITION_TRENCH: 5, TEMPLATE_DIAMOND_CRYSTAL_MINE: 5, TEMPLATE_APEX_TRI_ARMOR_CITADEL: 5,
+	TEMPLATE_NIGHT_HIGHWAY: 5, TEMPLATE_OIL_REFINERY: 5, TEMPLATE_GLACIER_TESLA: 5,
+	TEMPLATE_INFERNO_REFINERY: 5, TEMPLATE_NIGHTSHADE_WARP: 5, TEMPLATE_MAGNETIC_ARCHIPELAGO: 5,
+	TEMPLATE_QUICKSAND_FOUNDRY: 5, TEMPLATE_HYPERDRIVE_PINBALL: 5, TEMPLATE_TRI_DOMAIN_BIOHAZARD: 5,
+	TEMPLATE_NAVAL_SALVAGE_ROUTE: 5, TEMPLATE_TWIN_LAKES_SALVAGE: 5,
+	# TEMPLATE_SOLAR_TITAN_SANCTUM / TEMPLATE_APEX_TRI_ARMOR_CITADEL's boss-arena
+	# picks and TEMPLATE_BOSS_ARENA/TEMPLATE_SPEEDWAY are single fixed returns
+	# for battle_type=="boss" (not pool-indexed), so they need no gate.
+}
+
+## Filters a pool down to templates unlocked at floor_idx, falling back to
+## the pool's floor-0 (ungated) subset, and finally the whole pool, so a
+## pool that happens to be all-advanced at very low floor_idx still returns
+## something instead of an empty array.
+static func _pick_from_pool(pool: Array, floor_idx: int) -> Array:
+	var eligible = pool.filter(func(t): return floor_idx >= TEMPLATE_MIN_FLOOR.get(t, 0))
+	if not eligible.is_empty():
+		return eligible[floor_idx % eligible.size()]
+	# Nothing in this pool is unlocked yet (some curated pools -- e.g.
+	# "challenge" -- skew entirely toward multi-mechanic templates with no
+	# floor-0 entry at all). Fall back to whichever template(s) have the
+	# lowest min_floor requirement in the pool, rather than ignoring the
+	# gate outright and handing back an arbitrary high-tier one.
+	var lowest = 999999
+	for t in pool:
+		lowest = mini(lowest, TEMPLATE_MIN_FLOOR.get(t, 0))
+	var closest = pool.filter(func(t): return TEMPLATE_MIN_FLOOR.get(t, 0) == lowest)
+	return closest[floor_idx % closest.size()]
+
 static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int = -1, allow_procgen: bool = true) -> Array:
-	var current_act = GameState.current_act if act == -1 else act
-	
+	# Acts beyond 3 reuse the 3 existing visual themes on a cycle (see
+	# GameState.get_visual_act()) -- there's no unique template pool per act
+	# past that, so map selection always keys off the cycled theme, not the
+	# raw act number.
+	var raw_act = GameState.current_act if act == -1 else act
+	var current_act = GameState.get_visual_act(raw_act)
+
 	# Procedural generation chance (25% chance for a fresh randomized layout during regular battles)
 	if allow_procgen and battle_type == "battle" and (floor_idx % 3 == 2):
 		return MapGenerator.generate_map(current_act)
@@ -829,38 +971,38 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 		match current_act:
 			1:
 				var pc1 = [TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_HYPERDRIVE_PINBALL]
-				return pc1[floor_idx % pc1.size()]
+				return _pick_from_pool(pc1, floor_idx)
 			2:
 				var pc2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_WIND_TEMPEST, TEMPLATE_INFERNO_REFINERY]
-				return pc2[floor_idx % pc2.size()]
+				return _pick_from_pool(pc2, floor_idx)
 			3:
 				var pc3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_OIL_REFINERY, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL]
-				return pc3[floor_idx % pc3.size()]
+				return _pick_from_pool(pc3, floor_idx)
 			_:
 				return TEMPLATE_SHIELD_OUTPOST
 	elif battle_type == "elite":
 		match current_act:
 			1:
-				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL]
-				return p1[floor_idx % p1.size()]
+				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT]
+				return _pick_from_pool(p1, floor_idx)
 			2:
-				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO]
-				return p2[floor_idx % p2.size()]
+				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE]
+				return _pick_from_pool(p2, floor_idx)
 			3:
-				var p3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY]
-				return p3[floor_idx % p3.size()]
+				var p3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_TWIN_LAKES_SALVAGE]
+				return _pick_from_pool(p3, floor_idx)
 			_:
 				return TEMPLATE_CITADEL
 	else:
 		match current_act:
 			1:
-				var act1_pool = [TEMPLATE_CLASSIC, TEMPLATE_RIVERS, TEMPLATE_JUNGLE, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CHECKERBOARD, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_CITADEL]
-				return act1_pool[floor_idx % act1_pool.size()]
+				var act1_pool = [TEMPLATE_CLASSIC, TEMPLATE_RIVERS, TEMPLATE_JUNGLE, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CHECKERBOARD, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_CITADEL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_NAVAL_SALVAGE_ROUTE]
+				return _pick_from_pool(act1_pool, floor_idx)
 			2:
-				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO]
-				return act2_pool[floor_idx % act2_pool.size()]
+				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE]
+				return _pick_from_pool(act2_pool, floor_idx)
 			3:
-				var act3_pool = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_ELITE_CITADEL]
-				return act3_pool[floor_idx % act3_pool.size()]
+				var act3_pool = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_ELITE_CITADEL, TEMPLATE_TWIN_LAKES_SALVAGE]
+				return _pick_from_pool(act3_pool, floor_idx)
 			_:
 				return TEMPLATE_CLASSIC

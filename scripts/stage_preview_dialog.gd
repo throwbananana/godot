@@ -23,8 +23,8 @@ var current_node_id: String = ""
 
 func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(self, Color(0.15, 0.13, 0.17, 0.98), 16)
-	UIThemeHelper.apply_clay_button(btn_start)
-	UIThemeHelper.apply_clay_button(btn_cancel)
+	UIThemeHelper.apply_icon_button(btn_start, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(20, 20))
+	UIThemeHelper.apply_icon_button(btn_cancel, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(20, 20))
 
 	btn_start.pressed.connect(_on_start_pressed)
 	btn_cancel.pressed.connect(_on_cancel_pressed)
@@ -49,35 +49,35 @@ func setup_preview(node_id: String) -> void:
 	var c_mode = str(node_data.get("challenge_mode", "bomb_rain"))
 
 	if n_type == "elite":
-		title_label.text = "⚠️ ELITE BATTLE: " + stage_name
+		title_label.text = "ELITE BATTLE: " + stage_name
 		title_label.modulate = Color(1.0, 0.45, 0.45)
-		sub_title_label.text = "THREAT LEVEL: ★★★★☆ (High Risk) | ENEMY BATTALION: 18 HEAVY UNITS"
+		sub_title_label.text = "THREAT LEVEL: HIGH RISK | ENEMY BATTALION: 18 HEAVY UNITS"
 	elif n_type == "challenge":
 		if c_mode == "bomb_rain":
-			title_label.text = "💣 AIR-DROP HAZARD (空投定时炸弹挑战): " + stage_name
+			title_label.text = "AIR-DROP HAZARD (空投定时炸弹挑战): " + stage_name
 			title_label.modulate = Color(1.0, 0.55, 0.25)
 			sub_title_label.text = "CHALLENGE OBJECTIVE: 天空将持续空投定时高爆炸弹！巧妙走位诱敌轰杀，躲避十字爆炎！"
 		elif c_mode == "night_ops":
-			title_label.text = "🌙 NIGHT OPERATIONS (黑夜突袭战术挑战): " + stage_name
+			title_label.text = "NIGHT OPERATIONS (黑夜突袭战术挑战): " + stage_name
 			title_label.modulate = Color(0.65, 0.78, 1.0)
 			sub_title_label.text = "CHALLENGE OBJECTIVE: 战场陷入漆黑夜幕！仅依靠战车车灯与基地灯塔视野侦察潜伏敌军！"
 		elif c_mode == "night_bombs":
-			title_label.text = "💀 NIGHTMARE RAID (暗夜空投极限防守): " + stage_name
+			title_label.text = "NIGHTMARE RAID (暗夜空投极限防守): " + stage_name
 			title_label.modulate = Color(1.0, 0.35, 0.35)
 			sub_title_label.text = "CHALLENGE OBJECTIVE: 在漆黑夜幕中躲避天降定时炸弹并歼灭敌军！极限生存！"
 		else:
-			title_label.text = "🏆 SECRET VAULT (隐秘宝藏挑战): " + stage_name
+			title_label.text = "SECRET VAULT (隐秘宝藏挑战): " + stage_name
 			title_label.modulate = Color(0.98, 0.82, 0.25)
 			sub_title_label.text = "CHALLENGE OBJECTIVE: 击破隐藏地块或消灭敌军寻找【金钥匙】，开启战场秘宝宝箱！"
 	elif n_type == "boss":
-		title_label.text = "👑 BOSS RAID: " + stage_name
+		title_label.text = "BOSS RAID: " + stage_name
 		title_label.modulate = Color(1.0, 0.85, 0.3)
-		sub_title_label.text = "THREAT LEVEL: ★★★★★ (MAXIMUM DANGER) | TITANIC SUMMIT COLOSSUS"
+		sub_title_label.text = "THREAT LEVEL: MAXIMUM DANGER | TITANIC SUMMIT COLOSSUS"
 	else:
-		title_label.text = "⚔️ TACTICAL ENGAGEMENT: " + stage_name
+		title_label.text = "TACTICAL ENGAGEMENT: " + stage_name
 		title_label.modulate = Color(0.9, 0.92, 0.98)
 		var enemy_count = 12 + floor_idx * 2
-		sub_title_label.text = "THREAT LEVEL: %s | ENEMY FORCE: %d TANKS" % ["★".repeat(floor_idx + 1) + "☆".repeat(5 - (floor_idx + 1)), enemy_count]
+		sub_title_label.text = "THREAT LEVEL: SECTOR %d | ENEMY FORCE: %d TANKS" % [floor_idx + 1, enemy_count]
 
 	_populate_terrain(floor_idx, n_type, c_mode)
 	_populate_enemies(floor_idx, n_type)

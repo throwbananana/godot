@@ -6,10 +6,11 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 const LaserPiercer = preload("res://scripts/laser_piercer.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP }
 
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
@@ -17,6 +18,7 @@ enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_
 var speed: float = 100.0
 var max_health: int = 1
 var health: int = 1
+var is_dying: bool = false
 var score_value: int = 100
 var xp_value: int = 35
 var gold_value: int = 20
@@ -35,6 +37,7 @@ var tree_tex: Texture2D = null
 var is_suicide_detonated: bool = false
 var plane_shadow: Sprite2D = null
 var wake_timer: float = 0.0
+var warp_blink_timer: float = 0.0
 
 var facing_direction: Vector2 = Vector2.DOWN
 var tank_frames: Array[Texture2D] = []
@@ -47,6 +50,8 @@ var explosion_scene: PackedScene
 var coin_scene: PackedScene
 var carriage_scene: PackedScene
 var attached_wagons: Array[Node2D] = []
+var history_positions: Array[Vector2] = []
+var history_rotations: Array[float] = []
 
 var hit_tween: Tween
 var recoil_tween: Tween
@@ -62,6 +67,7 @@ func _ready() -> void:
 	rotation = facing_direction.angle() + PI / 2.0
 	change_dir_timer = randf_range(1.0, 2.5)
 	fire_timer = randf_range(1.2, 2.5)
+	warp_blink_timer = randf_range(2.5, 4.0)
 	if enemy_type == EnemyType.TRAIN_BOSS:
 		call_deferred("_spawn_train_wagons")
 	elif enemy_type == EnemyType.AIRCRAFT:
@@ -190,6 +196,14 @@ func _setup_tank_type() -> void:
 			xp_value = 100
 			gold_value = 60
 			fire_interval = 1.6
+		EnemyType.WARP:
+			prefix = "enemy_warp"
+			speed = 100.0
+			max_health = 3
+			score_value = 680
+			xp_value = 130
+			gold_value = 85
+			fire_interval = 2.3
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * 0.08
@@ -212,6 +226,18 @@ func _setup_tank_type() -> void:
 		xp_value = int(xp_value * floor_mult)
 		gold_value = int(gold_value * floor_mult)
 		score_value = int(score_value * floor_mult)
+
+	# Acts beyond 3 re-lap the same 3 visual themes (GameState.get_visual_act()),
+	# so without this they'd just be Acts 1-3 replayed at identical difficulty.
+	# +18% HP / +7% speed / +15% rewards per completed lap (0 for Acts 1-3).
+	var cycle = GameState.get_difficulty_cycle()
+	if cycle > 0:
+		var cycle_hp_mult = 1.0 + cycle * 0.18
+		max_health = int(ceil(max_health * cycle_hp_mult))
+		speed *= (1.0 + cycle * 0.07)
+		xp_value = int(xp_value * (1.0 + cycle * 0.15))
+		gold_value = int(gold_value * (1.0 + cycle * 0.15))
+		score_value = int(score_value * (1.0 + cycle * 0.15))
 
 	health = max_health
 	tank_frames.clear()
@@ -322,6 +348,13 @@ func _physics_process(delta: float) -> void:
 			wake_timer = 0.0
 			_spawn_water_wake()
 
+	# 5. Warp Phantom Self-Teleport Blink (Act 3 signature: hard to pin down)
+	elif enemy_type == EnemyType.WARP:
+		warp_blink_timer -= delta
+		if warp_blink_timer <= 0.0:
+			warp_blink_timer = randf_range(3.5, 5.5)
+			_warp_blink()
+
 	fire_timer -= delta
 	if fire_timer <= 0.0:
 		_shoot()
@@ -330,6 +363,8 @@ func _physics_process(delta: float) -> void:
 	var move_speed = speed
 	if is_on_ice:
 		move_speed *= 1.35 # Enemies slide fast across ice
+		if enemy_type == EnemyType.WARP:
+			move_speed *= 1.15 # 虚空坦克在冰面上额外抓地增幅，呼应 Act3 主题
 	elif is_on_sand:
 		if enemy_type == EnemyType.DESERT:
 			move_speed *= 1.45 # 沙漠坦克在沙地上获得45%速度增幅！
@@ -338,6 +373,7 @@ func _physics_process(delta: float) -> void:
 
 	velocity = facing_direction * move_speed
 	var collision = move_and_collide(velocity * delta)
+	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
 	if collision:
 		if enemy_type == EnemyType.SUICIDE:
 			var col_node = collision.get_collider()
@@ -405,7 +441,7 @@ func _shoot() -> void:
 				get_parent().add_child(mb)
 				mb.global_position = global_position + facing_direction * 32.0
 	elif enemy_type == EnemyType.MISSILE:
-		var target = _find_target()
+		var target = _find_player_target()
 		var target_pos = target.global_position if target else (global_position + facing_direction * 180.0)
 		var strike_scene = load("res://scenes/missile_strike.tscn")
 		if strike_scene:
@@ -522,6 +558,21 @@ func _find_target() -> Node2D:
 
 	candidates.sort_custom(func(a, b): return global_position.distance_squared_to(a.global_position) < global_position.distance_squared_to(b.global_position))
 	return candidates[0]
+
+## Player-only variant of _find_target(), for siege units (MISSILE) that
+## should hunt the tank in front of them instead of beelining the base the
+## moment it's the nearest node. Falls back to _find_target() (which
+## includes base_eagle) only when no player is currently alive/valid, so a
+## missile truck never just sits idle with nothing to fire at.
+func _find_player_target() -> Node2D:
+	var players: Array[Node2D] = []
+	for p in get_tree().get_nodes_in_group("player"):
+		if is_instance_valid(p):
+			players.append(p)
+	if players.is_empty():
+		return _find_target()
+	players.sort_custom(func(a, b): return global_position.distance_squared_to(a.global_position) < global_position.distance_squared_to(b.global_position))
+	return players[0]
 
 func take_damage(amount: int) -> void:
 	health -= amount
@@ -647,7 +698,34 @@ func _spawn_water_wake() -> void:
 		tw.tween_property(w_spr, "modulate:a", 0.0, 0.25)
 		tw.tween_callback(w_spr.queue_free)
 
+func _warp_blink() -> void:
+	# Same implode/relocate/pop-in technique as the Wormhole tile (wormhole.gd),
+	# reused here so the Warp Phantom can self-teleport without needing an
+	# actual wormhole tile nearby -- a short, unpredictable hop rather than a
+	# full-map jump, so it reads as "hard to pin down" instead of arbitrary.
+	var angle = randf() * TAU
+	var dist = randf_range(110.0, 190.0)
+	var target = global_position + Vector2(cos(angle), sin(angle)) * dist
+	target.x = clampf(target.x, 48.0, 576.0)
+	target.y = clampf(target.y, 48.0, 576.0)
+
+	SoundManager.play_teleport(get_tree())
+	VFXAnimator.spawn_wormhole_swirl(get_parent(), global_position)
+
+	var tw = create_tween()
+	tw.tween_property(self, "scale", Vector2(0.01, 0.01), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	tw.tween_callback(func():
+		global_position = target
+		SoundManager.play_teleport(get_tree())
+		VFXAnimator.spawn_teleport_burst(get_parent(), target)
+	)
+	tw.tween_property(self, "scale", Vector2(1.20, 1.20), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "scale", Vector2(1.0, 1.0), 0.08)
+
 func _die() -> void:
+	if is_dying:
+		return
+	is_dying = true
 	if is_instance_valid(plane_shadow):
 		plane_shadow.queue_free()
 

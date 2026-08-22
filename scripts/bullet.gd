@@ -11,7 +11,6 @@ signal hit_target(target: Node2D)
 @export var damage: int = 1
 @export var can_destroy_steel: bool = false
 @export var is_homing: bool = false
-@export var homing_turn_speed: float = 3.8
 @export var is_aoe: bool = false
 @export var aoe_radius: float = 58.0
 
@@ -19,11 +18,28 @@ var direction: Vector2 = Vector2.UP
 var shooter: Node2D = null
 var shooter_type: String = "player"
 var target: Node2D = null
+var homing_relock_timer: float = 0.0
 var trail_timer: float = 0.0
 var custom_texture_path: String = ""
 
 var is_destroyed: bool = false
 var destroyed_bodies: Array[Node2D] = []
+
+# Ricochet Rounds (反射炮弹) shop perk: instead of dying on an obstacle it
+# can't break, the bullet picks a new random direction and keeps flying, up
+# to bounces_remaining times (one per perk stack). The risk half of the
+# trade: once a bullet has ricocheted at least once, it stops treating its
+# own shooter as immune (has_bounced gates the shooter-immunity check in
+# _on_body_entered), so a reflected round can hit the tank that fired it.
+var bounces_remaining: int = 0
+var has_bounced: bool = false
+
+# Armor-Piercing Rounds (穿甲弹) shop perk: keeps flying through destructible
+# walls (brick/hard_clay, and steel when also can_destroy_steel) instead of
+# dying on impact. The risk half: it also stops cancelling enemy bullets on
+# contact (see _on_area_entered), so incoming fire that a normal shot would
+# have shot down instead sails straight through.
+var armor_piercing: bool = false
 
 @onready var sprite: Sprite2D = $Sprite2D
 
@@ -31,10 +47,18 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
 	rotation = direction.angle() + PI / 2.0
-	
+
+	if shooter_type == "player" and is_instance_valid(shooter) and ("player_id" in shooter):
+		var main = get_tree().current_scene
+		if main and main.rpg_mgr:
+			bounces_remaining = main.rpg_mgr.get_perk_stacks("ricochet_rounds", shooter.player_id)
+			armor_piercing = main.rpg_mgr.has_perk("armor_piercing_rounds", shooter.player_id)
+
 	var tex_path = "res://assets/sprites/effects/bullet_plasma.png" if can_destroy_steel else "res://assets/sprites/effects/bullet.png"
 	if is_homing:
 		tex_path = "res://assets/sprites/effects/bullet_missile.png"
+	if bounces_remaining > 0:
+		tex_path = "res://assets/sprites/effects/bullet_ricochet.png"
 	if custom_texture_path != "":
 		tex_path = custom_texture_path
 
@@ -46,11 +70,47 @@ func _ready() -> void:
 		if is_homing or is_aoe:
 			sprite.scale = Vector2(0.24, 0.24)
 
+## Consumes one bounce and redirects the bullet randomly. Returns false (no
+## bounce available) if the caller should fall through to normal destruction.
+func _try_ricochet() -> bool:
+	if bounces_remaining <= 0:
+		return false
+	bounces_remaining -= 1
+	has_bounced = true
+	# Cardinal-only redirect (never a free angle) -- exclude the direction it
+	# was just travelling in so a "bounce" always visibly changes course
+	# instead of picking a no-op continue-straight result.
+	var cardinals: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+	cardinals.erase(direction)
+	direction = cardinals[randi() % cardinals.size()]
+	rotation = direction.angle() + PI / 2.0
+	position += direction * 8.0 # nudge clear so it doesn't re-trigger the same collision next tick
+	if is_inside_tree() and get_tree():
+		SoundManager.play_hit_steel(get_tree())
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+	return true
+
 func _physics_process(delta: float) -> void:
 	if is_homing and target and is_instance_valid(target):
-		var desired = (target.global_position - global_position).normalized()
-		direction = direction.slerp(desired, homing_turn_speed * delta).normalized()
-		rotation = direction.angle() + PI / 2.0
+		# Re-lock onto whichever cardinal axis currently dominates toward the
+		# target on a timer, not every single frame. Re-evaluating every
+		# frame still only ever *sets* an exactly-cardinal direction, but a
+		# target sitting near the diagonal from the missile flips which axis
+		# dominates from one frame to the next, so the position trail traced
+		# out over many 1-frame RIGHT/DOWN/RIGHT/DOWN... steps reads as a
+		# smooth diagonal line -- the exact "360° missile" bug this is
+		# fixing. Committing to a heading for a stretch (like enemy.gd's
+		# change_dir_timer) keeps the path a visible staircase of straight
+		# segments instead.
+		homing_relock_timer -= delta
+		if homing_relock_timer <= 0.0:
+			homing_relock_timer = 0.3
+			var to_target = target.global_position - global_position
+			if absf(to_target.y) > absf(to_target.x):
+				direction = Vector2.DOWN if to_target.y > 0.0 else Vector2.UP
+			else:
+				direction = Vector2.RIGHT if to_target.x > 0.0 else Vector2.LEFT
+			rotation = direction.angle() + PI / 2.0
 		trail_timer += delta
 		if trail_timer >= 0.08:
 			trail_timer = 0.0
@@ -59,11 +119,15 @@ func _physics_process(delta: float) -> void:
 	position += direction * speed * delta
 
 func _on_body_entered(body: Node2D) -> void:
-	if body == shooter:
+	if body == shooter and not has_bounced:
 		return
 
 	if shooter_type == "player" and (body.is_in_group("player") or body.is_in_group("p1") or body.is_in_group("p2")):
-		if body != shooter:
+		# body == shooter only reaches here at all once has_bounced is true
+		# (see the early-return above) -- a ricocheted Ricochet Rounds shot
+		# can now hit the tank that fired it, which is the whole point of
+		# that perk's risk half.
+		if body != shooter or has_bounced:
 			if body.has_method("stun"):
 				body.stun(2.5)
 			if is_inside_tree() and get_tree():
@@ -73,7 +137,10 @@ func _on_body_entered(body: Node2D) -> void:
 			if main and main.has_method("show_toast"):
 				var hit_pid = body.player_id if "player_id" in body else 2
 				var shoot_pid = shooter.player_id if "player_id" in shooter else 1
-				main.show_toast("💫 P%d 误击友军 P%d！陷入僵直 2.5 秒！" % [shoot_pid, hit_pid])
+				if body == shooter:
+					main.show_toast("P%d 被自己的反射炮弹击中！陷入僵直 2.5 秒！" % shoot_pid)
+				else:
+					main.show_toast("P%d 误击友军 P%d！陷入僵直 2.5 秒！" % [shoot_pid, hit_pid])
 			queue_free()
 		return
 
@@ -100,13 +167,18 @@ func _on_body_entered(body: Node2D) -> void:
 				VFXAnimator.spawn_dust_puff(get_parent(), body.global_position)
 				body.queue_free()
 		if not is_destroyed:
-			is_destroyed = true
 			if is_aoe:
 				_trigger_aoe_explosion()
 			if is_inside_tree() and get_tree():
 				SoundManager.play_hit_brick(get_tree())
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
-			queue_free()
+			if armor_piercing:
+				pass # keeps flying straight through -- doesn't consume a ricochet bounce
+			elif _try_ricochet():
+				pass
+			else:
+				is_destroyed = true
+				queue_free()
 		return
 	elif body.is_in_group("buildings"):
 		if not is_destroyed:
@@ -124,14 +196,20 @@ func _on_body_entered(body: Node2D) -> void:
 			queue_free()
 		return
 	elif body.is_in_group("steel"):
+		var pierces_this_steel = armor_piercing and can_destroy_steel and not body.is_in_group("border")
 		if not is_destroyed:
-			is_destroyed = true
 			if is_aoe:
 				_trigger_aoe_explosion()
 			if is_inside_tree() and get_tree():
 				SoundManager.play_hit_steel(get_tree())
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
-			queue_free()
+			if pierces_this_steel:
+				pass # keeps flying -- doesn't consume a ricochet bounce
+			elif _try_ricochet():
+				pass
+			else:
+				is_destroyed = true
+				queue_free()
 		if can_destroy_steel and not body.is_in_group("border"):
 			if not destroyed_bodies.has(body):
 				destroyed_bodies.append(body)
@@ -140,19 +218,23 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 	elif body.is_in_group("border"):
 		if not is_destroyed:
-			is_destroyed = true
 			if is_aoe:
 				_trigger_aoe_explosion()
 			if is_inside_tree() and get_tree():
 				SoundManager.play_hit_steel(get_tree())
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
-			queue_free()
+			# The map boundary always stops a bullet outright, even a piercing
+			# one -- ricochet can still save it from dying here, armor-piercing
+			# cannot (it only pierces destructible/steel walls, not the edge).
+			if not _try_ricochet():
+				is_destroyed = true
+				queue_free()
 		return
 	elif (body.is_in_group("enemy") or body.is_in_group("enemies")) and shooter_type == "player":
 		if not is_destroyed:
 			is_destroyed = true
 			if is_aoe:
-				_trigger_aoe_explosion()
+				_trigger_aoe_explosion(body)
 			if body.has_method("take_damage"):
 				body.take_damage(damage)
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
@@ -162,14 +244,14 @@ func _on_body_entered(body: Node2D) -> void:
 		if not is_destroyed:
 			is_destroyed = true
 			if is_aoe:
-				_trigger_aoe_explosion()
+				_trigger_aoe_explosion(body)
 			if body.has_method("take_damage"):
 				body.take_damage(damage)
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 			queue_free()
 		return
 
-func _trigger_aoe_explosion() -> void:
+func _trigger_aoe_explosion(exclude_node: Node = null) -> void:
 	if not is_inside_tree() or get_parent() == null:
 		return
 	VFXAnimator.spawn_shockwave(get_parent(), global_position)
@@ -179,12 +261,16 @@ func _trigger_aoe_explosion() -> void:
 		get_parent().add_child(exp_inst)
 		exp_inst.global_position = global_position
 
-	# Damage unique targets without duplicate hits
+	# Damage unique targets without duplicate hits. exclude_node is whichever
+	# body/area the caller already applied a direct hit to (same group as one
+	# of target_groups below) -- without excluding it, that target took the
+	# direct damage() call AND the splash-radius damage() call for the same
+	# impact, since it's obviously within its own aoe_radius of itself.
 	var damaged_nodes: Array[Node] = []
 	var target_groups = ["enemies", "enemy"] if shooter_type == "player" else ["player", "p1", "p2"]
 	for grp in target_groups:
 		for target_node in get_tree().get_nodes_in_group(grp):
-			if is_instance_valid(target_node) and target_node is Node2D and target_node != shooter:
+			if is_instance_valid(target_node) and target_node is Node2D and target_node != shooter and target_node != exclude_node:
 				if not damaged_nodes.has(target_node) and global_position.distance_to(target_node.global_position) <= aoe_radius:
 					damaged_nodes.append(target_node)
 					if target_node.has_method("take_damage"):
@@ -217,6 +303,12 @@ func _on_area_entered(area: Area2D) -> void:
 		return
 	if area.is_in_group("bullet"):
 		if area.shooter_type != shooter_type:
+			# Armor-piercing rounds don't cancel opposing fire on contact --
+			# checked from both sides, since area_entered fires independently
+			# on each bullet's own Area2D (this bullet returning early isn't
+			# enough if the OTHER bullet's handler still destroys this one).
+			if armor_piercing or bool(area.get("armor_piercing")):
+				return
 			is_destroyed = true
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 			area.queue_free()

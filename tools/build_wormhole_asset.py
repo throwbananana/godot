@@ -49,16 +49,29 @@ def build_wormhole_tile():
     apply_uniform_clay_bevel(ring1, width=0.04, segments=2, jitter=0.015)
     objs.append(ring1)
 
-    # 3. Middle Swirling Vortex Arms (4 curved spiral lobes)
+    # 3. Middle Swirling Vortex Arms (4 curved spiral lobes), each built from
+    #    2 progressively-rotated segments instead of one straight cylinder --
+    #    a single straight prism can't read as "curved/spiral" no matter how
+    #    it's rotated in 3D, it's still a straight prism from every angle.
+    #    The old single-cylinder version also had scale.z=0.35 crushing the
+    #    depth=1.10 length down to ~0.4 (barely longer than its own 0.36
+    #    diameter), so it rendered as a stubby round nub, not an arm.
     for i in range(4):
-        angle = i * (math.pi / 2.0)
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.18, depth=1.10, vertices=12, location=(math.cos(angle)*0.75, math.sin(angle)*0.75, 0.12))
-        arm = bpy.context.active_object
-        arm.rotation_euler = (math.radians(25), math.radians(20), angle + math.radians(45))
-        arm.scale = (1.0, 1.0, 0.35)
-        arm.data.materials.append(mat_mid_swirl)
-        apply_uniform_clay_bevel(arm, width=0.04, segments=2, jitter=0.01)
-        objs.append(arm)
+        base_angle = i * (math.pi / 2.0)
+        for seg in range(2):
+            seg_angle = base_angle + seg * math.radians(24)
+            seg_r = 0.52 + seg * 0.34
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.15 - seg * 0.02, depth=0.55, vertices=10,
+                location=(math.cos(seg_angle) * seg_r, math.sin(seg_angle) * seg_r, 0.10 + seg * 0.03))
+            part = bpy.context.active_object
+            # Tipped mostly flat (75 deg off vertical) and yawed to point
+            # tangent to its own position, with a bit more yaw on the outer
+            # segment than the inner one -- that incremental twist between
+            # segments is what actually produces a visible curl/spiral.
+            part.rotation_euler = (math.radians(75), 0, seg_angle + math.radians(90) + seg * math.radians(18))
+            part.data.materials.append(mat_mid_swirl)
+            apply_uniform_clay_bevel(part, width=0.03, segments=2, jitter=0.01)
+            objs.append(part)
 
     # 4. Singularity Abyss (Central funnel depression)
     bpy.ops.mesh.primitive_cylinder_add(radius=0.62, depth=0.25, vertices=16, location=(0, 0, 0.02))

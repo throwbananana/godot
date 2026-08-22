@@ -4,6 +4,7 @@ extends CharacterBody2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal destroyed(carriage: TrainCarriage)
 
@@ -94,28 +95,29 @@ func _physics_process(delta: float) -> void:
 		take_damage(999)
 		return
 
-	# Follow leader using distance constraint
-	var leader_pos = leader_node.global_position
-	var to_leader = leader_pos - global_position
-	var dist = to_leader.length()
+	# Snake-follow: sample the leader's own recorded path at follow_distance
+	# behind it, instead of lerping toward a freely-computed offset point.
+	# The old lerp cut corners at arbitrary diagonal angles when the leader
+	# turned -- a straight-up violation of this game's "tanks only move/face
+	# in 4 cardinal directions" rule. Sampling the leader's actual path
+	# means the carriage retraces the exact (axis-aligned) route the leader
+	# took, just delayed, the same way a Snake/Tron trail follows its head.
+	if "history_positions" in leader_node and "history_rotations" in leader_node:
+		var sample = TrainFollowHelper.sample_at_distance(leader_node.history_positions, leader_node.history_rotations, follow_distance)
+		if not sample.is_empty():
+			var moved = global_position.distance_squared_to(sample["position"]) > 0.01
+			global_position = sample["position"]
+			rotation = sample["rotation"]
 
-	if dist > follow_distance:
-		var target_pos = leader_pos - to_leader.normalized() * follow_distance
-		global_position = global_position.lerp(target_pos, delta * 11.0)
-		
-		# Smoothly rotate to face direction of travel
-		var move_dir = (target_pos - global_position).normalized()
-		if move_dir.length_squared() > 0.01:
-			var target_rot = move_dir.angle() + PI / 2.0
-			rotation = lerp_angle(rotation, target_rot, delta * 10.0)
+			if moved:
+				anim_timer += delta * 9.0
+				if anim_timer >= 1.0:
+					anim_timer = 0.0
+					current_frame = (current_frame + 1) % mini(6, maxi(1, carriage_frames.size()))
+					if carriage_frames.size() > current_frame and sprite:
+						sprite.texture = carriage_frames[current_frame]
 
-		# Tread wheel animation
-		anim_timer += delta * 9.0
-		if anim_timer >= 1.0:
-			anim_timer = 0.0
-			current_frame = (current_frame + 1) % mini(6, maxi(1, carriage_frames.size()))
-			if carriage_frames.size() > current_frame and sprite:
-				sprite.texture = carriage_frames[current_frame]
+	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
 
 	# Combat behavior
 	fire_timer -= delta
@@ -132,7 +134,13 @@ func _process_combat() -> void:
 		return
 
 	fire_timer = fire_interval
-	var aim_dir = (target.global_position - global_position).normalized()
+	# Snap to the dominant cardinal axis toward the target -- same rule as
+	# every other weapon in this game (see defense_turret.gd, bullet.gd's
+	# homing missile): no free-diagonal aiming.
+	var to_target = target.global_position - global_position
+	var aim_dir = Vector2.RIGHT if to_target.x > 0.0 else Vector2.LEFT
+	if absf(to_target.y) > absf(to_target.x):
+		aim_dir = Vector2.DOWN if to_target.y > 0.0 else Vector2.UP
 
 	match carriage_type:
 		"turret", "enemy_gunner":

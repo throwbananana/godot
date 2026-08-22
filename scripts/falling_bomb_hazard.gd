@@ -10,6 +10,8 @@ const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 @export var blast_range: int = 3
 @export var damage: int = 3
 
+const TILE_SIZE_REF = 48.0
+
 var elapsed: float = 0.0
 var is_landed: bool = false
 
@@ -17,17 +19,31 @@ var reticle_sprite: Sprite2D
 var bomb_sprite: Sprite2D
 var shadow_sprite: Sprite2D
 
+# Locked-on reticle radius derived from blast_range so the warning telegraph
+# actually covers the bomb's real cross-blast reach instead of a fixed size
+# (the old hardcoded 0.50->0.22 shrunk to ~1 tile no matter how many tiles
+# the detonation cross actually reaches).
+var reticle_start_scale: float = 0.50
+var reticle_lock_scale: float = 0.22
+
 var timed_bomb_scene: PackedScene
 
 func _ready() -> void:
 	timed_bomb_scene = load("res://scenes/timed_bomb.tscn")
+
+	# reticle_target.png is a 256px render; scale the locked-on ring to the
+	# bomb's actual blast diameter (a blast_range-tile cross in each direction)
+	# so the warning honestly telegraphs how much ground it's about to cover.
+	var danger_diameter_px = float(blast_range) * TILE_SIZE_REF * 2.0
+	reticle_lock_scale = clampf(danger_diameter_px / 256.0, 0.22, 1.6)
+	reticle_start_scale = reticle_lock_scale + 0.30
 
 	# 1. Warning Reticle
 	reticle_sprite = Sprite2D.new()
 	var ret_tex = TextureHelper.get_tex("res://assets/sprites/effects/reticle_target.png")
 	if ret_tex:
 		reticle_sprite.texture = ret_tex
-	reticle_sprite.scale = Vector2(0.42, 0.42)
+	reticle_sprite.scale = Vector2(reticle_start_scale, reticle_start_scale)
 	reticle_sprite.modulate = Color(2.5, 0.5, 0.2, 0.95)
 	add_child(reticle_sprite)
 
@@ -60,7 +76,7 @@ func _process(delta: float) -> void:
 	# Reticle pulses and rotates faster
 	reticle_sprite.rotation += delta * 4.0
 	var pulse = sin(elapsed * 20.0) * 0.05
-	var r_scale = lerpf(0.50, 0.22, progress) + pulse
+	var r_scale = lerpf(reticle_start_scale, reticle_lock_scale, progress) + pulse
 	reticle_sprite.scale = Vector2(r_scale, r_scale)
 	
 	var flash_alarm = 1.0 + sin(elapsed * 28.0) * 0.5

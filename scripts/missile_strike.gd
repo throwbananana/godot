@@ -123,7 +123,7 @@ func _detonate() -> void:
 		for b in get_tree().get_nodes_in_group("base_eagle"):
 			if is_instance_valid(b) and not b.is_destroyed:
 				if global_position.distance_to(b.global_position) <= aoe_radius:
-					b.take_damage(damage)
+					b.take_damage_hit()
 
 		# Hit Player Defenses
 		for d in get_tree().get_nodes_in_group("buildings"):

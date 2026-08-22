@@ -71,28 +71,41 @@ func _on_body_entered(body: Node2D) -> void:
 		tw.tween_callback(func():
 			if is_instance_valid(body):
 				body.global_position = target_pos
-				
+
+				# A leader's history_positions/history_rotations (see
+				# train_follow_helper.gd) still hold every pre-teleport
+				# sample. Left alone, a trailing carriage would sample
+				# "follow_distance behind the leader's current position"
+				# straight across the teleport discontinuity -- lerping
+				# between the wormhole entrance and a potentially distant
+				# exit, which is how a carriage previously ended up flung
+				# off toward (or past) the map edge. Clearing the history
+				# here means the very next sample has nothing to walk back
+				# through, so TrainFollowHelper falls back to the leader's
+				# brand-new post-teleport position -- the carriage pops in
+				# right behind the leader and un-stacks naturally over the
+				# next fraction of a second as fresh history accumulates,
+				# same as the leader's own pop-in scale tween below.
+				if "history_positions" in body and "history_rotations" in body:
+					body.history_positions.clear()
+					body.history_rotations.clear()
+
 				# Exit sound & burst VFX
 				SoundManager.play_teleport(get_tree())
 				VFXAnimator.spawn_teleport_burst(get_parent(), target_pos)
 
-				# Check warp_drive perk
+				# Check warp_drive perk -- duration scales with stacks (base 3.0s,
+				# up to +2.1s at 3 stacks via RPGManager's diminishing curve)
 				if main and main.rpg_mgr and body.has_method("set_invulnerable") and ("player_id" in body):
 					if main.rpg_mgr.has_perk("warp_drive", body.player_id):
-						body.set_invulnerable(3.0)
+						var shield_dur = 3.0 + main.rpg_mgr.get_perk_value("warp_drive", 1.0, body.player_id)
+						body.set_invulnerable(shield_dur)
 						VFXAnimator.spawn_shockwave(get_parent(), target_pos)
 
 				# Pop-in expansion animation
 				var tw_out = create_tween()
 				tw_out.tween_property(body, "scale", Vector2(1.20, 1.20), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 				tw_out.tween_property(body, "scale", Vector2(1.0, 1.0), 0.08)
-
-				# Reposition follower train carriages if applicable
-				if "attached_carriages" in body and body.attached_carriages is Array:
-					for idx in range(body.attached_carriages.size()):
-						var c = body.attached_carriages[idx]
-						if is_instance_valid(c):
-							c.global_position = target_pos - body.facing_direction * (32.0 * float(idx + 1))
 		)
 	elif is_bullet:
 		body.global_position = target_pos

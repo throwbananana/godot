@@ -27,8 +27,8 @@ func _physics_process(delta: float) -> void:
 	for p in players:
 		if is_instance_valid(p) and p is Node2D:
 			var effective_range = magnet_range
-			if main and main.rpg_mgr and ("player_id" in p) and main.rpg_mgr.has_perk("magnetic_salvage", p.player_id):
-				effective_range = 380.0
+			if main and main.rpg_mgr and ("player_id" in p):
+				effective_range += main.rpg_mgr.get_perk_value("magnetic_salvage", 130.0, p.player_id)
 			var dist = global_position.distance_to(p.global_position)
 			if dist < effective_range:
 				move_speed = move_toward(move_speed, 540.0, 1600.0 * delta)
@@ -45,8 +45,8 @@ func _on_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"):
 		var main = get_tree().current_scene
 		var final_val = value
-		if main and main.rpg_mgr and ("player_id" in body) and main.rpg_mgr.has_perk("magnetic_salvage", body.player_id):
-			final_val = int(float(value) * 1.35)
+		if main and main.rpg_mgr and ("player_id" in body):
+			final_val = int(float(value) * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, body.player_id)))
 		if main and main.has_method("add_gold"):
 			main.add_gold(final_val)
 		SoundManager.play_pickup(get_tree())

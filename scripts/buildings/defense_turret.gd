@@ -39,7 +39,14 @@ func _physics_process(delta: float) -> void:
 	_find_nearest_target()
 	
 	if target_enemy and is_instance_valid(target_enemy):
-		var target_dir = (target_enemy.global_position - global_position).normalized()
+		# Snap to whichever cardinal axis currently dominates toward the
+		# target -- every other tank/bullet in this game only ever moves or
+		# aims up/down/left/right, so the auto-turret can't be the one
+		# exception that tracks a free diagonal angle.
+		var to_target = target_enemy.global_position - global_position
+		var target_dir = Vector2.RIGHT if to_target.x > 0.0 else Vector2.LEFT
+		if absf(to_target.y) > absf(to_target.x):
+			target_dir = Vector2.DOWN if to_target.y > 0.0 else Vector2.UP
 		gun_sprite.rotation = target_dir.angle() + PI / 2.0
 		
 		fire_timer -= delta

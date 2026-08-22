@@ -146,6 +146,25 @@ static func apply_clay_progressbar(bar: ProgressBar, fill_color: Color = Color(0
 	fill.corner_radius_bottom_right = 5
 	bar.add_theme_stylebox_override("fill", fill)
 
+# Full catalog for the hotbar -- "id" must match builder_controller.gd's
+# structure_ids / shop_dialog.gd::BUILDING_ITEMS exactly. Structures are
+# shop-only stock now (GameState.structure_inventory), not a battle-gold
+# cost, and the hotbar only ever shows what's actually owned (stock > 0) --
+# see _rebuild_hotbar_slots.
+const HOTBAR_CATALOG := [
+	{"id": "turret", "icon": "res://assets/sprites/buildings/turret_gun.png"},
+	{"id": "fortified_wall", "icon": "res://assets/sprites/buildings/fortified_wall.png"},
+	{"id": "electric_wall", "icon": "res://assets/sprites/tiles/tile_electric_wall_f0.png"},
+	{"id": "street_lamp", "icon": "res://assets/sprites/buildings/street_lamp.png"},
+	{"id": "oil_barrel", "icon": "res://assets/sprites/buildings/oil_barrel.png"},
+	{"id": "landmine", "icon": "res://assets/sprites/buildings/landmine.png"},
+	{"id": "repair_station", "icon": "res://assets/sprites/buildings/repair_station.png"},
+	{"id": "shield_station", "icon": "res://assets/sprites/buildings/shield_station.png"},
+	{"id": "wind_blower", "icon": "res://assets/sprites/buildings/wind_blower.png"},
+	{"id": "missile_strike", "icon": "res://assets/sprites/powerups/missile_strike.png"},
+	{"id": "timed_bomb", "icon": "res://assets/sprites/buildings/prop_timed_bomb.png"},
+]
+
 static func create_hotbar_ui(parent: Node) -> Control:
 	var dock = PanelContainer.new()
 	dock.name = "TacticalHotbar"
@@ -161,25 +180,36 @@ static func create_hotbar_ui(parent: Node) -> Control:
 	hbox.add_theme_constant_override("separation", 8)
 	dock.add_child(hbox)
 
+	_rebuild_hotbar_slots(dock)
+	return dock
+
+## Clears and rebuilds every slot from GameState.structure_inventory, showing
+## ONLY structures currently owned (stock > 0) -- called at creation and
+## again any time stock changes, so a structure's slot appears/disappears
+## live instead of always showing all 11 regardless of what you actually have.
+static func _rebuild_hotbar_slots(dock: Control) -> void:
+	var hbox = dock.get_node_or_null("SlotContainer")
+	if not hbox: return
+	# free() (not queue_free()) -- this isn't running inside any of these
+	# children's own callback, so immediate removal is safe, and it matters
+	# here: queue_free() defers to end-of-frame, so a caller that checks
+	# hbox's children right after this call (e.g. builder_controller.gd
+	# reacting to a placement that just hit 0 stock) would still see the
+	# stale, about-to-die slot for one more frame.
+	for child in hbox.get_children():
+		child.free()
+
 	var slot_tex_norm = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot.png")
-	var slot_tex_act = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot_active.png")
 
-	var items = [
-		{"name": "TURRET", "cost": "80G", "icon": "res://assets/sprites/buildings/turret_gun.png"},
-		{"name": "WALL", "cost": "25G", "icon": "res://assets/sprites/buildings/fortified_wall.png"},
-		{"name": "MINE", "cost": "40G", "icon": "res://assets/sprites/buildings/landmine.png"},
-		{"name": "REPAIR", "cost": "120G", "icon": "res://assets/sprites/buildings/repair_station.png"},
-		{"name": "SHIELD", "cost": "100G", "icon": "res://assets/sprites/buildings/shield_station.png"},
-		{"name": "WIND", "cost": "70G", "icon": "res://assets/sprites/buildings/wind_blower.png"},
-		{"name": "MISSILE", "cost": "90G", "icon": "res://assets/sprites/powerups/missile_strike.png"},
-		{"name": "BOMB", "cost": "60G", "icon": "res://assets/sprites/buildings/prop_timed_bomb.png"}
-	]
+	for item in HOTBAR_CATALOG:
+		var stock = GameState.get_structure_stock(item["id"])
+		if stock <= 0:
+			continue
 
-	for i in range(items.size()):
-		var item = items[i]
 		var slot_panel = PanelContainer.new()
 		slot_panel.custom_minimum_size = Vector2(56, 56)
-		slot_panel.name = "Slot_%d" % i
+		slot_panel.name = "Slot_%s" % item["id"]
+		slot_panel.set_meta("structure_id", item["id"])
 
 		var sbt = StyleBoxTexture.new()
 		sbt.texture = slot_tex_norm if slot_tex_norm else null
@@ -190,6 +220,7 @@ static func create_hotbar_ui(parent: Node) -> Control:
 		slot_panel.add_theme_stylebox_override("panel", sbt)
 
 		var v_inner = VBoxContainer.new()
+		v_inner.name = "Inner"
 		v_inner.alignment = BoxContainer.ALIGNMENT_CENTER
 		v_inner.add_theme_constant_override("separation", 2)
 		slot_panel.add_child(v_inner)
@@ -203,18 +234,29 @@ static func create_hotbar_ui(parent: Node) -> Control:
 			icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			v_inner.add_child(icon_rect)
 
-		var cost_lbl = Label.new()
-		cost_lbl.text = item["cost"]
-		cost_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cost_lbl.add_theme_font_size_override("font_size", 9)
-		cost_lbl.add_theme_color_override("font_color", Color(0.98, 0.85, 0.35, 1.0))
-		v_inner.add_child(cost_lbl)
+		var stock_lbl = Label.new()
+		stock_lbl.name = "StockLabel"
+		stock_lbl.text = "x%d" % stock
+		stock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stock_lbl.add_theme_font_size_override("font_size", 9)
+		stock_lbl.add_theme_color_override("font_color", Color(0.98, 0.85, 0.35, 1.0))
+		v_inner.add_child(stock_lbl)
 
 		hbox.add_child(slot_panel)
 
-	return dock
+## Call after any purchase or placement changes a structure's count -- fully
+## rebuilds so a slot whose stock just hit 0 disappears (and one that just
+## went from 0 to 1 appears), not just its label text.
+static func update_hotbar_stock(dock: Control) -> void:
+	if not dock: return
+	_rebuild_hotbar_slots(dock)
 
-static func update_hotbar_selection(dock: Control, active_idx: int) -> void:
+## struct_id: the GameState.structure_inventory key of the currently
+## selected structure ("" for none). Matches by id instead of a positional
+## index -- the slot list can change shape at any time (items appear/vanish
+## as stock changes), so a remembered numeric index would drift out of sync
+## with what's actually on screen.
+static func update_hotbar_selection(dock: Control, struct_id: String) -> void:
 	if not dock: return
 	var hbox = dock.get_node_or_null("SlotContainer")
 	if not hbox: return
@@ -222,18 +264,18 @@ static func update_hotbar_selection(dock: Control, active_idx: int) -> void:
 	var slot_tex_norm = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot.png")
 	var slot_tex_act = TextureHelper.get_tex("res://assets/sprites/ui/ui_hotbar_slot_active.png")
 
-	var slots = hbox.get_children()
-	for i in range(slots.size()):
-		var slot_p = slots[i]
-		if slot_p is PanelContainer:
-			var sbt = StyleBoxTexture.new()
-			sbt.texture = slot_tex_act if (i == active_idx) else slot_tex_norm
-			sbt.texture_margin_left = 8 if (i == active_idx) else 6
-			sbt.texture_margin_right = 8 if (i == active_idx) else 6
-			sbt.texture_margin_top = 8 if (i == active_idx) else 6
-			sbt.texture_margin_bottom = 8 if (i == active_idx) else 6
-			slot_p.add_theme_stylebox_override("panel", sbt)
-			slot_p.modulate = Color(1.3, 1.3, 1.1) if (i == active_idx) else Color(1.0, 1.0, 1.0)
+	for slot_p in hbox.get_children():
+		if not (slot_p is PanelContainer):
+			continue
+		var is_active = slot_p.has_meta("structure_id") and slot_p.get_meta("structure_id") == struct_id and struct_id != ""
+		var sbt = StyleBoxTexture.new()
+		sbt.texture = slot_tex_act if is_active else slot_tex_norm
+		sbt.texture_margin_left = 8 if is_active else 6
+		sbt.texture_margin_right = 8 if is_active else 6
+		sbt.texture_margin_top = 8 if is_active else 6
+		sbt.texture_margin_bottom = 8 if is_active else 6
+		slot_p.add_theme_stylebox_override("panel", sbt)
+		slot_p.modulate = Color(1.3, 1.3, 1.1) if is_active else Color(1.0, 1.0, 1.0)
 
 static func create_boss_bar(parent: Node) -> Dictionary:
 	var root = Control.new()
@@ -275,3 +317,126 @@ static func create_boss_bar(parent: Node) -> Dictionary:
 	root.add_child(lbl)
 
 	return {"root": root, "prog": prog, "label": lbl}
+
+static func apply_icon_button(btn: Button, icon_path: String, icon_size: Vector2 = Vector2(28, 28), dark_text: bool = true) -> void:
+	if not btn: return
+	apply_clay_button(btn, dark_text)
+	var tex = TextureHelper.get_tex(icon_path)
+	if tex:
+		btn.icon = tex
+		btn.expand_icon = true
+		btn.add_theme_constant_override("icon_max_width", int(icon_size.x))
+		btn.add_theme_constant_override("h_separation", 12)
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+
+static func get_perk_icon(opt: Dictionary) -> Texture2D:
+	var opt_type = str(opt.get("type", ""))
+	var perk_id = str(opt.get("id", ""))
+	var branch = str(opt.get("branch", ""))
+	
+	var icon_name = "perk_tactical"
+	
+	if opt_type == "branch":
+		match branch:
+			"speed": icon_name = "perk_speed"
+			"heavy": icon_name = "perk_armor"
+			"train": icon_name = "perk_train"
+	elif opt_type == "tier_up":
+		var name_str = str(opt.get("name", ""))
+		if "Speed" in name_str or "暴风" in name_str:
+			icon_name = "perk_speed"
+		elif "Heavy" in name_str or "重型" in name_str:
+			icon_name = "perk_atk"
+		elif "Train" in name_str or "列车" in name_str:
+			icon_name = "perk_missile"
+	elif opt_type == "gold_heal":
+		icon_name = "perk_gold"
+	else:
+		match perk_id:
+			"titan_plating": icon_name = "perk_shield"
+			"rapid_loader": icon_name = "perk_speed"
+			"nitro_booster": icon_name = "perk_speed"
+			"nano_repair": icon_name = "perk_regen"
+			"high_explosive": icon_name = "perk_bomb"
+			"warp_drive": icon_name = "perk_laser"
+			"frost_cleats": icon_name = "perk_speed"
+			"ferry_artillery": icon_name = "perk_atk"
+			"clay_crusher": icon_name = "perk_ricochet"
+			"magnetic_salvage": icon_name = "perk_gold"
+			_:
+				icon_name = "perk_tactical"
+
+	var tex = TextureHelper.get_tex("res://assets/sprites/ui/%s.png" % icon_name)
+	if not tex:
+		tex = TextureHelper.get_tex("res://assets/sprites/ui/perk_tactical.png")
+	return tex
+
+static func create_victory_defeat_modal(parent: Node) -> Dictionary:
+	var root = Control.new()
+	root.name = "VictoryDefeatModal"
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
+	root.visible = false
+	parent.add_child(root)
+
+	var blocker = ColorRect.new()
+	blocker.set_anchors_preset(Control.PRESET_FULL_RECT)
+	blocker.color = Color(0.08, 0.06, 0.10, 0.75)
+	root.add_child(blocker)
+
+	var panel = PanelContainer.new()
+	panel.name = "ModalCard"
+	panel.custom_minimum_size = Vector2(460, 420)
+	panel.anchors_preset = Control.PRESET_CENTER
+	panel.position = Vector2(282, 174)
+	apply_clay_panel(panel, Color(0.18, 0.15, 0.20, 0.98), 16)
+	root.add_child(panel)
+
+	var vbox = VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+
+	var banner_rect = TextureRect.new()
+	banner_rect.name = "BannerRect"
+	banner_rect.custom_minimum_size = Vector2(380, 110)
+	banner_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	banner_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	vbox.add_child(banner_rect)
+
+	var title_lbl = Label.new()
+	title_lbl.name = "TitleLabel"
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.add_theme_font_size_override("font_size", 20)
+	title_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.40))
+	vbox.add_child(title_lbl)
+
+	var desc_lbl = Label.new()
+	desc_lbl.name = "DescLabel"
+	desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_lbl.add_theme_font_size_override("font_size", 14)
+	desc_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.90))
+	vbox.add_child(desc_lbl)
+
+	var stats_box = VBoxContainer.new()
+	stats_box.name = "StatsBox"
+	stats_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	stats_box.add_theme_constant_override("separation", 6)
+	vbox.add_child(stats_box)
+
+	var btn_action = Button.new()
+	btn_action.name = "ActionButton"
+	btn_action.custom_minimum_size = Vector2(280, 48)
+	btn_action.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	apply_icon_button(btn_action, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(24, 24))
+	vbox.add_child(btn_action)
+
+	return {
+		"root": root,
+		"banner": banner_rect,
+		"title": title_lbl,
+		"desc": desc_lbl,
+		"stats_box": stats_box,
+		"button": btn_action
+	}

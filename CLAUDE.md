@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Godot 4.5 lives at `C:\Godot\tools\Godot_v4.5-stable_win64.exe`. **`godot` on PATH is a 4.7.1 Steam build** — use the explicit 4.5 path for anything that writes to the project (opening a 4.5 project in 4.7 rewrites `.godot/` and import metadata).
+Godot 4.5 lives at `C:\Godot\tools\Godot_v4.5-stable_win64.exe`. **`godot` on PATH is a 4.7.1 Steam build** — use the explicit 4.5 path for anything that writes to the project. (`project.godot` currently carries `config/features=PackedStringArray("4.7")`, meaning it *has* been opened in 4.7 at some point; don't make that worse.)
 
 ```powershell
 $godot = "C:\Godot\tools\Godot_v4.5-stable_win64.exe"
@@ -26,7 +26,7 @@ There is **no linter**. Verification is `--check-only` per script, running the g
 & $godot --headless --path . --script tools/test_gameplay_runtime.gd   # boots main.tscn, checks player/builder/sound wiring
 ```
 
-Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched.
+Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, …) — check for an existing one covering your area before writing a new script.
 
 ### Regenerating art
 
@@ -49,7 +49,16 @@ python tools/analyze_render_and_colors.py    # QA: per-asset clipping / luminanc
 python tools/qa_tank_models_and_clipping.py  # QA: tank sprite bounding-box / clipping check
 ```
 
-Alongside those three, `tools/build_*.py` accumulates one-off scripts for individual feature batches (e.g. `build_desert_mechanics.py`, `build_rpg_branch_and_train_assets.py`, `build_hard_clay_tile_asset.py`) — each still imports `sokpop_common` and follows the same conventions, but renders a narrower asset set for one feature rather than the whole game. Check whether an asset you need to touch already has a narrower script before adding to the unified one.
+**Never run the unified script just to change one asset.** `build_all_sokpop_assets_unified.py::main()` re-renders all 240 tank frames plus every tile/building/power-up, so it will silently overwrite any uncommitted or untracked sprite work elsewhere in the tree. For tanks, use the targeted path instead — it imports `PLAYER_PALETTES` / `ENEMY_PALETTES` from the unified script (single source of truth, no duplicated palette):
+
+```powershell
+& $blender --background --python tools/rerender_tanks.py -- enemy_basic          # one set, 6 frames
+& $blender --background --python tools/rerender_tanks.py -- --list               # show renderable names
+```
+
+`sokpop_common.py::warn_if_stray_meshes()` runs inside `setup_render_settings()` and prints `[WARN]` if the scene still holds meshes. That exists because `build_ui_character_art_replacements.py` once omitted `clear_scene()`, leaving Blender's default cube parked in front of the camera — it rendered 9 UI icons as identical flat grey squares that shipped unnoticed, since the render itself "succeeded". A missing `clear_scene()` now announces itself.
+
+Alongside those three, `tools/build_*.py` accumulates ~25 one-off scripts for individual feature batches (e.g. `build_desert_mechanics.py`, `build_rpg_branch_and_train_assets.py`, `build_hard_clay_tile_asset.py`) — each still imports `sokpop_common` and follows the same conventions, but renders a narrower asset set for one feature rather than the whole game. Check whether an asset you need to touch already has a narrower script before adding to the unified one.
 
 #### `tools/sokpop_common.py` owns the look — change it there, not in the build scripts
 
@@ -71,55 +80,101 @@ Things that module deliberately enforces, each of which was a real defect:
 
 ### Scene flow
 
-`title_screen.tscn` → `spire_map.tscn` → `main.tscn` (battle) → back to `spire_map.tscn`, via `get_tree().change_scene_to_file()`. Arcade mode jumps title → `main.tscn` and loops on itself. There are **no autoloads**.
+`title_screen.tscn` → `spire_map.tscn` → `main.tscn` (battle) → back to `spire_map.tscn`, via `get_tree().change_scene_to_file()`. Arcade and Daily Challenge modes jump title → `main.tscn` and loop on themselves. There are **no autoloads**.
 
 ### The two state layers (most important thing to get right)
 
-- **`GameState`** (`scripts/game_state.gd`) — a `RefCounted` with only `static var`s, used as a pseudo-singleton because statics survive scene changes. Holds mode/player count, campaign gold, level, tier, lives, the generated spire graph (`spire_nodes` / `spire_connections`), and the `battle_type` that tells `main.gd` which encounter to build. `reset_campaign()` regenerates the map; the floor layout table is hardcoded in `_generate_spire_map()`.
+- **`GameState`** (`scripts/game_state.gd`) — a `RefCounted` with only `static var`s, used as a pseudo-singleton because statics survive scene changes. Holds mode/player count, act/floor position, campaign gold, level, tier, lives, perks, structure stock, the generated spire graph (`spire_nodes` / `spire_connections`), and the `battle_type` + `challenge_mode` that tell `main.gd` which encounter to build.
 - **`RPGManager`** (`scripts/rpg_manager.gd`) — a per-battle instance owned by `MainGame.rpg_mgr`, holding live XP/level/gold and stat multipliers, emitting `stats_changed` / `leveled_up` / `gold_changed` to the HUD.
 
-These two are **manually synced**, not shared: `main.gd::start_game()` copies `GameState` → `rpg_mgr` on entry, and `_game_over()` / `add_gold()` / `_on_rpg_level_up()` copy back. Adding a new persistent stat means touching both sides plus the copy points, or it silently resets between floors.
+These two are **manually synced**, not shared: `main.gd::start_game()` copies `GameState` → `rpg_mgr` on entry, and `_game_over()` / `add_gold()` / `_on_rpg_level_up()` copy back. Adding a new persistent stat means touching both sides plus the copy points **plus `save_campaign()`/`load_campaign()`**, or it silently resets between floors or between sessions.
 
-One set riding this sync is the loadout choice `tank_branch` / `branch_tier` / `unlocked_perks` (`"default"`/`"speed"`/`"heavy"`/`"train"`, tier 0-2) that reshapes stat scaling in `rpg_manager.gd` (`get_atk_damage()`, `get_speed_multiplier()`, etc.) and, for `"train"`, makes `player.gd` attach follower `train_carriage.gd` instances (`_sync_train_carriages()`) that trail the tank and fire independently. `enemy.gd`'s train encounters use the same `train_carriage.gd` scene with `is_enemy = true`. Level/XP/gold and the flat stat points (`atk_bonus`, `speed_lvl`, etc.) are team-wide, but the branch/tier/perk choice is **per player** — `rpg_manager.gd` carries a second `p2_*` copy of each field, every stat getter takes a `player_id: int = 1` argument, and `upgrade_selection_dialog.gd` shows its level-up picker once per player in 2-player co-op (`main.gd::pending_upgrade_players`) so P1 and P2 can diverge onto different branches.
+#### Campaign structure: acts, floors, save files
+
+A run is **8 acts × 15 floors** (`max_acts` / `max_floors`). Only **3 unique visual themes** exist (Plains/Desert/Glacial), so acts 4-8 lap back through them — `get_visual_act()` gives the theme (1-3) and `get_difficulty_cycle()` gives the lap count (0-2). Anything that varies by act must key off `get_visual_act()`, not the raw act number, or it will index past the content that exists; anything that scales difficulty on repeat laps reads `get_difficulty_cycle()` (see `enemy.gd`'s per-lap +18% HP / +7% speed / +15% rewards).
+
+Floor node layout is **not** a hardcoded per-floor table. `_floor_band()` maps a floor index onto a rhythm band (`start` / `early` / `early_mid` / `mid` / `late` / `pre_boss` / `boss`) *proportionally* across `max_floors`, and `_band_pool(band, act)` returns candidate rows to shuffle from. Changing `max_floors` therefore needs no table edit. Connector generation in `_generate_spire_map()` assigns each node a contiguous *interval* of next-floor columns specifically so lines can never cross — don't replace it with independent per-node ±1 edges.
+
+Two JSON saves under `user://`, deliberately independent:
+
+- `campaign_save.json` — written by `save_campaign()`, called from `visit_node()`. `load_campaign()` tolerates old formats (`_load_perk_dict()` accepts both the current `{perk_id: stacks}` dict and the pre-stacking `Array[String]`).
+- `daily_challenge_save.json` — one seeded, single-life run per calendar day. `get_daily_seed()` hashes the date *plus a fixed salt* (raw date strings hash to near-sequential seeds). `main.gd::start_game()` calls `seed()` with it before generating map + enemies so everyone gets the same run.
+
+#### Perks, branches, and structure stock
+
+- **Perks are stackable**, stored as `{perk_id: count}` in `unlocked_perks` / `p2_unlocked_perks`, capped per-perk by `PERK_MAX_STACKS`. Perks with a numeric hook stack to 3 and scale via `RPGManager.get_perk_value()`; pass/fail mechanical gates stay at 1. A 15-floor run exhausted the old fixed pool of unique perks around floor 5-7, which is why stacking exists. Grant through `GameState.grant_perk_stack()` — `shop_dialog.gd` and `event_dialog.gd` run in `spire_map.tscn` with no live `RPGManager` to touch.
+- **Builder structures are shop-bought consumable stock**, not a gold cost at placement time. `GameState.structure_inventory` (`{structure_id: count}`) is bought from `shop_dialog.gd::BUILDING_ITEMS`, persists like gold/perks, and is spent by `builder_controller.gd` via `consume_structure_stock()`. `ui_theme_helper.gd`'s hotbar rebuilds itself from that dictionary and shows only structures with stock > 0, so any code changing stock must call `update_hotbar_stock()`.
+- **Branch/tier is per player** (`tank_branch`/`branch_tier` vs `p2_branch`/`p2_branch_tier`); level/XP/gold and flat stat points are team-wide. Every `rpg_manager.gd` stat getter takes `player_id: int = 1`, and `upgrade_selection_dialog.gd` shows its picker once per player (`main.gd::pending_upgrade_players`) so P1/P2 can diverge. Branches are `"default"`/`"speed"`/`"heavy"`/`"train"`; `"train"` makes `player.gd` attach follower `train_carriage.gd` instances (`_sync_train_carriages()`) that trail and fire independently, and `enemy.gd`'s TRAIN_BOSS reuses the same scene with `is_enemy = true`.
+- **Beware the "star tier" trap** documented in `grant_star_tier_reward()`: `player_tier` only has an observable effect on the `"default"` branch, and every player picks a branch at their first level-up. Rewards that "raise your tier" redirect to `+1 atk_bonus` for branched players.
 
 ### Cross-node coupling
 
 Actors reach the battle controller via `get_tree().current_scene` and duck-type it (`main.rpg_mgr`, `main.has_method("trigger_bomb")`, `main.actors_container`). `player.gd`, `enemy.gd`, and `builder_controller.gd` all assume the current scene is `main.tscn`; running those scenes standalone degrades rather than crashes (null-guarded), but stats won't apply.
 
-`main.gd` builds the battlefield entirely in code — the 13×13 tile grid comes from a `layout` int array (0 empty, 1 brick, 2 steel, 3 water, 4 trees, 5 landmine, 6 desert sand, 7 sand dune, 8 hard clay), tiles are `StaticBody2D`s created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`. Layouts themselves live in `map_templates.gd::MapTemplates` (named templates like `TEMPLATE_CLASSIC`, `TEMPLATE_RIVERS`), selected by `get_layout_for_stage(floor, battle_type)` rather than hardcoded per-call in `main.gd`. Tile type 5 spawns a `landmine_hazard.tscn` instance instead of a static tile; type 8 spawns a `hard_clay_block.gd` `StaticBody2D` with its own 3-hit `take_hit()` (see groups below). World sprites are **256×256** renders drawn at `TILE_SCALE = TILE_SIZE / 256.0` (0.1875); the same 0.1875 is hardcoded in most `scenes/*.tscn` sprite nodes, so changing the render resolution means updating every one of them.
+`main.gd` (~1700 lines) builds the battlefield entirely in code — the 13×13 grid comes from an int array of **tile types 0-29**, tiles are `StaticBody2D`s or scene instances created at runtime, and `main.tscn` only contains empty containers: `GameArea/{MapContainer, BaseWallContainer, ActorsContainer, BuilderController}` plus the `HUD` CanvasLayer. `TILE_SIZE = 48.0`.
 
-That 5.33× minification needs mipmaps to stay clean. Assets have no `.import` files — `TextureHelper` builds them via `Image.load_from_file()` and calls `generate_mipmaps()`, paired with `textures/canvas_textures/default_texture_filter=3` (Linear Mipmap) in `project.godot`. Nearest filtering at this ratio produces aliasing, not pixel-art chunkiness; getting a genuinely chunky look would mean rendering world sprites at native size instead.
+**The tile-type legend lives at the top of `scripts/map_templates.gd`** — keep it in sync when adding a type; it's the only place all 30 are described. The dispatch chain is `main.gd::_build_map()`'s `if tile_type == N` ladder (~line 466). Types beyond the classic terrain (0-9) instantiate behaviour scenes rather than plain tiles: moving platforms, wormholes, shield stations, wind blowers, conveyors, jump pads, street lamps, electric walls, oil barrels, signal jammer towers, factories, drifting supplies.
+
+Layouts come from two sources, both behind `MapTemplates.get_layout_for_stage(floor_idx, battle_type, act, allow_procgen)`:
+
+- **Hand-authored templates** in `map_templates.gd` (`TEMPLATE_CLASSIC`, `TEMPLATE_RIVERS`, `TEMPLATE_DESERT_STORM`, …), selected by cycled visual act + battle type.
+- **`map_generator.gd`** — procedural 13×13 generation, used on ~every third regular battle floor and for the whole Daily Challenge map. It builds one half by biome-weighted rolls, mirrors it (`HORIZONTAL` mirroring also flips directional conveyor/wind tiles), then `_carve_critical_paths()` force-clears spawn zones and the eagle sanctuary and `_sprinkle_tactical_features()` places shield stations / lamps / biome features. Any new directional tile type must be added to `_mirror_tile_horizontal()`/`_mirror_tile_rotational()` or mirrored maps will point it the wrong way.
+
+World sprites are **256×256** renders drawn at `TILE_SCALE = TILE_SIZE / 256.0` (0.1875); the same 0.1875 is hardcoded in most `scenes/*.tscn` sprite nodes, so changing the render resolution means updating every one of them.
+
+### Texture loading and the mipmap situation
+
+`TextureHelper.get_tex(path)` (`scripts/texture_helper.gd`) is a static cache: it tries `load()` first, and only falls back to `Image.load_from_file()` + `generate_mipmaps()` when `ResourceLoader.exists()` is false. Scenes carry no `ext_resource` texture references — every sprite swap (tank tiers, water frames, node icons) is a string-path lookup, so **naming conventions are load-bearing**.
+
+That 5.33× minification needs mipmaps to stay clean (nearest/unmipmapped sampling at this ratio produces crawling aliasing, not pixel-art chunkiness), paired with `textures/canvas_textures/default_texture_filter=3` (Linear Mipmap) in `project.godot`. **`.import` files were committed for all ~430 sprites as of v0.06316, every one with `mipmaps/generate=false`.** That means `load()` now succeeds and the `generate_mipmaps()` fallback never runs — the mipmap guarantee the pipeline was built around is currently inert. If you touch texture quality, that's the first thing to check: either flip the `.import` files to `mipmaps/generate=true` or drop them again.
+
+Sprite naming, which now mixes two schemes:
+
+- **Enemies**: `enemy_{basic,fast,power,armor,missile,laser,boss,desert,bomber,suicide,mirage,battleship,aircraft,warp}[_bonus]_f{0..5}.png` — **6 frames**, same as players (they were 2-frame historically).
+- **Players**: 6-frame, prefixed by both player slot and branch (`player.gd::_update_tier_appearance()`): `{player|player2}_tier{0-3}` for the default branch, or `{player|player2}_{speed|heavy}_t{1,2}` / `{player|player2}_train_loco_t{1,2}` once a branch is picked. `player2` means P2's tank, not a tier — there is no shared or recoloured sprite between P1 and P2.
+
+### Enemies: variety gated by floor, not stat inflation
+
+`enemy.gd::EnemyType` has 15 members. Which ones can appear is governed by `main.gd::ENEMY_MIN_FLOOR`, grouped by *mechanic* rather than raw stats — floor 1 unlocks reskins of the direct-fire loop (POWER/SUICIDE/ARMOR), floor 3 adds delayed AoE (BOMBER), floor 5 adds genuinely new counterplay (AIRCRAFT ignores all terrain, MIRAGE cloaks, BATTLESHIP/LASER hit in AoE/pierce lines), floor 8 adds the boss-adjacent tier (MISSILE/WARP). `_gate_enemy_type()` downgrades anything spawned too early to BASIC/FAST.
+
+One **act-themed "signature" enemy** slot signals which act you're in by silhouette: Act 1 → ARMOR (the default filler), Act 2 → DESERT, Act 3 → WARP, keyed off `get_visual_act()`. Daily Challenge deliberately bypasses the gate entirely and rolls uniformly across the full roster.
 
 ### Collision layers and groups
 
-Layers are unnamed in `project.godot`; the de-facto scheme from the `.tscn` files:
+**Collision layers are almost unused — do not design against them.** Layers are unnamed in `project.godot`, and `player.tscn`, `enemy.tscn`, `bullet.tscn`, `base_eagle.tscn`, `power_up.tscn`, every `scenes/buildings/*.tscn`, and every runtime-created tile all keep Godot's defaults (layer 1, mask 1). Everything collides with everything and is then filtered by group name in the callback.
 
-| bit | value | occupants |
-|-----|-------|-----------|
-| 1 | 1 | players **and all code-created walls/tiles/borders** (they keep Godot's default layer) |
-| 2 | 2 | enemies |
-| 3 | 4 | bullets |
-| 4 | 8 | pickups (power-ups, gold coins) |
-| 5 | 16 | base eagle, player-built structures |
+The only explicit assignments in the whole project:
 
-Because runtime-spawned tiles never set `collision_layer`, terrain shares layer 1 with players — that is why player/enemy masks are `19` and `enemy.gd`'s line-of-sight ray uses mask `1 | 16`.
+| where | layer / mask |
+|---|---|
+| `scenes/moving_platform.tscn` | layer 16, mask 3 |
+| `scenes/wormhole.tscn` | layer 16, mask 15 |
+| `train_carriage.gd` (enemy carriage) | layer 2, mask `1\|4\|16` |
+| `train_carriage.gd` (player carriage) | layer 1, mask `2\|4\|16` |
+| `enemy.gd` AIRCRAFT | mask 16 — flies over all terrain |
 
-Dispatch is almost entirely by **group name**, not by type: `player`, `p1`, `p2`, `enemies`, `brick`, `steel`, `water`, `border`, `base_eagle`, `buildings`, `powerups`, `collectibles`, plus `hard_clay`, `landmines`, `hazards` for the newer terrain. `bullet.gd::_on_body_entered` is the single place terrain destruction is decided (`brick` always breaks; `steel` breaks only for tier-3 plasma bullets and never for `border`). Buildings join **both** `buildings` and `steel`, so bullets treat them as steel. `hard_clay_block.gd` joins **both** `brick` and `hard_clay`: bullets route it through the `brick` destruction branch but call `take_hit(damage)` instead of freeing it outright when the target `has_method("take_hit")`, letting it absorb 3 hits with a colour-stage flash before breaking. `laser_piercer.gd` (a stateless `RefCounted`, called from `player.gd`/`enemy.gd` weapon tiers) re-implements the same group checks along a raycast line rather than reusing `bullet.gd`, since a pierce beam damages many bodies per shot instead of dying on the first. Adding a new terrain or structure kind means adding its group here — and to `laser_piercer.gd` if it should also block/be hit by beams.
+Plus raycast query masks: `laser_piercer.gd` and both landmine scripts use `1\|2\|16`, `builder_controller.gd`'s placement check uses `1\|16`. Those queries are where the intended bit semantics survive (1 = terrain/players/eagle/buildings, 2 = enemies, 4 = bullets, 16 = buildings/platforms/wormholes) — but since nothing outside the table above actually *sets* those layers, a mask of `1|2|16` in practice just means "hit layer 1, i.e. nearly everything, plus platforms/wormholes."
 
-### Assets are loaded by path at runtime, not via `ext_resource`
+**Dispatch is by group name.** Core: `player`, `p1`, `p2`, `enemies`, `brick`, `steel`, `water`, `border`, `base_eagle`, `buildings`, `powerups`, `collectibles`. Terrain/mechanic groups added since: `hard_clay`, `sand`, `sand_dune`, `ice`, `landmines`, `hazard`/`hazards`, `conveyor`, `wind_blower`, `jump_pad`, `wormholes`, `shield_station`, `street_lamp`, `electric_wall`, `oil_barrel`, `signal_jammer`, `factory`, `drifting_supplies`, `treasure_chest`, `treasure_key`, `diamond_gem`, `timed_bomb`, `player_carriage`, plus the umbrella `terrain` / `obstacle` / `destructible`.
 
-`TextureHelper.get_tex(path)` (`scripts/texture_helper.gd`) is a static cache that tries `load()` and falls back to `Image.load_from_file()` on the globalized path when the `.import` is missing. Scenes therefore carry no texture references — sprite swaps (tank tiers, water frames, node icons) are string-path lookups. Naming conventions matter and now mix two schemes: enemies are still `enemy_{basic,fast,power,armor}[_bonus]_f{0,1}.png` (2-frame tread animation), but players are 6-frame (`_f0`-`_f5`) and prefixed by both player slot and `tank_branch` (`player.gd::_update_tier_appearance()`): `{player|player2}_tier{0-3}` for the default branch, or `{player|player2}_{speed|heavy}_t{1,2}` / `{player|player2}_train_loco_t{1,2}` once a branch is picked. `player2` means P2's tank, not a tier — there's no shared/recoloured sprite between P1 and P2.
+Watch for **singular/plural group drift**: `enemy.tscn` declares `enemy` but `enemy.gd::_ready()` adds `enemies` (so `bullet.gd:147` checks both); `base_eagle.tscn` declares `base` while the script adds `base_eagle`; buildings variously add `building`, `buildings`, or both. When adding a group check, check both spellings or you'll silently miss half the cases.
+
+`bullet.gd::_on_body_entered` is the single place terrain destruction is decided (`brick` always breaks; `steel` breaks only for tier-3 plasma bullets and never for `border`). Walled structures (`defense_turret`, `fortified_wall`, `electric_wall`) join `steel` on top of `buildings`, so bullets treat them as indestructible steel; soft ones (`factory`, `shield_station`, `signal_jammer_tower`) don't, and take damage instead. `hard_clay_block.gd` joins **both** `brick` and `hard_clay`: bullets route it through the `brick` branch but call `take_hit(damage)` instead of freeing it when the target `has_method("take_hit")`, letting it absorb 3 hits with a colour-stage flash. `laser_piercer.gd` (a stateless `RefCounted`, called from `player.gd`/`enemy.gd` weapon tiers) re-implements the same group checks along a raycast line rather than reusing `bullet.gd`, since a pierce beam damages many bodies per shot instead of dying on the first. Adding a terrain or structure kind means adding its group here — and to `laser_piercer.gd` if it should also block/be hit by beams.
 
 ### Audio
 
 `SoundManager` (`scripts/sound_manager.gd`) synthesizes `AudioStreamWAV` buffers procedurally per call (square/sine/sawtooth/noise sweeps), attaches a throwaway `AudioStreamPlayer` to the scene root, and frees it on `finished`. There are no audio files in the repo.
 
+### UI
+
+`ui_theme_helper.gd` is a static-only style/widget factory: clay-styled buttons/panels/progress bars, the structure hotbar (`create_hotbar_ui` / `_rebuild_hotbar_slots` / `update_hotbar_stock` / `update_hotbar_selection`), the boss bar, and the victory/defeat modal. Dialogs (`shop_dialog`, `event_dialog`, `upgrade_selection_dialog`, `stage_preview_dialog`) build their controls in code and apply these. `vfx_animator.gd` is the counterpart for transient sprite-sequence effects (muzzle flash, clay debris, dust, shockwave, teleport burst, wormhole swirl) and also pokes `darkness_fog.gd` so flashes light up night-mode maps.
+
 ### Progression numbers
 
-Tuning constants are inlined at their use sites, not in a config: enemy stats in `enemy.gd::_setup_tank_type()`, level curve and stat multipliers in `rpg_manager.gd`, structure costs in `builder_controller.gd::costs`, encounter size/spawn rate per `battle_type` in `main.gd::start_game()`, and shop/rest/event outcomes in `event_dialog.gd::_on_choice()`.
+Tuning constants are inlined at their use sites, not in a config: enemy stats and per-floor/lap scaling in `enemy.gd::_setup_tank_type()`, floor-gating in `main.gd::ENEMY_MIN_FLOOR`, level curve and stat multipliers in `rpg_manager.gd`, structure prices in `shop_dialog.gd::BUILDING_ITEMS`, encounter size/spawn rate per `battle_type` and `challenge_mode` in `main.gd::start_game()`, and shop/rest/event outcomes in `event_dialog.gd::_on_choice()`.
 
 ## Conventions
 
 - `class_name` on nearly every script; siblings are still pulled in with `const X = preload(...)` at the top (both idioms coexist — follow the file you're in).
-- Comments in the GDScript are mixed English/Chinese; keep whatever a file already uses.
+- Comments in the GDScript are mixed English/Chinese; keep whatever a file already uses. Long block comments explaining *why* a design was chosen (and what the previous broken version did) are the house style — preserve them when editing nearby code.
 - Player input is per-player action sets (`p1_*` / `p2_*`); the legacy `move_*`/`fire` actions remain in `project.godot` but are unused by `player.gd`. Gamepad device 0 → P1, device 1 → P2. Building hotkeys (1–4, Q/Esc, E/F) are raw keycodes in `builder_controller.gd::_unhandled_input`, not input actions.

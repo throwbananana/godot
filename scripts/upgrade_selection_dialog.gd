@@ -47,12 +47,14 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 		vbox.add_theme_constant_override("separation", 10)
 		card_btn.add_child(vbox)
 
-		# Icon / Tag
-		var icon_lbl = Label.new()
-		icon_lbl.text = opt["icon"]
-		icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		icon_lbl.add_theme_font_size_override("font_size", 34)
-		vbox.add_child(icon_lbl)
+		# Icon Badge
+		var icon_rect = TextureRect.new()
+		icon_rect.custom_minimum_size = Vector2(54, 54)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.texture = UIThemeHelper.get_perk_icon(opt)
+		icon_rect.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		vbox.add_child(icon_rect)
 
 		# Name
 		var name_lbl = Label.new()
@@ -89,13 +91,13 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 
 	if branch == "default":
 		# First class promotion choices!
-		title_label.text = "★ 突破阶级：选择战车进阶流派 ★"
+		title_label.text = "突破阶级：选择战车进阶流派"
 		subtitle_label.text = "选择你的专属坦克职业，蜕变全新 3D 外观与专属战斗机制！"
 
 		choices.append({
 			"type": "branch",
 			"branch": "speed",
-			"icon": "⚡",
+			"icon": "speed",
 			"name": "迅捷斥候型\n(Speed Scout)",
 			"tag": "【极速·速射·流沙无阻】",
 			"desc": "底盘轻量化流线型蜕变！移速+40%，双联高速针式机炮，无视沙漠流沙减速阻力！"
@@ -104,7 +106,7 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 		choices.append({
 			"type": "branch",
 			"branch": "heavy",
-			"icon": "💥",
+			"icon": "heavy",
 			"name": "重装泰坦型\n(Heavy Juggernaut)",
 			"tag": "【装甲·重炮·AoE溅射】",
 			"desc": "加装超厚反应装甲！生命上限+4，发射超重型高爆巨炮，命中触发大范围爆炸与击退！"
@@ -113,14 +115,14 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 		choices.append({
 			"type": "branch",
 			"branch": "train",
-			"icon": "🚂",
+			"icon": "train",
 			"name": "装甲列车型\n(Armored Train)",
 			"tag": "【多节车厢·自动火炮】",
 			"desc": "进化为重装铁道车头！后节挂载【全自动火炮车厢】，360度自动索敌消灭后方威胁！"
 		})
 	else:
 		# In branch: offer Branch Tier 2 promotion + Tactical Perks
-		title_label.text = "★ 战术强化：战备选择 (LEVEL %d) ★" % rpg_mgr.level
+		title_label.text = "战术强化：战备选择 (LEVEL %d)" % rpg_mgr.level
 		subtitle_label.text = "强化当前流派阶级，或激活强力被动战术芯片！"
 
 		# Evolution option
@@ -234,11 +236,21 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 			},
 		]
 
-		# Filter already owned perks
+		# Filter perks already at their stack cap (GameState.PERK_MAX_STACKS) --
+		# most perks can be picked up to 3 times with diminishing returns
+		# (RPGManager.PERK_STACK_CURVE) so the level-up screen keeps offering
+		# real choices across a full 15-floor act instead of running out
+		# after ~11 picks and falling back to the gold_heal filler for the
+		# rest of the run.
 		var available_perks = []
 		for p in perk_pool:
-			if not rpg_mgr.has_perk(p["id"], player_id):
-				available_perks.append(p)
+			var stacks = rpg_mgr.get_perk_stacks(p["id"], player_id)
+			var cap = GameState.max_stacks_for_perk(p["id"])
+			if stacks < cap:
+				var card = p.duplicate()
+				if stacks > 0:
+					card["tag"] = "%s [已强化 %d/%d]" % [card["tag"], stacks, cap]
+				available_perks.append(card)
 		available_perks.shuffle()
 
 		while choices.size() < 3 and available_perks.size() > 0:

@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://bld302factory01"]
+
+[ext_resource type="Script" path="res://scripts/buildings/factory.gd" id="1_factory"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(44, 44)
+
+[node name="Factory" type="StaticBody2D" groups=["building", "buildings", "factory"]]
+z_index = 10
+script = ExtResource("1_factory")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")

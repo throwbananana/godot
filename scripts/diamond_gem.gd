@@ -41,8 +41,8 @@ func _physics_process(delta: float) -> void:
 		if is_instance_valid(p) and p is Node2D:
 			var main = get_tree().current_scene
 			var magnet_dist = 220.0
-			if main and main.rpg_mgr and main.rpg_mgr.has_perk("magnetic_salvage", p.player_id if "player_id" in p else 1):
-				magnet_dist = 420.0
+			if main and main.rpg_mgr:
+				magnet_dist += main.rpg_mgr.get_perk_value("magnetic_salvage", 95.0, p.player_id if "player_id" in p else 1)
 
 			var dist = global_position.distance_to(p.global_position)
 			if dist < magnet_dist:
@@ -62,13 +62,13 @@ func _on_body_entered(body: Node2D) -> void:
 		if main:
 			var g_val = gold_value + (GameState.current_act - 1) * 20
 			if main.rpg_mgr:
-				if "player_id" in body and main.rpg_mgr.has_perk("magnetic_salvage", body.player_id):
-					g_val = int(g_val * 1.35)
+				if "player_id" in body:
+					g_val = int(g_val * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, body.player_id)))
 				main.rpg_mgr.add_xp(xp_value)
 			if main.has_method("add_gold"):
 				main.add_gold(g_val)
 			if main.has_method("show_toast"):
-				main.show_toast("💎 获得稀有钻石！+%dG & +%d XP！" % [g_val, xp_value])
+				main.show_toast("获得稀有钻石！+%dG & +%d XP！" % [g_val, xp_value])
 
 		SoundManager.play_level_up(get_tree())
 		VFXAnimator.spawn_teleport_burst(get_parent(), global_position)

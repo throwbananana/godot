@@ -32,31 +32,75 @@ grow_horizontal = 2
 
 [node name="HBox" type="HBoxContainer" parent="TopBar"]
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 20
 alignment = 1
 
-[node name="FloorLabel" type="Label" parent="TopBar/HBox"]
+[node name="FloorBox" type="HBoxContainer" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="FloorIcon" type="TextureRect" parent="TopBar/HBox/FloorBox"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FloorLabel" type="Label" parent="TopBar/HBox/FloorBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
-theme_override_font_sizes/font_size = 17
+theme_override_font_sizes/font_size = 15
 text = "FLOOR: 1 / 6"
 
-[node name="GoldLabel" type="Label" parent="TopBar/HBox"]
+[node name="GoldBox" type="HBoxContainer" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="GoldIcon" type="TextureRect" parent="TopBar/HBox/GoldBox"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="GoldLabel" type="Label" parent="TopBar/HBox/GoldBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
-theme_override_font_sizes/font_size = 17
+theme_override_font_sizes/font_size = 15
 text = "GOLD: 150 G"
 
-[node name="LivesLabel" type="Label" parent="TopBar/HBox"]
+[node name="LivesBox" type="HBoxContainer" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="LivesIcon" type="TextureRect" parent="TopBar/HBox/LivesBox"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LivesLabel" type="Label" parent="TopBar/HBox/LivesBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.86, 0.6, 1)
-theme_override_font_sizes/font_size = 17
+theme_override_font_sizes/font_size = 15
 text = "LIVES: 3"
 
-[node name="TierLabel" type="Label" parent="TopBar/HBox"]
+[node name="TierBox" type="HBoxContainer" parent="TopBar/HBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+alignment = 1
+
+[node name="TierIcon" type="TextureRect" parent="TopBar/HBox/TierBox"]
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TierLabel" type="Label" parent="TopBar/HBox/TierBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.55, 0.78, 0.92, 1)
-theme_override_font_sizes/font_size = 17
+theme_override_font_sizes/font_size = 15
 text = "TANK: SCOUT"
 
 [node name="BackToMenuButton" type="Button" parent="TopBar/HBox"]
@@ -74,7 +118,20 @@ offset_top = 60.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="LinesDraw" type="Control" parent="MapArea"]
+[node name="MapScroll" type="ScrollContainer" parent="MapArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="MapInner" type="Control" parent="MapArea/MapScroll"]
+layout_mode = 2
+custom_minimum_size = Vector2(1024, 660)
+
+[node name="LinesDraw" type="Control" parent="MapArea/MapScroll/MapInner"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -83,7 +140,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="MapCanvas" type="Control" parent="MapArea"]
+[node name="MapCanvas" type="Control" parent="MapArea/MapScroll/MapInner"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
