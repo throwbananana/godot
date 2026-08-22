@@ -894,6 +894,100 @@ const TEMPLATE_FACTORY_ESCORT = [
 	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]
 
+# ---------------------------------------------------------------------------
+# 51-54: 低层入门图 (floor 0 起就能出, 不进 TEMPLATE_MIN_FLOOR)
+#
+# 加这四张是因为 floor 0~1 的可选面太窄了: act1_pool 里没被门禁挡住的只有
+# CLASSIC / RIVERS / JUNGLE / CHECKERBOARD / CITADEL 五张, 而 _pick_from_pool
+# 是 `floor_idx % eligible.size()` 取模, 所以开局那几层是在五张图里轮转。
+#
+# 四张都严格守着 floor 0 那一档的约定 (见下面 TEMPLATE_MIN_FLOOR 的说明):
+# 只用 0/1/2/3/4 这些基础地形, 外加 {硬黏土 8, 地雷 5, 沙地 6} 里*至多一种*,
+# 不放任何需要现学的环境机制 (冰面/风机/传送带/虫洞/电墙…)。
+# 钢块 (2) 也刻意用得极少 —— 它是永久障碍, 堆多了新手会被卡在死角里出不来;
+# 砖 (1) 打得穿, 玩家可以自己开路, 犯错的代价小得多。
+# ---------------------------------------------------------------------------
+
+# 51. 草原哨站 (Meadow Outpost) -- 大开阔地 + 四角砖哨所, 中央一座砖堡垒,
+# 堡垒下方开口可进入。视野好、退路多, 是最适合第一层的那种图。
+const TEMPLATE_MEADOW_OUTPOST = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 1, 1, 0, 0, 4, 0, 0, 1, 1, 0, 0],
+	[0, 0, 1, 1, 0, 0, 4, 0, 0, 1, 1, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 4, 0, 0, 1, 1, 1, 1, 1, 0, 0, 4, 0],
+	[0, 4, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4, 0],
+	[0, 0, 0, 0, 1, 0, 2, 0, 1, 0, 0, 0, 0],
+	[0, 4, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4, 0],
+	[0, 4, 0, 0, 1, 1, 0, 1, 1, 0, 0, 4, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0],
+	[0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 52. 砖砌庭院 (Brick Courtyard) -- 外墙 + 内厅两层砖, 全部可破坏。
+# 找不到门就自己轰一个, 所以看着像围城其实很宽容, 顺便是教"子弹能打穿砖墙"
+# 的最好例子。
+#
+# 第一版做的是三层同心环、走道只有一格宽, 渲出来一看是个迷宫: 一格宽的走道
+# 意味着被敌人堵在拐角就没有退路, 这对入门图来说恰恰是最不该有的东西。
+# 现在减到两层、把走道放宽到 2~3 格, 顶边和底边各留 3 格宽的大豁口。
+const TEMPLATE_BRICK_COURTYARD = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0],
+	[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+	[0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0],
+	[0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+	[0, 0, 0, 0, 1, 0, 2, 0, 1, 0, 0, 0, 0],
+	[0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+	[0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0],
+	[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+	[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+	[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+	[0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 53. 浅溪渡口 (Creek Crossing) -- 两条横向浅溪, 各留两座*两格宽*的桥。
+# 和 TEMPLATE_RIVERS 的区别是桥宽一倍且水面成横带而非竖块: 过河不需要抢位,
+# 只是让玩家习惯"水不能走、要绕桥"这件事。
+const TEMPLATE_CREEK_CROSSING = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 4, 0, 0, 1, 0, 1, 0, 0, 4, 0, 0],
+	[0, 0, 4, 0, 0, 1, 1, 1, 0, 0, 4, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[3, 3, 3, 0, 0, 3, 3, 3, 0, 0, 3, 3, 3],
+	[3, 3, 3, 0, 0, 3, 3, 3, 0, 0, 3, 3, 3],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 0, 0, 4, 4, 4, 0, 0, 1, 1, 0],
+	[0, 1, 1, 0, 0, 4, 4, 4, 0, 0, 1, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 4, 0, 0, 1, 1, 1, 0, 0, 4, 0, 0],
+	[0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 54. 果园行列 (Orchard Rows) -- 成行的树 + 交错砖柱。
+# 树不挡子弹也不挡路 (main.gd 把 trees 当纯贴图画在 z_index=10), 所以这张图
+# 机动性极好, 难度来自"看不见"而不是"过不去" —— 而钻进树里的坦克现在会让
+# 那几格树冠淡下去 (见 _update_tree_transparency), 所以藏不成闷杀。
+const TEMPLATE_ORCHARD_ROWS = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 4, 4, 4, 0, 4, 4, 4, 0, 4, 4, 4, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+	[0, 4, 4, 4, 0, 4, 4, 4, 0, 4, 4, 4, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 1, 2, 1, 0, 1, 0, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 4, 4, 4, 0, 4, 4, 4, 0, 4, 4, 4, 0],
+	[0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 4, 4, 4, 0, 0, 0, 0, 0, 4, 4, 4, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
 ## Per-template floor_idx gate, mirroring the enemy tier table in main.gd's
 ## ENEMY_MIN_FLOOR -- pools below draw by `floor_idx % pool.size()`, which
 ## previously meant a "kitchen sink" template (5+ combined mechanics, or a
@@ -996,7 +1090,42 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 	else:
 		match current_act:
 			1:
-				var act1_pool = [TEMPLATE_CLASSIC, TEMPLATE_RIVERS, TEMPLATE_JUNGLE, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CHECKERBOARD, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_CITADEL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_NAVAL_SALVAGE_ROUTE]
+				# 这个池子里的**顺序是有意义的, 不是随手排的**。
+				#
+				# _pick_from_pool 用 `eligible[floor_idx % eligible.size()]` 取图,
+				# 而 eligible 会随楼层变长 (floor 0-1 只有未设门禁的 9 张,
+				# floor 2 起加入 min_floor=2 的 3 张, floor 5 起是全部 18 张)。
+				# 再叠上 get_layout_for_stage() 开头那句"floor_idx % 3 == 2 走
+				# 程序生成", 一个 15 层的 act 里真正会用到模板的只有
+				# floor 0,1,3,4,6,7,9,10,12,13 这十层, 对应的下标就固定是
+				# 9 张表的 [0][1]、12 张表的 [3][4]、18 张表的 [6][7][9][10][12][13]。
+				#
+				# 也就是说, **把新图追加到数组末尾等于白加**: 下标 14-17 在一个
+				# act 里永远取不到。第一版就是这么写的, 探针跑出来四张新图只在
+				# floor 14/17 出现, 而那两层恰好又都是程序生成 —— 等于死代码。
+				#
+				# 现在按上面那些下标反推排位, 让四张入门图落在 floor 0/3/4/6,
+				# 纯地形图占住前段, 带机制的图从 floor 9 之后才排上来。
+				var act1_pool = [
+					TEMPLATE_MEADOW_OUTPOST,   # 0  -> floor 0
+					TEMPLATE_CLASSIC,          # 1  -> floor 1
+					TEMPLATE_RIVERS,           # 2
+					TEMPLATE_ORCHARD_ROWS,     # 3  -> floor 3
+					TEMPLATE_BRICK_COURTYARD,  # 4  -> floor 4
+					TEMPLATE_JUNGLE,           # 5
+					TEMPLATE_CREEK_CROSSING,   # 6  -> floor 6
+					TEMPLATE_CHECKERBOARD,     # 7  -> floor 7
+					TEMPLATE_CITADEL,          # 8
+					TEMPLATE_SHIELD_OUTPOST,   # 9  -> floor 9
+					TEMPLATE_JAMMER_OUTPOST,   # 10 -> floor 10
+					TEMPLATE_FACTORY_ESCORT,   # 11
+					TEMPLATE_MIRAGE_JUNGLE_MAZE, # 12 -> floor 12
+					TEMPLATE_CONVEYOR_FACTORY, # 13 -> floor 13
+					TEMPLATE_CONVEYOR_PINBALL,
+					TEMPLATE_NIGHT_HIGHWAY,
+					TEMPLATE_HYPERDRIVE_PINBALL,
+					TEMPLATE_NAVAL_SALVAGE_ROUTE,
+				]
 				return _pick_from_pool(act1_pool, floor_idx)
 			2:
 				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE]
