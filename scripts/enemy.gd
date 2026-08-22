@@ -681,25 +681,15 @@ func _suicide_detonate() -> void:
 				w.take_damage(999)
 	attached_wagons.clear()
 
-	# 1. Toxic Mushroom Explosion VFX
-	var exp_scene = load("res://scenes/explosion.tscn")
-	if exp_scene:
-		var exp_inst = exp_scene.instantiate()
-		get_parent().add_child(exp_inst)
-		exp_inst.global_position = global_position
-
-	var blast_tex = TextureHelper.get_tex("res://assets/sprites/effects/vfx_suicide_blast.png")
-	if blast_tex:
-		var b_spr = Sprite2D.new()
-		b_spr.texture = blast_tex
-		b_spr.scale = Vector2(0.35, 0.35)
-		b_spr.z_index = 50
-		get_parent().add_child(b_spr)
-		b_spr.global_position = global_position
-		var tw = b_spr.create_tween()
-		tw.tween_property(b_spr, "scale", Vector2(0.85, 0.85), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_property(b_spr, "modulate:a", 0.0, 0.40)
-		tw.tween_callback(b_spr.queue_free)
+	# 1. 毒性爆炸 VFX —— 六帧真动画。
+	# 以前这里是*一张*静态图靠 tween 缩放假装动画: 全游戏唯一一个"存在意义就是
+	# 爆炸"的敌人, 反而拥有最不动的爆炸。
+	#
+	# 顺便去掉了叠在上面的那个通用 explosion.tscn。它现在是纯粹的减分项:
+	#   - 专用爆炸更大更久, 通用那团小橘火只会糊在中间, 冲淡"绿核"这个辨识点;
+	#   - explosion.gd::_ready() 自己会调一次 play_explosion(), 和下面这句撞车,
+	#     同一个采样叠放两遍只会变响和相位发糊, 并不会更有气势。
+	VFXAnimator.spawn_suicide_blast(get_parent(), global_position)
 
 	SoundManager.play_explosion(get_tree())
 	VFXAnimator.spawn_shockwave(get_parent(), global_position)

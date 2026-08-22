@@ -26,7 +26,7 @@ There is **no linter**. Verification is `--check-only` per script, running the g
 & $godot --headless --path . --script tools/test_gameplay_runtime.gd   # boots main.tscn, checks player/builder/sound wiring
 ```
 
-Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, …) — check for an existing one covering your area before writing a new script.
+Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, `test_explosion_vfx.gd`, …) — check for an existing one covering your area before writing a new script.
 
 `test_train_teleport.gd` is worth copying as a pattern: it drives `TrainFollowHelper` against `tools/_train_stub.gd` (a bare `Node2D` exposing only `history_positions` / `history_rotations` / `follow_distance` / `leader_node`) instead of booting `main.tscn`. The helper is duck-typed throughout, so the whole follow-and-teleport behaviour is testable without textures, physics, or a map — and the test was verified to fail against the pre-fix logic, not just pass against the new one.
 
@@ -62,7 +62,13 @@ python tools/qa_style_consistency.py --vs HEAD   # …plus a per-sprite diff aga
 ```powershell
 & $blender --background --python tools/rerender_tanks.py -- enemy_basic          # one set, 6 frames
 & $blender --background --python tools/rerender_tanks.py -- --list               # show renderable names
+& $blender --background --python tools/rerender_vfx.py -- explosion              # one VFX sequence, 6 frames
+& $blender --background --python tools/rerender_vfx.py -- --all                  # all four sequences
 ```
+
+`rerender_vfx.py` is the same idea for animated effects (`explosion`, `suicide_blast`, `dust_puff`, `muzzle_flash`). Those sequences are spread across three different owner scripts — `explosion` belongs to the unified script, `suicide_blast` to `build_suicide_and_mirage_assets.py`, the other two to `build_sokpop_animations.py` — and it imports each builder from its owner rather than copying geometry, so it never becomes a fourth place that can render the same sprite.
+
+**Explosion-type sequences must dissipate, and `test_explosion_vfx.gd` enforces it.** Every one of these was originally sized by a monotonically increasing formula (`scale_factor = base + frame * step`), so the smoke drifted *outward and larger* forever: the old `explosion_5` covered 33.7% of the frame against the peak frame's 19.0%, i.e. the animation ended as the biggest, solidest blob it ever drew, then got cut off by the frame edge. Late frames must instead *shrink* `r_puff` while `span` keeps creeping out — the mass breaks into separate small puffs and total ink falls. The test asserts coverage peaks mid-sequence and the last frame is under half the peak; it was verified to fail on the pre-fix art with exactly that diagnosis. The same rule is why late frames use a hollow ring: a few big overlapping spheres read as one shaded ball, not as smoke.
 
 `sokpop_common.py::warn_if_stray_meshes()` runs inside `setup_render_settings()` and prints `[WARN]` if the scene still holds meshes. That exists because `build_ui_character_art_replacements.py` once omitted `clear_scene()`, leaving Blender's default cube parked in front of the camera — it rendered 9 UI icons as identical flat grey squares that shipped unnoticed, since the render itself "succeeded". A missing `clear_scene()` now announces itself.
 
@@ -204,7 +210,9 @@ Watch for **singular/plural group drift**: `enemy.tscn` declares `enemy` but `en
 
 ### UI
 
-`ui_theme_helper.gd` is a static-only style/widget factory: clay-styled buttons/panels/progress bars, the structure hotbar (`create_hotbar_ui` / `_rebuild_hotbar_slots` / `update_hotbar_stock` / `update_hotbar_selection`), the boss bar, and the victory/defeat modal. Dialogs (`shop_dialog`, `event_dialog`, `upgrade_selection_dialog`, `stage_preview_dialog`) build their controls in code and apply these. `vfx_animator.gd` is the counterpart for transient sprite-sequence effects (muzzle flash, clay debris, dust, shockwave, teleport burst, wormhole swirl) and also pokes `darkness_fog.gd` so flashes light up night-mode maps.
+`ui_theme_helper.gd` is a static-only style/widget factory: clay-styled buttons/panels/progress bars, the structure hotbar (`create_hotbar_ui` / `_rebuild_hotbar_slots` / `update_hotbar_stock` / `update_hotbar_selection`), the boss bar, and the victory/defeat modal. Dialogs (`shop_dialog`, `event_dialog`, `upgrade_selection_dialog`, `stage_preview_dialog`) build their controls in code and apply these. `vfx_animator.gd` is the counterpart for transient sprite-sequence effects (muzzle flash, clay debris, dust, shockwave, suicide blast, teleport burst, wormhole swirl) and also pokes `darkness_fog.gd` so flashes light up night-mode maps.
+
+The SUICIDE truck's detonation is the one blast with its own dedicated sequence (`vfx_suicide_blast_f0..f5`, via `spawn_suicide_blast()`), drawn deliberately larger and slower than the generic `explosion.tscn` because its AoE is 84px — the visual has to match the kill radius or players cannot learn how far to run. Its read is a **green core that burns out**: the truck carries a green-emissive `mat_nuke`, so the explosion inheriting that green is what ties the blast to the thing that caused it. Green belongs to the core and inner ring only — two earlier attempts painted the whole mass green (a smooth green slime ball) or scattered green through the outer ring (orange/green patchwork reading as camouflage). `_suicide_detonate()` deliberately does **not** also spawn `explosion.tscn`: the small generic fireball muddied the green tell, and `explosion.gd::_ready()` plays its own `play_explosion()`, which double-triggered the sound.
 
 ### Progression numbers
 

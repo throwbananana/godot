@@ -158,19 +158,37 @@ def build_shockwave(frame_idx):
 
 # ==================== 5. 砖块击碎尘埃烟团 (DUST PUFF 6 FRAMES) ====================
 
+# 和爆炸同一类毛病、同一个修法: 老版本 scale_factor 和 dist 都是单调递增
+# (0.35->1.25 / 0.12->1.02), 于是尘埃越飘越*大*, 最后两帧变成六颗分得很开、
+# 带明显球面明暗的大球 —— 读起来是沙滩球, 不是扬尘。
+#
+# 尘埃的物理直觉正好相反: 它应该越飘越散、越飘越薄。所以 r_puff 从 f2 起
+# 反向收缩, 个数增加, 总墨量 (n * r_puff^2) 一路下降。
+DUST_FRAMES = [
+    # dist  r_puff  n
+    dict(dist=0.10, r_puff=0.26, n=5),
+    dict(dist=0.26, r_puff=0.30, n=6),
+    dict(dist=0.44, r_puff=0.28, n=8),
+    dict(dist=0.62, r_puff=0.22, n=9),
+    dict(dist=0.78, r_puff=0.16, n=10),
+    dict(dist=0.92, r_puff=0.11, n=8),
+]
+
+
 def build_dust_puff(frame_idx):
     objs = []
     mat_dust = create_clay_mat(f"m_dp_{frame_idx}", (0.85, 0.78, 0.72, 1.0))
     mat_dust_dark = create_clay_mat(f"m_dp_d_{frame_idx}", (0.65, 0.58, 0.52, 1.0))
-    scale_factor = 0.35 + frame_idx * 0.18
-    dist = 0.12 + frame_idx * 0.18
+    cfg = DUST_FRAMES[frame_idx]
 
-    num_spheres = 6
+    num_spheres = cfg["n"]
     for i in range(num_spheres):
-        ang = i * (2.0 * math.pi / float(num_spheres)) + frame_idx * 0.18
-        r = (0.28 if i % 2 == 0 else 0.22) * scale_factor
+        ang = i * (2.0 * math.pi / float(num_spheres)) + frame_idx * 0.22
+        # 每颗错开一点距离, 免得渲成一个标准圆环
+        d = cfg["dist"] * (1.0 + (0.18 if i % 3 == 0 else -0.12))
+        r = cfg["r_puff"] * (1.0 if i % 2 == 0 else 0.78)
         mat_curr = mat_dust if i % 2 == 0 else mat_dust_dark
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(ang)*dist, math.sin(ang)*dist, 0))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(ang)*d, math.sin(ang)*d, 0))
         puff = bpy.context.active_object
         puff.data.materials.append(mat_curr)
         bpy.ops.object.shade_smooth()

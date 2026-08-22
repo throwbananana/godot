@@ -94,6 +94,28 @@ static func spawn_dust_puff(parent: Node, pos: Vector2) -> void:
 	]
 	create_anim(parent, pos, paths, 0.1875, 18.0)
 
+## 自爆卡车的爆炸 —— 全场最大的一声响。
+##
+## 刻意比通用爆炸大一圈也慢一点: 它的 AoE 是 84px (1.75 格), 画面得对得上伤害
+## 范围, 否则玩家学不会该躲多远。scale 0.34 配 3.9 的渲染画幅, 屏幕上直径约
+## 200px, 正好罩住杀伤圈。
+##
+## fps 给 14 而不是通用爆炸那种更快的节奏 —— 六帧铺开约 0.43 秒, 让"绿核烧尽
+## 再塌成毒烟"这段能被看清。快了就只剩一团橘色闪光, 和普通爆炸分不出来。
+static func spawn_suicide_blast(parent: Node, pos: Vector2) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_suicide_blast_f0.png",
+		"res://assets/sprites/effects/vfx_suicide_blast_f1.png",
+		"res://assets/sprites/effects/vfx_suicide_blast_f2.png",
+		"res://assets/sprites/effects/vfx_suicide_blast_f3.png",
+		"res://assets/sprites/effects/vfx_suicide_blast_f4.png",
+		"res://assets/sprites/effects/vfx_suicide_blast_f5.png"
+	]
+	var node = create_anim(parent, pos, paths, 0.34, 14.0)
+	if node:
+		node.z_index = 50
+	_notify_darkness_flash(parent, pos, 240.0, 0.45)
+
 static func spawn_shockwave(parent: Node, pos: Vector2) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/shockwave_0.png",

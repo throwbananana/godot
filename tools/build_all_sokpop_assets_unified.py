@@ -1628,88 +1628,121 @@ def build_sokpop_powerup(p_type):
 
 # ==================== 6. SOKPOP VFX ====================
 
+# 爆炸每一帧的形状参数。写成显式表格而不是 `0.38 + frame_idx * 0.24` 这种公式,
+# 是因为爆炸的节奏本来就不是线性的 —— 它必须"冲上去再散开"。
+#
+# 老版本的毛病就出在那个单调递增的公式上: 半径一路涨到 1.58, 到 f4/f5 时几个
+# 球大到互相吞掉, 糊成一整颗带明暗分界线的大球 —— 读起来是"一颗球", 不是烟。
+# 而且轮廓一直在变大, 于是爆炸永远不会"消散", 只会越来越胖然后被整帧切掉。
+#
+# 现在的关键是 r_puff 在 f2 之后*反过来变小*, 而 span 继续微涨: 团块因此裂成
+# 一圈互相分开的小球, 总墨量 (n * r_puff^2) 从 f2 的 1.20 一路掉到 f5 的 0.23。
+# 那才是消散。中心留空也是同理 —— 空心环不会被读成实心球。
+#
+# `inner` 是第二圈 puff (半径 0.45*span)。没有它的时候 f2/f3 会渲成一圈分开的
+# 珠子中间浮一个小黄点 —— 读起来是项链, 不是火球。中心必须在燃烧阶段是*实*的,
+# 空心环只属于最后两帧的烟。
+EXPLOSION_FRAMES = [
+    # span    r_puff  n   inner fire  glow  core  spikes spike_len
+    dict(span=0.26, r_puff=0.30, n=6,  inner=0, fire=1.00, glow=3.0, core=0.30, spikes=6, spike_len=0.55),  # f0 起爆: 紧、白热、带尖刺
+    dict(span=0.55, r_puff=0.34, n=8,  inner=5, fire=1.00, glow=2.6, core=0.32, spikes=6, spike_len=0.80),  # f1 急速膨胀, 最亮
+    dict(span=0.82, r_puff=0.33, n=11, inner=6, fire=0.80, glow=1.6, core=0.28, spikes=4, spike_len=0.55),  # f2 火球最大
+    dict(span=0.95, r_puff=0.28, n=13, inner=5, fire=0.42, glow=0.8, core=0.20, spikes=0, spike_len=0.0),   # f3 火退回中心, 烟接管
+    dict(span=1.00, r_puff=0.22, n=14, inner=0, fire=0.14, glow=0.0, core=0.0,  spikes=0, spike_len=0.0),   # f4 烟环, 中心掏空
+    dict(span=1.05, r_puff=0.15, n=10, inner=0, fire=0.00, glow=0.0, core=0.0,  spikes=0, spike_len=0.0),   # f5 散开
+]
+
+
+def _puff_wobble(seed, span):
+    """给 puff 环加一点确定性的不规则。
+
+    完美的圆环读起来是机械的; 黏土爆炸得是歪的。用整数散列而不是 random 是为了
+    可复现 —— 同样的 frame_idx 永远渲出同样的图。
+    """
+    h = (seed * 2654435761) % 1000
+    return (h / 1000.0 - 0.5) * span * 0.42
+
+
 def build_sokpop_explosion(frame_idx):
     objs = []
-    mat_fire   = create_clay_mat("m_uexp_f",  (0.98, 0.42, 0.12, 1.0))
-    mat_yellow = create_clay_mat("m_uexp_y",  (0.98, 0.88, 0.22, 1.0))
-    mat_smoke  = create_clay_mat("m_uexp_s",  (0.88, 0.84, 0.80, 1.0))
-    mat_dark   = create_clay_mat("m_uexp_d",  (0.35, 0.33, 0.38, 1.0))
+    cfg = EXPLOSION_FRAMES[frame_idx]
+    glow = cfg["glow"]
 
-    scale_factor = 0.38 + frame_idx * 0.24
+    # 火焰带自发光: 这个管线用的是 Standard view transform + 刻意压平的光照,
+    # 靠明暗是拉不出"烫"的感觉的, 热度只能靠 emission 给。烟不发光。
+    mat_fire = create_clay_mat(
+        f"m_uexp_f{frame_idx}", (0.98, 0.42, 0.12, 1.0),
+        emission=(1.0, 0.46, 0.10, 1.0), emission_str=max(0.0, glow * 0.30))
+    # 别把这个调太白: (1.0,0.90,0.42) 配 emission 2.6 会烧成一大片奶白, 在
+    # 橘色火球中间读起来像个洞, 不像高温。饱和的金黄 + 收敛的自发光才是热。
+    mat_hot = create_clay_mat(
+        f"m_uexp_h{frame_idx}", (1.0, 0.82, 0.28, 1.0),
+        emission=(1.0, 0.84, 0.34, 1.0), emission_str=glow * 0.55)
+    mat_smoke = create_clay_mat(f"m_uexp_s{frame_idx}", (0.86, 0.82, 0.79, 1.0))
+    mat_dark  = create_clay_mat(f"m_uexp_d{frame_idx}", (0.42, 0.39, 0.44, 1.0))
 
-    if frame_idx <= 1:
-        # Early: compact fiery core + white-yellow hot center + pointed shard spikes
-        num_puffs = 5
-        for i in range(num_puffs):
-            angle = i * (2.0 * math.pi / float(num_puffs)) + frame_idx * 0.3
-            dist  = 0.12 + frame_idx * 0.14
-            r     = (0.38 + (0.08 if i % 2 == 0 else -0.06)) * scale_factor
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(angle)*dist, math.sin(angle)*dist, 0))
-            sph = bpy.context.active_object
-            sph.data.materials.append(mat_fire)
-            bpy.ops.object.shade_smooth()
-            objs.append(sph)
+    span = cfg["span"]
+    n = cfg["n"]
+    for i in range(n):
+        ang = i * (2.0 * math.pi / float(n)) + frame_idx * 0.27
+        d = span + _puff_wobble(i + frame_idx * 17, span)
+        r = cfg["r_puff"] * (1.0 + (0.16 if i % 3 == 0 else -0.10))
+        # 火和烟交错分布而不是"前一半火后一半烟", 免得出现一半橘一半灰的分界
+        is_fire = ((i * 7) % 10) < int(cfg["fire"] * 10.0)
+        if is_fire:
+            # mat_hot 只点缀极少数几个。给多了会渲成一堆奶白色球混在橘色里,
+            # 像爆米花而不是火。
+            mat = mat_hot if (glow > 2.0 and i % 6 == 0) else mat_fire
+        else:
+            mat = mat_dark if i % 3 == 0 else mat_smoke
+        bpy.ops.mesh.primitive_uv_sphere_add(
+            radius=r, location=(math.cos(ang) * d, math.sin(ang) * d, (i % 3 - 1) * 0.06))
+        sph = bpy.context.active_object
+        sph.data.materials.append(mat)
+        bpy.ops.object.shade_smooth()
+        objs.append(sph)
 
-        # White-hot central core
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.22 * scale_factor, location=(0, 0, 0))
+    # 内圈: 把中心填实, 顺便让团块变得凹凸不平而不是一颗光滑大球
+    for i in range(cfg["inner"]):
+        ang = i * (2.0 * math.pi / float(cfg["inner"])) - frame_idx * 0.41
+        d = span * 0.45 + _puff_wobble(i * 3 + frame_idx * 11, span) * 0.5
+        r = cfg["r_puff"] * (0.92 if i % 2 == 0 else 0.78)
+        mat = mat_fire if ((i * 3) % 10) < int(cfg["fire"] * 10.0) else mat_smoke
+        bpy.ops.mesh.primitive_uv_sphere_add(
+            radius=r, location=(math.cos(ang) * d, math.sin(ang) * d, 0.05))
+        sph = bpy.context.active_object
+        sph.data.materials.append(mat)
+        bpy.ops.object.shade_smooth()
+        objs.append(sph)
+
+    # 白热核心。f4/f5 没有 (core=0), 中心就此掏空 —— 这正是烟环该有的样子。
+    if cfg["core"] > 0.0:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=cfg["core"], location=(0, 0, 0.10))
         core = bpy.context.active_object
-        core.data.materials.append(mat_yellow)
+        core.data.materials.append(mat_hot if glow > 1.0 else mat_fire)
         bpy.ops.object.shade_smooth()
         objs.append(core)
 
-        # 4 Radial spark shard spikes
-        for i in range(4):
-            ang = i * (math.pi / 2.0) + frame_idx * 0.5
-            bpy.ops.mesh.primitive_cone_add(radius1=0.08*scale_factor, depth=0.42*scale_factor,
-                                             location=(math.cos(ang)*0.48*scale_factor,
-                                                       math.sin(ang)*0.48*scale_factor, 0))
-            shard = bpy.context.active_object
-            shard.rotation_euler = (math.radians(90), 0, ang + math.pi/2)
-            shard.data.materials.append(mat_yellow)
-            apply_uniform_clay_bevel(shard, width=0.02, segments=2)
-            objs.append(shard)
-
-    elif frame_idx <= 3:
-        # Mid: expanding orange fireball puffs with inner lighter layer
-        num_puffs = 6 + frame_idx
-        for i in range(num_puffs):
-            angle = i * (2.0 * math.pi / float(num_puffs)) + frame_idx * 0.15
-            dist  = 0.16 + frame_idx * 0.18
-            r     = (0.34 + (0.10 if i % 2 == 0 else -0.04)) * scale_factor
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(angle)*dist, math.sin(angle)*dist, 0))
-            sph = bpy.context.active_object
-            sph.data.materials.append(mat_fire if i % 3 != 2 else mat_smoke)
-            bpy.ops.object.shade_smooth()
-            objs.append(sph)
-
-        # Fading ember center
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.20 * scale_factor, location=(0, 0, 0))
-        center = bpy.context.active_object
-        center.data.materials.append(mat_fire)
-        bpy.ops.object.shade_smooth()
-        objs.append(center)
-
-    else:
-        # Late: billowing dark smoke tufts with pale ash wisps
-        num_puffs = 7 + (frame_idx - 4)
-        for i in range(num_puffs):
-            angle = i * (2.0 * math.pi / float(num_puffs)) + frame_idx * 0.2
-            dist  = 0.24 + (frame_idx - 4) * 0.22
-            r     = (0.32 + (0.12 if i % 2 == 0 else -0.05)) * scale_factor
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(math.cos(angle)*dist, math.sin(angle)*dist, 0))
-            sph = bpy.context.active_object
-            sph.data.materials.append(mat_dark if i % 3 == 0 else mat_smoke)
-            bpy.ops.object.shade_smooth()
-            objs.append(sph)
-
-        # Tiny residual ember core
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12 * scale_factor, location=(0, 0, 0))
-        ember = bpy.context.active_object
-        ember.data.materials.append(mat_fire)
-        bpy.ops.object.shade_smooth()
-        objs.append(ember)
+    # 放射状尖刺: 只在头两三帧出现, 是"炸开的一瞬间"的读法。
+    # 老版本把它们摆在 0.48*scale, 全被火球吞了, 等于没画。
+    for i in range(cfg["spikes"]):
+        ang = i * (2.0 * math.pi / float(cfg["spikes"])) + frame_idx * 0.5
+        ln = cfg["spike_len"]
+        # 圆锥以中心定位、沿轴向伸出 depth, 所以尖端在 d + ln/2。把中心放在
+        # span + ln/2 上, 尖端正好落在 span + ln —— 这样 spike_len 就是"露在
+        # 火球外面多长", 可以直接对着画幅半宽 (ortho/2) 验有没有出框。
+        d = span + ln * 0.5
+        bpy.ops.mesh.primitive_cone_add(
+            radius1=0.11, depth=ln,
+            location=(math.cos(ang) * d, math.sin(ang) * d, 0))
+        shard = bpy.context.active_object
+        shard.rotation_euler = (math.radians(90), 0, ang + math.pi / 2)
+        shard.data.materials.append(mat_hot)
+        apply_uniform_clay_bevel(shard, width=0.02, segments=2)
+        objs.append(shard)
 
     return objs
+
 
 def build_sokpop_spawn_star(frame_idx):
     objs = []
