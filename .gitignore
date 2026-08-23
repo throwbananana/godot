@@ -9,3 +9,8 @@
 scratchpad/
 *.pyc
 __pycache__/
+
+# 平衡性日志 (scripts/balance_log.gd 落盘, tools/analyze_balance_log.py 消费)。
+# 这是本地测量记录, 不是仓库资产 —— 每次调试/测试都会追加, 入库只会让 diff
+# 变成噪音, 而且不同机器/不同次数跑出来的行数天然不一样。
+logs/

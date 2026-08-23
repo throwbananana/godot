@@ -13,6 +13,7 @@ const MapTemplates = preload("res://scripts/map_templates.gd")
 const MapDirector = preload("res://scripts/map_director.gd")
 const DarknessFog = preload("res://scripts/darkness_fog.gd")
 const FallingBombHazard = preload("res://scripts/falling_bomb_hazard.gd")
+const BalanceLog = preload("res://scripts/balance_log.gd")
 
 const TILE_SIZE: float = 48.0
 const TILE_SCALE: float = TILE_SIZE / 256.0
@@ -54,6 +55,7 @@ var factory_scene: PackedScene
 var drifting_supplies_scene: PackedScene
 var factory_instances: Array[Node] = [] # tracked for the battle-end gold/XP reward multiplier
 var battle_gold_earned: int = 0 # reset in start_game(), read by the Factory reward multiplier at _game_over()
+var battle_start_msec: int = 0 # reset in start_game(), read by the balance log at _game_over()
 var has_treasure_key: bool = false
 var key_has_dropped: bool = false
 var key_hidden_target_type: String = "block" # "block" or "enemy"
@@ -307,6 +309,7 @@ func start_game() -> void:
 	is_game_over = false
 	is_victory = false
 	battle_gold_earned = 0
+	battle_start_msec = Time.get_ticks_msec()
 	shovel_timer = 0.0
 	is_shovel_active = false
 	hud_status.visible = false
@@ -1734,6 +1737,8 @@ func _game_over(victory: bool) -> void:
 			modal_desc_str = "基地要塞被敌军重炮摧毁或战车全毁！"
 			btn_action_text = "RETURN TO MENU"
 
+	_log_battle_result(victory)
+
 	if victory_modal_root:
 		victory_modal_root.visible = true
 		for c in victory_modal_stats.get_children():
@@ -1765,6 +1770,39 @@ func _game_over(victory: bool) -> void:
 		hud_status.visible = true
 		btn_restart.text = btn_action_text
 		btn_restart.visible = true
+
+## 每打完一场就往 logs/balance/battle_result.jsonl 追加一行。
+##
+## 探针 (tools/probe_balance_report.gd) 量的是**理论值**: 敌人刷出来多少血、
+## 期望掉多少金。这里量的是**实机值**: 这一场实际花了多久、实际捡到多少金、
+## 死了几条命。两者的差就是探针看不见的那部分 —— 金币是掉在地上要开过去捡的
+## (25 秒消失, 120px 磁吸), 所以"期望收入"和"到手收入"从来不是一回事; 探针
+## 假设全捡到, 实机会告诉你到手率是多少。
+##
+## 放在 _apply_factory_reward_multiplier() 之后, 所以 gold 是最终结算值。
+## BalanceLog 自己判断开关 (非 debug 构建不写, TANK_BALANCE_LOG=0 也能关)。
+func _log_battle_result(victory: bool) -> void:
+	var dur := float(Time.get_ticks_msec() - battle_start_msec) / 1000.0
+	BalanceLog.emit("battle_result", {
+		"mode": int(GameState.mode),
+		"act": GameState.current_act,
+		"floor": GameState.current_floor,
+		"bt": GameState.battle_type,
+		"challenge": GameState.challenge_mode,
+		"victory": victory,
+		"duration_s": dur,
+		"score": score,
+		"gold_earned": battle_gold_earned,
+		"enemies_spawned": enemies_spawned,
+		"total_enemies": total_enemies,
+		"level": rpg_mgr.level,
+		"atk_damage": rpg_mgr.get_atk_damage(1),
+		"p1_lives": p1_lives,
+		"p2_lives": p2_lives,
+		"player_count": GameState.player_count,
+		"gold_after": GameState.gold,
+	})
+
 
 func _on_button_action() -> void:
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
