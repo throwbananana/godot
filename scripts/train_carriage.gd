@@ -169,6 +169,33 @@ func _find_nearest_target() -> Node2D:
 			nearest = node
 	return nearest
 
+## 车厢炮的伤害。基础 1 (炮塔) / 2 (火箭), 再加**一半**的 atk_bonus。
+##
+## 原来是写死的 1 和 2, 完全不吃成长。后果是 train 分支会随等级越拖越弱:
+## 实测 24 级时主炮已经 7 伤, 两节车厢加起来只有 3.53 DPS, 占全部输出的 14%
+## (18 级时还有 19%) —— 分支特色被自己的成长曲线稀释掉了。整条分支的 DPS
+## 25.4, 而 heavy 37.4 / speed 38.9, 差三分之一, 分支加成只剩 +3 血。
+##
+## 取一半而不是全额: 车厢是**额外**的枪管, 拿全额的话两节车厢等于把 train
+## 的总输出直接顶到三倍主炮, 反过来一家独大。一半的话 24 级时车厢
+## (4 + 5) / 0.85 = 10.6 DPS, train 合计约 32.5, 落在 heavy/speed 下面一点,
+## 再算上 +3 血和车厢本身能挡子弹, 大致持平。
+##
+## 敌方车厢 (TRAIN_BOSS 复用同一个场景) 不吃这条 —— 它没有 rpg_mgr 可读,
+## resolve_train_owner 会返回 null, 直接落回基础值。
+func _carriage_damage(is_rocket: bool) -> int:
+	var base: int = 2 if is_rocket else 1
+	if is_enemy:
+		return base
+	var main = get_tree().current_scene
+	if main == null or not ("rpg_mgr" in main) or main.rpg_mgr == null:
+		return base
+	var owner_node = TrainFollowHelper.resolve_train_owner(self)
+	if owner_node == null or not ("player_id" in owner_node):
+		return base
+	return base + int(main.rpg_mgr.atk_bonus) / 2
+
+
 func _fire_bullet(dir: Vector2, is_rocket: bool) -> void:
 	if not bullet_scene:
 		return
@@ -176,7 +203,7 @@ func _fire_bullet(dir: Vector2, is_rocket: bool) -> void:
 	var bullet = bullet_scene.instantiate()
 	bullet.direction = dir
 	bullet.speed = 480.0 if not is_rocket else 360.0
-	bullet.damage = 1 if not is_rocket else 2
+	bullet.damage = _carriage_damage(is_rocket)
 	bullet.can_destroy_steel = is_rocket
 	bullet.shooter = self
 	bullet.shooter_type = "enemy" if is_enemy else "player"

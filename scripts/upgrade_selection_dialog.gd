@@ -249,11 +249,18 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 		for p in perk_pool:
 			var stacks = rpg_mgr.get_perk_stacks(p["id"], player_id)
 			var cap = GameState.max_stacks_for_perk(p["id"])
-			if stacks < cap:
-				var card = p.duplicate()
-				if stacks > 0:
-					card["tag"] = "%s [已强化 %d/%d]" % [card["tag"], stacks, cap]
-				available_perks.append(card)
+			if stacks >= cap:
+				continue
+			# 射速类强化在冷却撞到地板之后完全没有效果 (player.gd::_fire() 把
+			# 冷却夹在 0.18/0.32 秒)。实测叠满 3 层 rapid_loader 的话 10 级就
+			# 到底, 也就是一幕三分之一处往后再抽到它就是废卡 —— 而卡面上写的是
+			# "冷却时间额外缩短 30%"。宁可不发这张牌, 也不发一张骗人的牌。
+			if p["id"] == "rapid_loader" and rpg_mgr.is_fire_rate_capped(player_id, 0.30):
+				continue
+			var card = p.duplicate()
+			if stacks > 0:
+				card["tag"] = "%s [已强化 %d/%d]" % [card["tag"], stacks, cap]
+			available_perks.append(card)
 		available_perks.shuffle()
 
 		while choices.size() < 3 and available_perks.size() > 0:

@@ -30,11 +30,12 @@ const PlayerTank = preload("res://scripts/player.gd")
 
 const BRANCHES := ["default", "speed", "heavy", "train"]
 
-## player.gd::_fire() 里的基准冷却与地板值。这两个数在那边是 @export /
-## 字面量, 没有常量可 import —— 这里注明来源, 改那边要同步改这里。
-const BASE_FIRE_COOLDOWN := 0.65
-const CD_FLOOR_SPEED := 0.18
-const CD_FLOOR_OTHER := 0.32
+## 基准冷却与地板值从 RPGManager 取, 不在这里再抄一份 —— 抄的必然发散。
+## (那三个常量在 rpg_manager.gd 里, 注释说明了它们必须和 player.gd::_fire()
+## 的字面量保持一致。)
+const BASE_FIRE_COOLDOWN := RPGManager.BASE_FIRE_COOLDOWN
+const CD_FLOOR_SPEED := RPGManager.FIRE_CD_FLOOR_SPEED
+const CD_FLOOR_OTHER := RPGManager.FIRE_CD_FLOOR_OTHER
 
 ## 一场常规战大概多久。用来把"每秒回复"折算成"这一场能回多少血"。
 ## 12 辆车 / 同屏上限 4 / 出车间隔 2.5 秒 -> 30 秒起步, 取 45 秒。
@@ -105,9 +106,12 @@ func _dps_by_branch() -> void:
 			var line := "%4d  %-8s %2d  %4d  %5.3f  %5.2f   x%.2f" \
 				% [lvl, branch, tier, dmg, cd, dps, dps / maxf(0.001, base_dps)]
 			if branch == "train" and tier >= 2:
-				# 车厢是 train 分支的全部特色, 但伤害写死不吃 atk_bonus
-				var share := _train_carriage_share(dps)
-				line += "   (+车厢 %.2f DPS, 占比 %.0f%%)" % [(1.0 + 2.0) / 0.85, 100.0 * share]
+				# 车厢是 train 分支的全部特色。伤害现在吃一半 atk_bonus,
+				# 不然主炮一路涨到 7-13 的时候车厢会被稀释成个位数占比。
+				_cur_atk_bonus = m.atk_bonus
+				var c_dps := _train_carriage_dps(dps)
+				line += "   (+车厢 %.2f DPS = 合计 %.2f, 占比 %.0f%%)" \
+					% [c_dps, dps + c_dps, 100.0 * _train_carriage_share(dps)]
 			print(line)
 		print("")
 
@@ -165,30 +169,58 @@ func _perk_inertness() -> void:
 ## atk_bonus**。所以随着主炮伤害一路涨到 7-13, 车厢的贡献占比会一路稀释。
 func _train_carriage_share(main_dps: float) -> float:
 	# tier2: 炮塔车厢 (伤害1) + 火箭车厢 (伤害2), 两者 fire_interval 都是 0.85
-	var carriage_dps := (1.0 + 2.0) / 0.85
-	return carriage_dps / (main_dps + carriage_dps)
+	return _train_carriage_dps(main_dps) / (main_dps + _train_carriage_dps(main_dps))
+
+
+## 车厢伤害 = 基础(1/2) + atk_bonus/2, 见 train_carriage.gd::_carriage_damage()。
+## 这里按 main_dps 反推 atk_bonus 不可靠, 所以直接传 mgr 更好 —— 但为了少改
+## 调用点, 用一个显式的 atk_bonus 参数版本。
+var _cur_atk_bonus: int = 0
+
+func _train_carriage_dps(_main_dps: float) -> float:
+	var turret := 1 + _cur_atk_bonus / 2
+	var rocket := 2 + _cur_atk_bonus / 2
+	return (float(turret) + float(rocket)) / 0.85
+
+
+## 回复的有效时间占比。
+##
+## player.gd 现在挨打之后 REGEN_COMBAT_LOCKOUT 秒内不回血, 所以"每秒回复"
+## 不能直接乘时长了。把挨打当成速率 λ 的泊松过程, "最近 L 秒内没挨过打"的
+## 概率就是 e^(-λL), 这也正是回复真正在跑的时间占比。
+##
+## λ 由命中率推出来: 同屏 4 辆车, 平均 2.2 秒一发 -> 1.82 发/秒, 乘命中率。
+func _regen_uptime(hit_rate: float) -> float:
+	var lam := (4.0 / 2.2) * hit_rate
+	return exp(-lam * PlayerTank.REGEN_COMBAT_LOCKOUT)
 
 
 func _effective_hp() -> void:
-	print("--- 有效血量 = 最大血 + 每秒回复 x 一场 %.0f 秒 ---" % BATTLE_SECONDS)
-	print("等级  分支      最大血  回复/秒  一场能回  有效血量  相当于挨几发(1伤)")
-	for lvl in [6, 12, 18, 24]:
-		for branch in BRANCHES:
-			var tier: int = clampi((lvl - 2) / 8, 0, 2)
-			if branch == "default":
-				tier = 0
-			var m := _mgr_at(lvl, branch, tier)
-			var hp: int = m.get_player_max_hp(1)
-			var regen: float = m.get_regen_rate(1)
-			var healed := regen * BATTLE_SECONDS
-			var eff := float(hp) + healed
-			rows.append({
-				"metric": "ehp", "level": lvl, "branch": branch, "tier": tier,
-				"max_hp": hp, "regen": regen, "effective_hp": eff,
-			})
-			print("%4d  %-8s %6d  %7.2f  %8.1f  %8.1f  %d"
-				% [lvl, branch, hp, regen, healed, eff, int(eff)])
-		print("")
+	print("--- 有效血量 = 最大血 + 回复 x 一场 %.0f 秒 x 回复在跑的时间占比 ---" % BATTLE_SECONDS)
+	print("    (挨打后 %.1f 秒不回血, 见 player.gd::REGEN_COMBAT_LOCKOUT)" % PlayerTank.REGEN_COMBAT_LOCKOUT)
+	for hr in [0.15, 0.25]:
+		var up := _regen_uptime(hr)
+		print("\n  命中率 %.0f%% -> 回复只有 %.0f%% 的时间在跑" % [100.0 * hr, 100.0 * up])
+		print("  等级  分支      最大血  回复/秒  一场能回  有效血量  有效/最大")
+		for lvl in [12, 18, 24]:
+			for branch in BRANCHES:
+				var tier: int = clampi((lvl - 2) / 8, 0, 2)
+				if branch == "default":
+					tier = 0
+				var m := _mgr_at(lvl, branch, tier)
+				var hp: int = m.get_player_max_hp(1)
+				var regen: float = m.get_regen_rate(1)
+				var healed := regen * BATTLE_SECONDS * up
+				var eff := float(hp) + healed
+				rows.append({
+					"metric": "ehp", "level": lvl, "branch": branch, "tier": tier,
+					"hit_rate": hr, "uptime": up,
+					"max_hp": hp, "regen": regen, "effective_hp": eff,
+					"ehp_ratio": eff / float(maxi(1, hp)),
+				})
+				print("  %4d  %-8s %6d  %7.2f  %8.1f  %8.1f    x%.1f"
+					% [lvl, branch, hp, regen, healed, eff, eff / float(maxi(1, hp))])
+			print("")
 
 
 ## 回复是每秒结算的, 所以真正要问的不是"回复多不多", 而是**敌人每秒要打中
@@ -197,23 +229,37 @@ func _effective_hp() -> void:
 ## 场上同时最多 main.gd::MAX_ALIVE_BASE 辆车, 常规兵的 fire_interval 在
 ## 1.6-2.8 之间, 子弹伤害 1 (少数 2-3)。
 func _regen_vs_incoming() -> void:
-	print("--- 回复 vs 敌方火力 ---")
-	print("等级  回复/秒  敌人需要的命中率(4辆同屏, 平均2.2秒一发, 1伤)")
-	var shots_per_sec := 4.0 / 2.2 # 同屏 4 辆, 平均 2.2 秒一发
+	print("--- 回复 vs 敌方火力 (自洽解) ---")
+	print("等级  标称回复  实际回复  敌人需要的命中率(4辆同屏, 2.2秒一发, 1伤)")
+	var shots_per_sec := 4.0 / 2.2
 	for lvl in [6, 12, 18, 24]:
 		var m := _mgr_at(lvl, "default", 0)
 		var regen: float = m.get_regen_rate(1)
-		var need := regen / shots_per_sec
+		# 命中率和回复占比互相依赖 (打得越准 -> 锁定越频繁 -> 回复越少),
+		# 所以要解一个不动点: 找出恰好让 "回复 x 占比 == 命中输出" 的命中率。
+		# 二分法, 30 次足够收敛到小数点后好几位。
+		var lo := 0.0
+		var hi := 1.0
+		for _i in range(30):
+			var mid := (lo + hi) * 0.5
+			var incoming := shots_per_sec * mid
+			var effective := regen * _regen_uptime(mid)
+			if effective > incoming:
+				lo = mid # 回复还压得住, 命中率得再高
+			else:
+				hi = mid
+		var need := (lo + hi) * 0.5
+		var eff_regen := regen * _regen_uptime(need)
 		rows.append({
 			"metric": "regen_vs_fire", "level": lvl,
-			"regen": regen, "needed_hit_rate": need,
+			"regen": regen, "effective_regen": eff_regen, "needed_hit_rate": need,
 		})
 		var note := ""
-		if need >= 1.0:
-			note = "  <== 全中都压不过回复"
+		if need >= 0.95:
+			note = "  <== 几乎全中才压得过回复"
 		elif need >= 0.6:
-			note = "  <== 需要极高命中率"
-		print("%4d  %7.2f  %5.0f%%%s" % [lvl, regen, 100.0 * need, note])
+			note = "  <== 需要很高命中率"
+		print("%4d  %8.2f  %8.2f  %5.0f%%%s" % [lvl, regen, eff_regen, 100.0 * need, note])
 	print("")
 	print("  注: 命中率算的是「敌人射出的子弹里有多大比例打中玩家」。坦克大战里")
 	print("  玩家一直在动、地形挡弹, 真实命中率远低于 50%。")

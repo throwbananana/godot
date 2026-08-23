@@ -5,6 +5,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
+const RPGManager = preload("res://scripts/rpg_manager.gd")
 
 signal closed
 
@@ -259,7 +260,24 @@ func _can_buy_item(item_id: String) -> bool:
 			if int(perks.get(item_id, 0)) < cap:
 				return true
 		return false
+	if item_id == "autoloader":
+		# 射速强化在冷却撞到地板之后是**纯白给** —— player.gd::_fire() 把冷却
+		# 夹在 0.18/0.32 秒, 到底之后再涨射速一点效果都没有, 而卡片上照样写着
+		# "+10% 装填速度"。这和上面那两条上限检查是同一件事: 不卖零。
+		# 详见 rpg_manager.gd::is_fire_rate_capped()。
+		for pid in _reward_targets():
+			if not _fire_rate_capped_for(pid, 0.10):
+				return true
+		return false
 	return true
+
+
+## 商店跑在 spire_map.tscn 里, 没有活着的 RPGManager 可用。这里临时造一个并
+## 从 GameState 同步 —— 不在这边复刻射速公式, 复刻的必然和 rpg_manager 发散。
+static func _fire_rate_capped_for(player_id: int, extra_rate: float) -> bool:
+	var m := RPGManager.new()
+	m.sync_from_game_state()
+	return m.is_fire_rate_capped(player_id, extra_rate)
 
 func _grant_perk_to_team(perk_id: String) -> void:
 	for pid in _reward_targets():

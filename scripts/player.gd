@@ -28,6 +28,23 @@ var facing_direction: Vector2 = Vector2.UP
 var is_invulnerable: bool = false
 var invulnerable_timer: float = 0.0
 var regen_accumulator: float = 0.0
+
+## 受击之后多久内不回血。
+##
+## 纳米自愈原来是无条件每秒结算的, 于是它不是"回血", 而是一层看不见的额外
+## 血量: 24 级时 1.5 HP/秒, 一场 45 秒的战斗能回 67.5 血, 而最大血才 9 ——
+## 有效血量 76, 等于一场能挨 76 发。换算成敌人视角: 同屏 4 辆车、平均 2.2 秒
+## 一发、1 点伤害, 理论最大输出 1.82 伤/秒, 也就是**敌人要有 83% 的命中率才
+## 压得过回复**。坦克大战里玩家一直在动、地形还挡弹, 真实命中率远低于这个数,
+## 所以后半幕的常规子弹根本打不死人, 只有自爆卡车和轰炸机那种爆发伤害才致命。
+##
+## 而且它是个隐藏数值 —— 回复速率不在任何 UI 上, 玩家只会觉得"我好像不太会死"。
+##
+## 加锁之后回复从"被动数值"变成"脱离交火才拿得到的奖励": 想回血就得退出去,
+## 而退出去意味着让出场面。这才是坦克大战该有的取舍, 而不是站桩对射。
+## 3 秒是量出来的 —— 见 tools/probe_player_power.gd 里按命中率折算的有效血量表。
+const REGEN_COMBAT_LOCKOUT := 3.0
+var regen_lockout: float = 0.0
 var is_on_sand: bool = false
 var sand_overlap_count: int = 0
 var is_on_ice: bool = false
@@ -304,10 +321,13 @@ func _physics_process(delta: float) -> void:
 			sprite.modulate = base_color
 		return
 
+	if regen_lockout > 0.0:
+		regen_lockout -= delta
+
 	var main = get_tree().current_scene
 	if main and main.rpg_mgr:
 		var regen = main.rpg_mgr.get_regen_rate(player_id)
-		if regen > 0.0 and current_health < max_health:
+		if regen > 0.0 and current_health < max_health and regen_lockout <= 0.0:
 			regen_accumulator += regen * delta
 			if regen_accumulator >= 1.0:
 				regen_accumulator -= 1.0
@@ -563,6 +583,11 @@ func take_damage(amount: int) -> void:
 		return
 	current_health -= amount
 	health_changed.emit(player_id, current_health, max_health)
+
+	# 挨了打就断掉回复的读条, 并清空累计进度 —— 不清的话连续挨打反而会在
+	# 锁定结束的瞬间"攒"出一格血来。见 REGEN_COMBAT_LOCKOUT 那段。
+	regen_lockout = REGEN_COMBAT_LOCKOUT
+	regen_accumulator = 0.0
 
 	# 黏土受击挤压形变动画 + 碎屑飞溅
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)

@@ -34,6 +34,18 @@ var p2_unlocked_perks: Dictionary = {}
 # 叠 3 层的数值感觉失控，同时仍然让每一次选择都有明确增量。
 const PERK_STACK_CURVE := [1.0, 0.65, 0.45]
 
+## heavy 分支在 tier 0 就拿到的那一份加成 (伤害和最大血各一份)。
+##
+## 原来是 2, 而 tier 0 的基准是"伤害 1 / 最大血 1" —— 也就是刚选完分支的那
+## 一刻, heavy 的伤害和血都是别人的 3 倍。实测 1 级时 heavy 的 DPS 是
+## default 的 **2.55 倍**, 而 speed 只有 1.70 倍。分支选择发生在第一次升级、
+## 而且没有跳过选项, 所以这等于直接告诉玩家"开局选 heavy"。
+##
+## 收到 1 之后 1 级的 DPS 倍率变成 1.70, 和 speed 齐平; tier 2 时是 +5 而不是
+## +6, 24 级 DPS 34.5 对 speed 38.9 —— heavy 用一点输出换那 +5 血, 这才是
+## "重装"该有的形状。分支之间的差距应该长在 tier 上, 而不是白送在 tier 0。
+const HEAVY_BONUS_BASE := 1
+
 func get_branch(player_id: int = 1) -> String:
 	return tank_branch if player_id == 1 else p2_tank_branch
 
@@ -243,7 +255,7 @@ func get_player_max_hp(player_id: int = 1) -> int:
 	var tier = get_branch_tier(player_id)
 	var hp = 1 + max_hp_lvl
 	if branch == "heavy":
-		hp += 2 + tier * 2
+		hp += HEAVY_BONUS_BASE + tier * 2
 	elif branch == "train":
 		hp += 1 + tier
 	hp += int(round(get_perk_value("titan_plating", 2.0, player_id)))
@@ -271,12 +283,44 @@ func get_fire_cooldown_mult(player_id: int = 1) -> float:
 	rate += get_perk_value("rapid_loader", 0.30, player_id)
 	return 1.0 / rate
 
+## player.gd::_fire() 把冷却夹在一个地板上 (speed 分支 0.18 秒, 其余 0.32),
+## 基准冷却是 0.65。一旦夹到底, **之后每一点射速强化都是纯白给** ——
+## 升级自动给的 fire_rate_lvl、商店 90G 的 autoloader、perk rapid_loader,
+## 全部零收益, 而 UI 上照样写着"+10% 装填速度"。
+##
+## 不叠 perk 的话这事不严重 (default 22 级才撞地板, 一幕大约涨到 24 级)。
+## 但 rapid_loader 每层 +0.30 射速、可叠 3 层, 实测叠满之后**10 级就撞地板**,
+## 也就是一幕三分之一处往后所有射速来源都是零。这和之前修过的"商店扣了钱却
+## 因为到上限没发出去"是同一类问题: 玩家花了代价, 拿到的是零, 而且没有任何
+## 提示。区别只在于这次藏在一个 clamp 里。
+##
+## 处理方式也和那次一致 —— 把判断放进**能不能买/能不能选**的路径里, 而不是
+## 事后补偿。见 shop_dialog.gd::_can_buy_item 与 upgrade_selection_dialog。
+##
+## 这两个常量必须和 player.gd::_fire() 保持一致; 那边是字面量, 没有常量可以
+## import, 所以改那边要同步改这里。
+const BASE_FIRE_COOLDOWN := 0.65
+const FIRE_CD_FLOOR_SPEED := 0.18
+const FIRE_CD_FLOOR_OTHER := 0.32
+
+## 再加 extra_rate 点射速之后, 冷却是不是仍然贴在地板上 (也就是这份强化
+## 完全没有效果)。extra_rate 默认 0 = 问"现在是不是已经到底了"。
+func is_fire_rate_capped(player_id: int = 1, extra_rate: float = 0.0) -> bool:
+	var branch = get_branch(player_id)
+	var floor_v = FIRE_CD_FLOOR_SPEED if branch == "speed" else FIRE_CD_FLOOR_OTHER
+	# get_fire_cooldown_mult 返回的是 1/rate, 所以先还原成 rate 再加。
+	var rate = 1.0 / maxf(0.0001, get_fire_cooldown_mult(player_id))
+	var cd_now = BASE_FIRE_COOLDOWN / maxf(0.0001, rate)
+	var cd_after = BASE_FIRE_COOLDOWN / maxf(0.0001, rate + extra_rate)
+	# 加之前就已经到底, 而且加完还是到底 -> 这份强化一点用都没有
+	return cd_now <= floor_v and cd_after <= floor_v
+
 func get_atk_damage(player_id: int = 1) -> int:
 	var branch = get_branch(player_id)
 	var tier = get_branch_tier(player_id)
 	var dmg = 1 + atk_bonus
 	if branch == "heavy":
-		dmg += 2 + tier * 2
+		dmg += HEAVY_BONUS_BASE + tier * 2
 	dmg += int(round(get_perk_value("high_explosive", 2.0, player_id)))
 	return dmg
 

@@ -36,7 +36,7 @@ pwsh tools/run_tests.ps1 -Probe               # …plus the balance sampling pro
 
 It exists because of a specific failure mode: a broken assertion in `test_shop_and_attack_speed.gd` manifested as Godot **hanging for 90 s** rather than erroring, and chaining all 35 into one command blows the 10-minute limit and gets killed — so the hang was misread as a timeout and went unlocated. The runner gives each test its own `-TimeoutSec` and reports `PASS`/`FAIL`/`TIMEOUT` as three distinct outcomes. It also appends one row per test to `logs/balance/testrun.jsonl`, which is what `python tools/analyze_balance_log.py --tests` reads to flag "this test suddenly takes 20× longer than its median" — the first symptom of that same class of bug.
 
-The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, `test_explosion_vfx.gd`, `test_tree_visibility.gd`, `test_oil_barrel_blast.gd`, `test_texture_mipmaps.gd`, `test_armor_plating.gd`, …) — check for an existing one covering your area before writing a new script.
+The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, `test_explosion_vfx.gd`, `test_tree_visibility.gd`, `test_oil_barrel_blast.gd`, `test_texture_mipmaps.gd`, `test_armor_plating.gd`, `test_player_power.gd`, …) — check for an existing one covering your area before writing a new script.
 
 Two of those are project-wide gates rather than feature tests, and are worth running after any change that touches spawning or art: `test_compile_all.gd` and `test_texture_mipmaps.gd`.
 
@@ -355,13 +355,31 @@ Measuring shop frequency needs a **DP over the DAG, not a random walk** — a re
 
 Measurement gotcha, learned the hard way: count enemies at `child_entered_tree`, **not** by tallying survivors after a delay. 160 tanks share three spawn points, and SUICIDE's 84px blast kills its neighbours — a survivor tally reads TRAIN_BOSS at 26% against a true 15%, and SUICIDE at 0%, because the sample skews toward whatever has the most HP.
 
+#### The player side — measure the denominator too
+
+Everything above measures enemies. Balance is a ratio, so an accurate enemy curve proves nothing on its own; `tools/probe_player_power.gd` measures the other half (DPS by branch, effective HP, where the fire-cooldown floor binds), and `tools/test_player_power.gd` gates it. The first run found four problems, all invisible from reading the constants:
+
+- **Regen was a hidden second health bar.** `get_regen_rate()` ticked unconditionally at 1.5 HP/s by level 24, so a 45 s battle healed 67.5 HP against a 9 HP maximum — effective HP 76, and **enemies needed an 83% hit rate to out-damage it**. In a game where you're always moving and terrain eats bullets, that meant ordinary bullets could not kill a late-act player at all; only burst damage (SUICIDE 3, BOMBER 3) mattered. `player.gd::REGEN_COMBAT_LOCKOUT` (3 s, cleared accumulator) turns it into a reward for disengaging: the required hit rate is now 23%.
+
+  Computing that threshold needs a **fixed point, not a division** — hit rate and regen uptime depend on each other (hitting more often keeps the lockout up, which cuts regen). Both the probe and the gate bisect for it. Uptime itself is `e^(-λL)`: the chance of no hit within the last `L` seconds, treating incoming fire as Poisson.
+
+- **The `train` branch was being diluted by its own growth curve.** Carriage bullets were hardcoded to damage 1 and 2 and never read `atk_bonus`, so as the main gun climbed to 7 the two carriages fell to **14%** of total output, leaving train at ~25 DPS against heavy 37 / speed 39 with only +3 HP to show for it. Carriage damage is now `base + atk_bonus / 2` (half, not full — at full damage two carriages would triple train's output and flip the imbalance the other way). Share is back to 33%, train totals ~32.
+- **The shop sold an item that does nothing.** `player.gd::_fire()` clamps cooldown to 0.18 s (speed) / 0.32 s (others). Past that, every further fire-rate source is worth exactly zero — and with `rapid_loader` stacked to 3, the clamp binds at **level 10** of a ~24-level act. The 90 G `autoloader` card kept selling and the level-up screen kept offering `rapid_loader`, both still advertising "+10% reload". Fixed the same way the perk-cap bug was: the check lives in the buy/offer path (`RPGManager.is_fire_rate_capped()`), not in a post-hoc refund.
+- **`heavy` won the branch choice before it started.** `+2` damage and `+2` HP at tier 0, against a tier-0 baseline of 1 damage and 1 HP — 1st-level DPS was **2.55×** default where speed was 1.70×. Since the branch screen appears at the first level-up with no skip option, that's just telling the player what to pick. `HEAVY_BONUS_BASE` is 1 now, so the opening spread is 1.70× and the branches separate on tier instead.
+
+Two testing notes from writing that gate, both of which produced a wrong result first:
+
+- **Assert on behaviour, not on the constant.** The first regen check only read `REGEN_COMBAT_LOCKOUT`, which passes fine if someone keeps the constant and deletes the assignment. The behavioural version (damage the player, check the lockout armed and the accumulator cleared) immediately failed for a reason worth knowing: `player.gd::_ready()` calls `set_invulnerable(3.5)`, so a freshly spawned player ignores `take_damage()` entirely.
+- **Instantiate scenes, not scripts.** `TrainCarriage.new()` leaves `@onready var sprite = $Sprite2D` unresolved and prints a screenful of "Node not found". Load the `.tscn`.
+
 #### The balance log
 
 The gates above answer "did it pass". They can't answer "is this better than last week", which is the question you actually have while tuning — so measurements get written to `logs/balance/*.jsonl` (gitignored) and read back by a statistics script.
 
 ```powershell
-& $godot --headless --path . --script tools/probe_balance_report.gd      # sample: ~4 min
+& $godot --headless --path . --script tools/probe_balance_report.gd      # enemies: ~4 min
 & $godot --headless --path . --script tools/probe_balance_report.gd -- --samples 120 --acts 800
+& $godot --headless --path . --script tools/probe_player_power.gd        # players: instant
 python tools/analyze_balance_log.py                    # default report
 python tools/analyze_balance_log.py --cat enemy_roll --field hp --by floor
 python tools/analyze_balance_log.py --vs <commit>      # before/after, with Welch t
