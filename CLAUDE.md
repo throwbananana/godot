@@ -36,7 +36,7 @@ pwsh tools/run_tests.ps1 -Probe               # …plus the balance sampling pro
 
 It exists because of a specific failure mode: a broken assertion in `test_shop_and_attack_speed.gd` manifested as Godot **hanging for 90 s** rather than erroring, and chaining all 35 into one command blows the 10-minute limit and gets killed — so the hang was misread as a timeout and went unlocated. The runner gives each test its own `-TimeoutSec` and reports `PASS`/`FAIL`/`TIMEOUT` as three distinct outcomes. It also appends one row per test to `logs/balance/testrun.jsonl`, which is what `python tools/analyze_balance_log.py --tests` reads to flag "this test suddenly takes 20× longer than its median" — the first symptom of that same class of bug.
 
-The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, `test_explosion_vfx.gd`, `test_tree_visibility.gd`, `test_oil_barrel_blast.gd`, `test_texture_mipmaps.gd`, …) — check for an existing one covering your area before writing a new script.
+The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, `test_explosion_vfx.gd`, `test_tree_visibility.gd`, `test_oil_barrel_blast.gd`, `test_texture_mipmaps.gd`, `test_armor_plating.gd`, …) — check for an existing one covering your area before writing a new script.
 
 Two of those are project-wide gates rather than feature tests, and are worth running after any change that touches spawning or art: `test_compile_all.gd` and `test_texture_mipmaps.gd`.
 
@@ -53,12 +53,14 @@ Most of the earlier "four stacked generations" of build scripts were consolidate
 | `build_all_sokpop_assets_unified.py` | tanks, tiles, eagle, buildings, power-ups, map nodes, explosions, spawn stars, bullets — and saves `assets/blender/tank_battle_assets.blend` |
 | `build_sokpop_animations.py` | muzzle flash, clay debris, shield bubble, shockwave, dust puff, damaged base |
 | `build_sokpop_clay_ui.py` | title banner, clay buttons, HP hearts |
+| `build_armor_plating.py` | `enemy_plate_t1/t2/t3` — the armor-tier overlays (see "Enemy toughness is integer and visible") |
 
 ```powershell
 $blender = "C:\steam\steamapps\common\Blender\blender.exe"
 & $blender --background --python tools/build_all_sokpop_assets_unified.py
 & $blender --background --python tools/build_sokpop_animations.py
 & $blender --background --python tools/build_sokpop_clay_ui.py
+& $blender --background --python tools/build_armor_plating.py   # enemy_plate_t1..t3 (3 renders)
 python tools/analyze_render_and_colors.py    # QA: per-asset clipping / luminance / saturation
 python tools/qa_tank_models_and_clipping.py  # QA: tank sprite bounding-box / clipping check
 python tools/qa_style_consistency.py         # QA: the regression suite — run this after any re-render
@@ -226,11 +228,11 @@ That 5.33× minification needs mipmaps to stay clean (nearest/unmipmapped sampli
 
 **This guarantee was inert for a long stretch and is now enforced by a test.** `.import` files were committed for all ~430 sprites as of v0.06316, every one with `mipmaps/generate=false`. Because an `.import` file makes `load()` succeed, `TextureHelper`'s `generate_mipmaps()` fallback never ran — so the pipeline's central assumption held nowhere, and nothing errored, because a texture without mipmaps renders fine, just aliased. All 453 texture `.import` files were flipped to `mipmaps/generate=true` and reimported; `tools/test_texture_mipmaps.gd` now loads every PNG under `res://assets/sprites` and asserts `get_image().has_mipmaps()`, plus asserts `default_texture_filter` is still a mipmap tier. Both halves matter — turning off either one silently restores the old behaviour. Note the `TextureHelper` fallback stays inert by design now; mipmaps come from the importer, not from runtime generation, which is also the only way they survive an export (`Image.load_from_file()` cannot read a `res://` PNG in a packed build).
 
-After adding sprites, run `godot --headless --path . --import` and then that test; the `.import` file Godot writes for a new PNG defaults to `mipmaps/generate=false`.
+After adding sprites, run `godot --headless --path . --import` and then that test; the `.import` file Godot writes for a new PNG defaults to `mipmaps/generate=false`. This is not hypothetical — the three `enemy_plate_t*.png` added later landed with mipmaps off and had to be flipped by hand before `test_texture_mipmaps.gd` would pass.
 
 Sprite naming, which now mixes two schemes:
 
-- **Enemies**: `enemy_{basic,fast,power,armor,missile,laser,boss,desert,bomber,suicide,mirage,battleship,aircraft,warp,flame}[_bonus]_f{0..5}.png` — **6 frames**, same as players (they were 2-frame historically).
+- **Enemies**: `enemy_{basic,fast,power,armor,missile,laser,boss,desert,bomber,suicide,mirage,battleship,aircraft,warp,flame}[_bonus]_f{0..5}.png` — **6 frames**, same as players (they were 2-frame historically). Plus `enemy_plate_t{1,2,3}.png`, single-frame armor-tier overlays drawn on top of *any* enemy type (one set for all 16 types, rather than 16 × 6 × 3 = 288 per-type variants).
 - **Players**: 6-frame, prefixed by both player slot and branch (`player.gd::_update_tier_appearance()`): `{player|player2}_tier{0-3}` for the default branch, or `{player|player2}_{speed|heavy}_t{1,2}` / `{player|player2}_train_loco_t{1,2}` once a branch is picked. `player2` means P2's tank, not a tier — there is no shared or recoloured sprite between P1 and P2.
 
 ### Enemies: variety gated by floor, not stat inflation
@@ -240,6 +242,24 @@ Sprite naming, which now mixes two schemes:
 FLAMETHROWER is the one enemy whose weapon is a *persistent* node rather than a per-shot call: `scripts/flame_jet.gd` is a `Node2D` parented to the tank, so the cone inherits the tank's transform and never needs per-frame coordinate syncing — which is also why it sidesteps the local-vs-global trap described above. It bypasses `fire_timer` entirely and runs its own burn/rest cycle (`FLAME_BURN_TIME` / `FLAME_REST_TIME` in `enemy.gd`); the rest window is the counterplay, and the always-lit pilot flame on the nozzle sprite is its visual tell. Range is deliberately short (132px, 2.75 tiles) so flanking beats it — lengthen that and it stops being a positioning puzzle and becomes a stat check. Its `_physics_process` branch must **not** `return` early: everything below it is movement, so an early return turns the tank into scenery (`test_flamethrower.gd` asserts this).
 
 One **act-themed "signature" enemy** slot signals which act you're in by silhouette: Act 1 → ARMOR (the default filler), Act 2 → DESERT, Act 3 → WARP, keyed off `get_visual_act()`. Daily Challenge deliberately bypasses the gate entirely and rolls uniformly across the full roster.
+
+#### Enemy toughness is integer and visible — armor plates, never a multiplier
+
+This is Battle City, not an RPG. **Enemy strength may only change in whole numbers, and every increment must be something the player can see.** In Tank 1990 the armored tank takes four hits *and looks different*; that's the contract.
+
+`max_health = base_health + armor_plates × ARMOR_PLATE_HP`, where `armor_plates` ∈ 0–3 and each level has its own overlay sprite (`enemy_plate_t1/t2/t3.png`, rendered by `tools/build_armor_plating.py`). Integer addition — no `ceil()`, no float anywhere in the health path.
+
+This replaced `max_health = ceil(base × (1 + floor × 0.08))` plus a stack of `× 1.5` / `× 1.6` / `× 1.18` multipliers for elite / boss / difficulty lap. That version was invisible by construction: a floor-12 `enemy_basic` had 3 HP and was pixel-identical to the floor-0 one, so a player who fired twice and saw it survive learned nothing except "this game inflates numbers behind my back".
+
+Design points that are easy to get wrong:
+
+- **Don't add HP to everything — spawn *plated variants*.** Blanket additive armor destroys type identity: BASIC at +6 is a 7 HP brick, and "trash dies in one shot" is the floor of the whole genre. Instead, floor raises the **upper** bound of the plate roll, so a late floor fields a *mix* of bare and plated tanks and the player can see at a glance which ones to route around. Elite / boss / difficulty lap raise the **lower** bound (`elite` +1, `boss` +2, `+cycle` per lap) — "this fight has no bare tanks in it" is itself a readable statement.
+- **Both bounds clamp to `MAX_ARMOR_PLATES`.** There must never be HP without a matching sprite — that's the old hidden multiplier sneaking back in. `tools/test_armor_plating.gd` asserts this over every (floor × battle_type × cycle) combination, and separately asserts that a plated tank actually has a `plate_sprite` child at runtime, since getting the count right but failing to attach the art is indistinguishable from a hidden stat.
+- **Consequence: high floors saturate.** Once the floor gates max the upper bound, elite/boss/lap can only push the lower bound toward 3, so acts 4–8 gain little HP. That's intended — late difficulty is meant to come from composition, count, and mechanics, per this section's heading.
+- **The overlay is a child of `Sprite2D`, not of the tank.** Scale, rotation, fire recoil, and hit-squash then all propagate for free; nothing needs per-frame syncing. It is also **hidden while a MIRAGE is camouflaged** — plating visible on a "tree" would mark the unit's position and kill the mechanic, the same reason `_update_tree_transparency()` skips camouflaged MIRAGEs.
+- **Plate tiers read by coverage first, value second — never by hue.** World sprites are drawn at `TILE_SCALE` 0.1875 (256 px → 48 px), where the only reliable signals are silhouette size and luminance. Tiers grow 4.7% → 7.7% → 13.3% alpha coverage and darken 138 → 103 → 72; `test_armor_plating.gd` asserts both are monotonic. Gold/yellow is deliberately avoided because it is already *enemy type* vocabulary (see the `tile_steel` note below) — two meanings on one channel is how you make both unreadable.
+
+Still multiplicative and still invisible, deliberately left alone this round: elite/boss `speed × 1.08` and `fire_interval × 0.85`/`× 0.80`, and the per-lap `speed × 1.07`. Fire rate is at least perceptible; the 8% speed bump is neither perceptible nor readable and is the obvious next thing to either remove or make discrete.
 
 ### Collision layers and groups
 
@@ -313,14 +333,14 @@ Measuring shop frequency needs a **DP over the DAG, not a random walk** — a re
 
 **Balance is not verifiable by reading these constants — measure it.** Because they're spread across five files and interact multiplicatively, several severe imbalances survived a long time while every constant looked individually reasonable. `tools/test_enemy_balance_curve.gd` drives the *real* `main.gd::_request_spawn_enemy()` path (never a replicated roll table — a copy drifts) and asserts four invariants that had each been violated:
 
-- **Player damage must not outrun enemy HP.** `get_atk_damage()` is `1 + atk_bonus`, and `_auto_level_bonus()` used to grant `atk_bonus += 1` *every* level, i.e. damage == level, linear and unbounded. Combined with `floor_mult` scaling rewards but **not** `max_health`, the measured result was a **100% one-shot rate from floor 4 to the end of the act** — including the 14 HP TRAIN_BOSS and the 10 HP BOSS. The whole HP-tier dimension (ARMOR 4 / BATTLESHIP 6 / TRAIN_BOSS 14) was dead: tanky units weren't tanky, only differently shaped. `floor_mult` now also scales `max_health`, and damage grows on `RPGManager.ATK_LEVELS_PER_POINT` (+1 per 4 levels, first point at level 3); both halves are needed, since either alone loses the race.
+- **Player damage must not outrun enemy HP.** `get_atk_damage()` is `1 + atk_bonus`, and `_auto_level_bonus()` used to grant `atk_bonus += 1` *every* level, i.e. damage == level, linear and unbounded. The measured result was a **100% one-shot rate from floor 4 to the end of the act** — including the 14 HP TRAIN_BOSS and the 10 HP BOSS. The whole HP-tier dimension (ARMOR 4 / BATTLESHIP 6 / TRAIN_BOSS 14) was dead: tanky units weren't tanky, only differently shaped. Damage now grows on `RPGManager.ATK_LEVELS_PER_POINT` (+1 per 4 levels, first point at level 3).
 
-  Killing the 100% case wasn't enough, though: at +1 per 3 levels the floor 5–13 one-shot rate still averaged **68–71%**, so the HP tiers were still invisible most of the time. It's now 51%, gated by `LATE_ONE_SHOT_CEILING` (60%, sitting in the gap between those two clusters — see the in-file comment for why not 55%).
+  Killing the 100% case wasn't enough: at +1 per 3 levels the floor 5–13 one-shot rate still averaged **68–71%**, so the HP tiers were still invisible most of the time. It's now 44%, gated by `LATE_ONE_SHOT_CEILING` (60%, sitting in the gap between those two clusters — see the in-file comment for why not 55%).
 
-  Two dead ends worth not repeating:
+  Three dead ends worth not repeating:
 
-  - **Don't fix this by scaling enemy HP.** Raising the floor slope for HP only (0.08 → 0.11) measured *worse* (STK 1.37 → 1.27): HP grows ~2.5× across an act while damage grows ~8×, so the slope has an order of magnitude too little authority to close it — you'd have to push it until late regular battles become HP sponges. It's also the difficulty axis this project explicitly rejects (variety via `ENEMY_MIN_FLOOR`, not hidden multipliers). The brake belongs on player damage growth, which isn't "secretly buffing enemies" — it's letting the roster's *existing* HP tiers stay legible.
-  - **`ATK_FIRST_POINT_LEVEL = 3` is load-bearing, not an off-by-one.** Plain `level % 4` puts the first point at level 4, but a player finishes floor 0 at about level 3 — so floor 1 has damage 1 against a BASIC whose 1 HP already got `ceil()`ed to 2 by floor scaling, and the one-shot rate falls off a cliff from 100% to **0%**. "Trash dies in one shot" is the Battle City baseline; removing it on the second floor reads as a broken gun, not as difficulty. Starting at level 3 grants the identical 6 points per act (3/7/11/15/19/23), just one level earlier.
+  - **Don't fix this by scaling enemy HP with a floor multiplier.** Raising the HP-only floor slope (0.08 → 0.11) measured *worse* (STK 1.37 → 1.27): HP grows ~2.5× across an act while damage grows ~8×, so the slope has an order of magnitude too little authority. And it's the wrong axis entirely — see "Enemy toughness is integer and visible" below. The brake belongs on player damage growth, which isn't "secretly buffing enemies" — it's letting the roster's *existing* HP tiers stay legible.
+  - **`ATK_FIRST_POINT_LEVEL = 3` is load-bearing, not an off-by-one.** Plain `level % 4` puts the first point at level 4, but a player finishes floor 0 at about level 3 — so floor 1 has damage 1 against a BASIC whose 1 HP had been `ceil()`ed to 2 by the old floor scaling, and the one-shot rate fell off a cliff from 100% to **0%**. "Trash dies in one shot" is the Battle City baseline; removing it on the second floor reads as a broken gun, not as difficulty. Starting at level 3 grants the identical 6 points per act (3/7/11/15/19/23), just one level earlier.
   - **Don't assert on shots-to-kill.** It looks like the right continuous metric and it isn't: integer damage means each +1 flips a large slice of the population between 1 and 2 shots, so per-floor STK sawtooths between 1.24 and 2.01 and which window looks higher depends purely on where sampling lands on the teeth. It's still logged; the assertion uses a multi-floor mean one-shot rate instead.
 - **Difficulty must ramp inside an act.** Encounter HP used to sit flat at 58–69 from floor 5 to 14 — ten floors where only the rewards grew.
 - **TRAIN_BOSS is encounter identity, not filler.** It sets `active_boss_instance` and lights the HUD boss bar. It was 17–21% of regular-battle spawns (the single most common type past floor 5) while being 0% of elite/boss *filler* — the boss unit was 3–4× more common outside boss fights than in them, and the boss bar was near-permanently on, retargeted by each new train.

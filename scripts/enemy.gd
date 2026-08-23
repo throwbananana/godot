@@ -13,27 +13,44 @@ signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
 enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER }
 
-## 幕内的楼层缩放斜率, 血量和奖励共用。
-##
-## 这里**故意不给血量单独开一条更陡的斜率**, 试过, 没用而且方向错了。
-##
-## 症状是真的: 玩家伤害 (1 + atk_bonus) 一幕之内从 1 涨到 8, 敌人均血同期从
-## 1.00 涨到 8.17, 两条线几乎完全重合 —— 相对强度纹丝不动, 整幕没有爬坡感。
-## 但把这条斜率抬到 0.11 之后实测"平均几发打死一只"是 1.37 -> 1.27, 反而更
-## 低: 因为敌人血量只涨 2.5 倍, 玩家伤害涨 8 倍, 差着一个数量级, 靠血量斜率
-## 这点余量根本追不上。要追上得把斜率抬到会让后期常规战变成磨血的程度。
-##
-## 而且方向也不对: 这个项目的难度设计是"靠敌人种类而不是数值堆砌"
-## (见 ENEMY_MIN_FLOOR 的按机制分层解锁)。偷偷给所有敌人加血是被明确否掉的
-## 那条路。真正跑赢了血量分层的是**玩家伤害的成长速度**, 所以刹车踩在
-## rpg_manager.gd::_auto_level_bonus() 那边 —— 那不是"给敌人加隐藏数值",
-## 而是让 ARMOR(4)/BATTLESHIP(6)/TRAIN_BOSS(14) 这套本来就存在的血量分层
-## 到了后期还认得出来。
-##
-## 改这个数之前先跑 tools/probe_balance_report.gd 存一份基准, 改完再跑一次,
-## 用 `python tools/analyze_balance_log.py --vs <改前的 commit>` 看差多少 ——
-## 数值失衡既不 crash 也不报错, 只能量。
+## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
+## 血量走下面的装甲板系统。
 const FLOOR_SCALE_SLOPE := 0.08
+
+# ---------------------------------------------------------------- 装甲板
+#
+# 这是坦克大战, 不是 RPG。敌人的强弱只能是**整数**, 而且必须看得出来。
+#
+# 之前的做法是 max_health = ceil(base * (1 + floor * 0.08)) —— 一个隐藏的
+# 连续乘数: floor 12 的 enemy_basic 有 3 血, 和 floor 0 那只 1 血的长得一模
+# 一样。玩家开两枪发现没死, 除了"这游戏在偷偷加数值"之外读不出任何信息, 而
+# 这正是 Tank 1990 从来不做的事 —— 那边的装甲车就是要打四下, 而且它**长得
+# 不一样**, 谁都看得出来。
+#
+# 现在: 每辆车带 0-3 层装甲板, 每层 +ARMOR_PLATE_HP 血 (整数加法, 没有 ceil,
+# 没有浮点), 每一层都有对应的外观 (enemy_plate_t1/t2/t3.png 叠在车体上,
+# 覆盖面积逐级变大)。血量 = 车种基础血 + 装甲层数 x 2。
+#
+# 关键的一条: **不给全场统一加血**, 而是让高楼层能刷出带装甲的变体。
+# 加法式的统一加血会毁掉车种识别 —— BASIC 的 1 血被加成 7 血, "杂兵一发一个"
+# 这条坦克大战的底子就没了。现在同一层里既有素车也有披甲车, 玩家看一眼就知道
+# 哪辆要多打几发, 该先绕开谁。难度来自"场上多了看得见的硬目标", 而不是
+# "所有东西都悄悄变厚了"。
+#
+# 楼层/精英/Boss/难度圈的作用方式是抬**装甲层数的上下界**, 而不是乘血量:
+#   - 楼层越高, 上界越高 (能刷出更厚的车)
+#   - 精英战 / Boss 战 / 第二第三圈, 抬的是**下界** (素车越来越少)
+# 上下界都夹在 [0, MAX_ARMOR_PLATES] 内, 所以永远不会出现"有血量没外观"的层。
+const ARMOR_PLATE_HP := 2
+const MAX_ARMOR_PLATES := 3
+
+## 楼层 -> 装甲层数上界。写成显式的门槛表而不是 floor/4 之类的算式, 是因为
+## 这是一条设计曲线不是数学关系 —— 想让第 4 层第一次见到披甲车, 就该在这里
+## 一眼看见 4。
+const ARMOR_PLATE_FLOOR_GATE := [2, 5, 9] # 分别是拿到第 1/2/3 层上界的楼层
+
+var armor_plates: int = 0
+var plate_sprite: Sprite2D = null
 
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
@@ -114,6 +131,58 @@ func _ready() -> void:
 			plane_shadow.scale = Vector2(0.20, 0.20)
 			plane_shadow.z_index = 5
 			get_parent().call_deferred("add_child", plane_shadow)
+
+## 摇这辆车带几层装甲。返回 0..MAX_ARMOR_PLATES 的整数。
+##
+## static 是为了可测: tools/test_armor_plating.gd 直接对着它扫全部楼层 x 战斗
+## 类型 x 难度圈, 不用把整个 main.tscn 起起来。
+##
+## 上界随楼层长 (高层能刷出更厚的车), 下界随精英/Boss/难度圈长 (素车越来越少)。
+## 两者都夹在 [0, MAX_ARMOR_PLATES]: 上界封顶保证不会出现"有血量却没有对应
+## 外观"的情况 —— 那就退回成隐藏数值了。
+static func armor_plate_range(floor_idx: int, battle_type: String, cycle: int) -> Vector2i:
+	var hi := 0
+	for gate in ARMOR_PLATE_FLOOR_GATE:
+		if floor_idx >= gate:
+			hi += 1
+
+	# 精英战 +1, Boss 战 +2: 抬的是**下界**, 也就是"这一场几乎见不到素车"。
+	# Boss 给 2 是为了让 Boss 层看着就和常规层不是一回事 —— 满场至少两层装甲,
+	# 一眼能看出来, 而不是靠一个看不见的 x1.6。
+	var bump := cycle
+	if battle_type == "elite":
+		bump += 1
+	elif battle_type == "boss":
+		bump += 2
+
+	hi = clampi(hi + bump, 0, MAX_ARMOR_PLATES)
+	var lo := clampi(bump, 0, hi)
+	return Vector2i(lo, hi)
+
+
+static func roll_armor_plates(floor_idx: int, battle_type: String, cycle: int) -> int:
+	var r := armor_plate_range(floor_idx, battle_type, cycle)
+	return randi_range(r.x, r.y)
+
+
+## 把装甲板贴到车体上。挂成 sprite 的**子节点**, 所以缩放/旋转/后坐力位移/
+## 受击挤压全都自动跟着走 —— 不需要每帧同步, 也就没有"车动了板子没动"这类
+## 坐标不同步的 bug。
+func _apply_armor_plate_visual() -> void:
+	if plate_sprite:
+		plate_sprite.queue_free()
+		plate_sprite = null
+	if armor_plates <= 0 or sprite == null:
+		return
+	var tex = TextureHelper.get_tex(
+		"res://assets/sprites/tanks/enemy_plate_t%d.png" % armor_plates)
+	if tex == null:
+		return
+	plate_sprite = Sprite2D.new()
+	plate_sprite.texture = tex
+	plate_sprite.z_index = 1
+	sprite.add_child(plate_sprite)
+
 
 func _setup_tank_type() -> void:
 	var prefix = "enemy_basic"
@@ -253,27 +322,21 @@ func _setup_tank_type() -> void:
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
+	var cycle = GameState.get_difficulty_cycle()
 
-	# 血量也吃楼层缩放 —— 以前 floor_mult 只乘 xp/gold/score, **不乘
-	# max_health**, 于是一幕之内敌人强度完全恒定: 实测 floor 5 到 floor 14
-	# 的遭遇总血量一直在 58-69 之间打转, 后十层没有任何强度爬升, 涨的只有
-	# 奖励。而玩家每一层都在升级, 相对难度是一路往下走的。
-	#
-	# 这条要和 rpg_manager.gd::_auto_level_bonus() 里的攻击力节奏一起看:
-	# 单独加血量追不上伤害的成长 (见 FLOOR_SCALE_SLOPE 上面那段实测), 单独
-	# 压伤害又会让后期空转。两边一起动才谈得上曲线。
-	max_health = int(ceil(float(max_health) * floor_mult))
+	# 血量: 车种基础血 + 装甲层数 x 2。整数, 而且每一层都看得见。
+	# 详见文件顶部 ARMOR_PLATE_HP 那段。
+	armor_plates = roll_armor_plates(
+		GameState.current_floor, GameState.battle_type, cycle)
+	max_health += armor_plates * ARMOR_PLATE_HP
 
 	if GameState.battle_type == "elite":
-		max_health = int(ceil(max_health * 1.5))
 		speed = speed * 1.08
 		xp_value = int(xp_value * 1.6)
 		gold_value = int(gold_value * 1.5)
 		score_value = int(score_value * 1.5)
 		fire_interval = fire_interval * 0.85
 	elif GameState.battle_type == "boss":
-		if enemy_type != EnemyType.BOSS:
-			max_health = int(ceil(max_health * 1.6))
 		speed = speed * 1.08
 		xp_value = int(xp_value * 1.8)
 		gold_value = int(gold_value * 1.8)
@@ -286,15 +349,15 @@ func _setup_tank_type() -> void:
 
 	# Acts beyond 3 re-lap the same 3 visual themes (GameState.get_visual_act()),
 	# so without this they'd just be Acts 1-3 replayed at identical difficulty.
-	# +18% HP / +7% speed / +15% rewards per completed lap (0 for Acts 1-3).
-	var cycle = GameState.get_difficulty_cycle()
+	# 血量部分由 roll_armor_plates() 里的下界处理 (第二三圈的素车越来越少),
+	# 这里只剩速度和奖励: +7% speed / +15% rewards per completed lap。
 	if cycle > 0:
-		var cycle_hp_mult = 1.0 + cycle * 0.18
-		max_health = int(ceil(max_health * cycle_hp_mult))
 		speed *= (1.0 + cycle * 0.07)
 		xp_value = int(xp_value * (1.0 + cycle * 0.15))
 		gold_value = int(gold_value * (1.0 + cycle * 0.15))
 		score_value = int(score_value * (1.0 + cycle * 0.15))
+
+	_apply_armor_plate_visual()
 
 	if enemy_type == EnemyType.FLAMETHROWER and flame_jet == null:
 		# 挂成子节点, 位置和旋转由父变换自动带着走 —— 不需要每帧同步坐标。
@@ -374,6 +437,12 @@ func _physics_process(delta: float) -> void:
 				if tree_tex:
 					sprite.texture = tree_tex
 					sprite.scale = Vector2(0.1875, 0.1875)
+				# 装甲板必须跟着藏起来。伪装成树的车顶上还挂着一圈钢板,
+				# 等于把自己的位置标出来 —— 潜行单位不能自己暴露自己
+				# (同样的理由见 main.gd::_update_tree_transparency 里
+				# "跳过伪装中的 MIRAGE"那段)。
+				if plate_sprite:
+					plate_sprite.visible = false
 				rotation = 0.0
 		else:
 			if is_camouflaged:
@@ -382,6 +451,8 @@ func _physics_process(delta: float) -> void:
 				_spawn_mirage_shimmer()
 				sprite.scale = Vector2(0.196, 0.196)
 				rotation = facing_direction.angle() + PI / 2.0
+				if plate_sprite:
+					plate_sprite.visible = true
 				if tank_frames.size() > 0:
 					sprite.texture = tank_frames[current_frame]
 
