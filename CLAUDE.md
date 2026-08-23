@@ -26,7 +26,17 @@ There is **no linter**. Verification is `--check-only` per script, running the g
 & $godot --headless --path . --script tools/test_gameplay_runtime.gd   # boots main.tscn, checks player/builder/sound wiring
 ```
 
-Each prints `[FAIL]`/`❌` lines and exits non-zero on failure; there's no runner that aggregates them, so run the ones relevant to what you touched. The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, `test_explosion_vfx.gd`, `test_tree_visibility.gd`, `test_oil_barrel_blast.gd`, `test_texture_mipmaps.gd`, …) — check for an existing one covering your area before writing a new script.
+Each prints `[FAIL]`/`❌` lines and exits non-zero on failure. `tools/run_tests.ps1` aggregates them:
+
+```powershell
+pwsh tools/run_tests.ps1                      # all 35, ~60 s total
+pwsh tools/run_tests.ps1 -Filter shop         # just the matching ones
+pwsh tools/run_tests.ps1 -Probe               # …plus the balance sampling probe (~4 min)
+```
+
+It exists because of a specific failure mode: a broken assertion in `test_shop_and_attack_speed.gd` manifested as Godot **hanging for 90 s** rather than erroring, and chaining all 35 into one command blows the 10-minute limit and gets killed — so the hang was misread as a timeout and went unlocated. The runner gives each test its own `-TimeoutSec` and reports `PASS`/`FAIL`/`TIMEOUT` as three distinct outcomes. It also appends one row per test to `logs/balance/testrun.jsonl`, which is what `python tools/analyze_balance_log.py --tests` reads to flag "this test suddenly takes 20× longer than its median" — the first symptom of that same class of bug.
+
+The rest are feature-scoped (`test_state_and_save.gd`, `test_spire_map_15floors.gd`, `test_act_enemy_theming.gd`, `test_perk_stacking.gd`, `test_shop_gated_buildings.gd`, `test_flamethrower.gd`, `test_train_teleport.gd`, `test_gamepad_support.gd`, `test_laser_origin.gd`, `test_teleport_destination.gd`, `test_explosion_vfx.gd`, `test_tree_visibility.gd`, `test_oil_barrel_blast.gd`, `test_texture_mipmaps.gd`, …) — check for an existing one covering your area before writing a new script.
 
 Two of those are project-wide gates rather than feature tests, and are worth running after any change that touches spawning or art: `test_compile_all.gd` and `test_texture_mipmaps.gd`.
 
@@ -276,22 +286,72 @@ The SUICIDE truck's detonation is the one blast with its own dedicated sequence 
 
 Tuning constants are inlined at their use sites, not in a config: enemy stats and per-floor/lap scaling in `enemy.gd::_setup_tank_type()`, floor-gating in `main.gd::ENEMY_MIN_FLOOR`, level curve and stat multipliers in `rpg_manager.gd`, structure prices in `shop_dialog.gd::BUILDING_ITEMS`, encounter size/spawn rate per `battle_type` and `challenge_mode` in `main.gd::start_game()`, and shop/rest/event outcomes in `event_dialog.gd::_on_choice()`.
 
-**The gold economy has exactly one sink.** Kills do **not** award gold directly — `enemy.gd::_die()` drops a coin worth `gold_value` with 40% probability, and that coin has to be physically driven over (25 s lifetime, 120 px magnet). Events are net-neutral to net-positive (they charge 60–100 G but hand back 50–150 G). So the shop is the only place gold actually leaves the player. Measured over an act: income runs ~91 G on floor 0 to ~678 G on floor 13 (≈7.5× — enemy composition shifts to richer types *and* `floor_mult` applies), totalling **~7550 G**, while an optimally-routed run sees a median of 3–4 shops and buying out an entire shelf costs ~1200 G. Nearly half the gold earned has nothing to buy. `tools/test_shop_pricing.gd` locks the structural half of this:
+**The gold economy has exactly one sink.** Kills do **not** award gold directly — `enemy.gd::_die()` drops a coin worth `gold_value` with 40% probability, and that coin has to be physically driven over (25 s lifetime, 120 px magnet). Events are net-neutral to net-positive (they charge 60–100 G but hand back 50–150 G). So the shop is the only place gold actually leaves the player. Income per regular-battle floor runs ~89 G on floor 0 to ~719 G on floor 14 (≈8× — enemy composition shifts to richer types *and* `floor_mult` applies), totalling **~5700 G** over an optimally-routed act.
 
-- **Prices scale with floor** via the same `floor_mult` the rewards use (`_price_for()`). The table's numbers are floor-0 prices. This closes only ~2.1× of a ~7.5× gap on purpose — the rest is a feel decision, not something one helper should decide silently.
+The metric that matters is **surplus ratio = act income ÷ what the act's shops can absorb** (every shelf bought out, at that floor's prices). Above 1 means gold stops being a resource. Measured over 500 generated acts by `tools/probe_balance_report.gd`:
+
+| | mean | median | p90 | max |
+|---|---|---|---|---|
+| before | 1.07 | 0.87 | 1.94 | 6.37 |
+| now | **0.68** | 0.66 | 1.01 | 1.34 |
+
+`tools/test_shop_pricing.gd` locks the structural half of this:
+
+- **Prices scale with floor** (`ShopDialog.PRICE_FLOOR_SLOPE`, 0.12 — floor 14 costs 2.68×). The table's numbers are floor-0 prices. Deliberately steeper than the 0.08 the rewards use: at 0.08 the median act could buy nearly the whole shelf (0.87), i.e. the shop was just handing out everything you could reach. The slope only bites late — floor 0–2 prices are untouched, because the early floors are the tutorial band and being broke there reads as a broken system, not as difficulty.
 - **Reroll escalates within a visit** (`REROLL_BASE` + `REROLL_STEP` × n, reset in `setup_shop()`). It used to be a flat 20 G with no limit, which made the "6 random of 11 upgrades" shelf purely decorative: one late floor's income buys thirty rerolls, so you just spin until the item you want appears.
-- **Every act is guaranteed at least one shop** (`_generate_spire_map()`). Each floor draws *one row* from its band pool and several rows contain no shop at all; measured 0.3% of acts had none anywhere and 4% had exactly one. That matters more than luck because `add_structure_stock()` is called **only** from `shop_dialog.gd` — a shopless act means the entire builder system is absent for 15 floors, with an empty hotbar and no way for the player to tell that from a bug.
+- **Every act guarantees `GameState.MIN_SHOPS_PER_ACT` (3) shops _on a single route_** — not "3 somewhere in the graph". The player walks one path; shops stranded on branches they can't reach are worth nothing. `_ensure_shop_coverage()` DPs the best route, and while it's short, converts the nearest eligible node (never floor 0, never the boss floor, never adjacent to an existing shop) at ~30%/55%/80% of act length.
 
-Measuring shop frequency needs a **DP over the DAG, not a random walk** — a real player routes toward shops deliberately. A random walker reported 8% shopless runs; the true "no shop exists anywhere in the act" figure was 0.3%.
+  Route shop count is *the* driver of the surplus ratio, and it varied wildly:
+
+  | route shops | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+  |---|---|---|---|---|---|---|---|
+  | surplus ratio | 3.82 | 1.80 | 1.12 | 0.75 | 0.58 | 0.39 | 0.29 |
+
+  17.5% of acts drew a 1–2-shop best route (0.3% had literally zero), and those players carried two-to-four times more gold than existed anything to spend it on — nothing to do with how well they played. It also starves the builder: `add_structure_stock()` is called **only** from `shop_dialog.gd`. Note the guarantee *costs* income, because a converted node is a battle node you no longer fight (income falls from 7555 at 1 shop to 3929 at 7). That trade — farm or shop — is the intended decision, not a side effect.
+
+Measuring shop frequency needs a **DP over the DAG, not a random walk** — a real player routes toward shops deliberately. A random walker reported 8% shopless runs; the true figure was 0.3%.
 
 **Balance is not verifiable by reading these constants — measure it.** Because they're spread across five files and interact multiplicatively, several severe imbalances survived a long time while every constant looked individually reasonable. `tools/test_enemy_balance_curve.gd` drives the *real* `main.gd::_request_spawn_enemy()` path (never a replicated roll table — a copy drifts) and asserts four invariants that had each been violated:
 
-- **Player damage must not outrun enemy HP.** `get_atk_damage()` is `1 + atk_bonus`, and `_auto_level_bonus()` used to grant `atk_bonus += 1` *every* level, i.e. damage == level, linear and unbounded. Combined with `floor_mult` scaling rewards but **not** `max_health`, the measured result was a **100% one-shot rate from floor 4 to the end of the act** — including the 14 HP TRAIN_BOSS and the 10 HP BOSS. The whole HP-tier dimension (ARMOR 4 / BATTLESHIP 6 / TRAIN_BOSS 14) was dead: tanky units weren't tanky, only differently shaped. Damage is now `+1 per 3 levels` and `floor_mult` also scales `max_health`; both halves are needed, since either alone loses the race.
+- **Player damage must not outrun enemy HP.** `get_atk_damage()` is `1 + atk_bonus`, and `_auto_level_bonus()` used to grant `atk_bonus += 1` *every* level, i.e. damage == level, linear and unbounded. Combined with `floor_mult` scaling rewards but **not** `max_health`, the measured result was a **100% one-shot rate from floor 4 to the end of the act** — including the 14 HP TRAIN_BOSS and the 10 HP BOSS. The whole HP-tier dimension (ARMOR 4 / BATTLESHIP 6 / TRAIN_BOSS 14) was dead: tanky units weren't tanky, only differently shaped. `floor_mult` now also scales `max_health`, and damage grows on `RPGManager.ATK_LEVELS_PER_POINT` (+1 per 4 levels, first point at level 3); both halves are needed, since either alone loses the race.
+
+  Killing the 100% case wasn't enough, though: at +1 per 3 levels the floor 5–13 one-shot rate still averaged **68–71%**, so the HP tiers were still invisible most of the time. It's now 51%, gated by `LATE_ONE_SHOT_CEILING` (60%, sitting in the gap between those two clusters — see the in-file comment for why not 55%).
+
+  Two dead ends worth not repeating:
+
+  - **Don't fix this by scaling enemy HP.** Raising the floor slope for HP only (0.08 → 0.11) measured *worse* (STK 1.37 → 1.27): HP grows ~2.5× across an act while damage grows ~8×, so the slope has an order of magnitude too little authority to close it — you'd have to push it until late regular battles become HP sponges. It's also the difficulty axis this project explicitly rejects (variety via `ENEMY_MIN_FLOOR`, not hidden multipliers). The brake belongs on player damage growth, which isn't "secretly buffing enemies" — it's letting the roster's *existing* HP tiers stay legible.
+  - **`ATK_FIRST_POINT_LEVEL = 3` is load-bearing, not an off-by-one.** Plain `level % 4` puts the first point at level 4, but a player finishes floor 0 at about level 3 — so floor 1 has damage 1 against a BASIC whose 1 HP already got `ceil()`ed to 2 by floor scaling, and the one-shot rate falls off a cliff from 100% to **0%**. "Trash dies in one shot" is the Battle City baseline; removing it on the second floor reads as a broken gun, not as difficulty. Starting at level 3 grants the identical 6 points per act (3/7/11/15/19/23), just one level earlier.
+  - **Don't assert on shots-to-kill.** It looks like the right continuous metric and it isn't: integer damage means each +1 flips a large slice of the population between 1 and 2 shots, so per-floor STK sawtooths between 1.24 and 2.01 and which window looks higher depends purely on where sampling lands on the teeth. It's still logged; the assertion uses a multi-floor mean one-shot rate instead.
 - **Difficulty must ramp inside an act.** Encounter HP used to sit flat at 58–69 from floor 5 to 14 — ten floors where only the rewards grew.
 - **TRAIN_BOSS is encounter identity, not filler.** It sets `active_boss_instance` and lights the HUD boss bar. It was 17–21% of regular-battle spawns (the single most common type past floor 5) while being 0% of elite/boss *filler* — the boss unit was 3–4× more common outside boss fights than in them, and the boss bar was near-permanently on, retargeted by each new train.
 - **The floor gate must not flatten the roster.** `_gate_enemy_type()` used to dump every not-yet-unlocked roll into `FAST`, so floor 3's eight-entry table measured **62% FAST** — more monotonous than floor 2, despite reading as the most varied tier. It now re-rolls among types actually unlocked at that floor (`GATE_FALLBACK_POOL`).
 
 Measurement gotcha, learned the hard way: count enemies at `child_entered_tree`, **not** by tallying survivors after a delay. 160 tanks share three spawn points, and SUICIDE's 84px blast kills its neighbours — a survivor tally reads TRAIN_BOSS at 26% against a true 15%, and SUICIDE at 0%, because the sample skews toward whatever has the most HP.
+
+#### The balance log
+
+The gates above answer "did it pass". They can't answer "is this better than last week", which is the question you actually have while tuning — so measurements get written to `logs/balance/*.jsonl` (gitignored) and read back by a statistics script.
+
+```powershell
+& $godot --headless --path . --script tools/probe_balance_report.gd      # sample: ~4 min
+& $godot --headless --path . --script tools/probe_balance_report.gd -- --samples 120 --acts 800
+python tools/analyze_balance_log.py                    # default report
+python tools/analyze_balance_log.py --cat enemy_roll --field hp --by floor
+python tools/analyze_balance_log.py --vs <commit>      # before/after, with Welch t
+python tools/analyze_balance_log.py --list --sessions --tests
+```
+
+Three producers write to it, all via `scripts/balance_log.gd` (`emit` / `emit_batch`, one JSONL file per category, always appending, tagged with `_session` + `_commit` + `_ts`):
+
+- **`tools/probe_balance_report.gd`** — the sampler. It's a *ruler*, not a gate: no assertions, it just drives the real spawn/economy paths and dumps `enemy_roll` (one row per spawned tank), `floor_econ` (per floor × battle type), and `act_econ` (per generated act). It instantiates `main.tscn` once per (floor × battle_type) — 46 times — rather than per act, because the roll table depends only on that pair; the 400–500 act-economy runs then reuse those aggregates and are pure computation. Doing it the naive way is ~70× slower for zero extra information.
+- **`tools/test_enemy_balance_curve.gd`** and **`tools/test_shop_pricing.gd`** — the gates also log what they measured (`curve_gate`, `route_shops`), so every test run contributes a data point for free.
+- **`main.gd::_game_over()`** — a `battle_result` row per real battle played. This is the only source that captures what the probe structurally cannot: the probe assumes every coin is collected, but coins are physical pickups with a 25 s lifetime, so **expected income ≠ banked income** and only actual play measures the collection rate.
+
+Notes for anyone extending it:
+
+- `BalanceLog.session_id()` uses `Time.get_ticks_usec()`, **never `randi()`**. The Daily Challenge seeds the global RNG in `start_game()` and then depends on that stream being deterministic; drawing one number from it at an arbitrary moment desyncs everyone's run for that day.
+- Logging is off outside debug builds and can be forced off with `TANK_BALANCE_LOG=0`.
+- `analyze_balance_log.py` needs only numpy. Normality is Jarque–Bera (skew + kurtosis only, no scipy), and the report says so, along with the two ways to misread it: *most of these metrics shouldn't be normal* — enemy HP is a handful of discrete tiers, and the check's real use is telling "continuous, as I assumed" apart from "actually three spikes". Act income, being a sum over ~10 floors, *should* approach normal by CLT; if it doesn't, one floor is dominating, and that's the finding.
 
 ## Conventions
 

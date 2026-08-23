@@ -28,6 +28,7 @@ extends SceneTree
 const GameState = preload("res://scripts/game_state.gd")
 const EnemyTank = preload("res://scripts/enemy.gd")
 const RPGManager = preload("res://scripts/rpg_manager.gd")
+const BalanceLog = preload("res://scripts/balance_log.gd")
 
 const SAMPLES := 140
 
@@ -86,22 +87,28 @@ func _run() -> void:
 
 		var dmg: int = mgr.get_atk_damage(1)
 		var one_shot := 0
+		var stk_tot := 0.0
 		for hp in r["hp_list"]:
 			if int(hp) <= dmg:
 				one_shot += 1
-		r["one_shot"] = 100.0 * float(one_shot) / maxf(1.0, float(r["hp_list"].size()))
+			stk_tot += ceil(float(hp) / float(maxi(1, dmg)))
+		var nhp := maxf(1.0, float(r["hp_list"].size()))
+		r["one_shot"] = 100.0 * float(one_shot) / nhp
+		r["stk"] = stk_tot / nhp
 		r["dmg"] = dmg
 		r["bt"] = bt
 		stats[f] = r
-		print("  floor %2d (%-4s): 均HP %5.2f  伤害 %2d  秒杀 %3.0f%%  廉价兵 %3.0f%%  TRAIN_BOSS %2.0f%%"
-			% [f, bt, float(r["avg_hp"]), dmg, float(r["one_shot"]),
+		print("  floor %2d (%-4s): 均HP %5.2f  伤害 %2d  STK %4.2f  秒杀 %3.0f%%  廉价兵 %3.0f%%  TRAIN_BOSS %2.0f%%"
+			% [f, bt, float(r["avg_hp"]), dmg, float(r["stk"]), float(r["one_shot"]),
 			   float(r["cheap_pct"]), float(r["train_pct"])])
 
 	print("")
 	_check_one_shot(stats)
 	_check_ramp(stats)
+	_check_late_act_one_shot(stats)
 	_check_no_train_filler(stats)
 	_check_gate_variety(stats)
+	_log(stats)
 
 	print("==================================================")
 	if failures > 0:
@@ -136,6 +143,80 @@ func _check_ramp(stats: Dictionary) -> void:
 	else:
 		fail("floor 4 (%.2f) 到 floor 12 (%.2f) 敌人几乎没变强 —— 后十层只有奖励在涨"
 			% [early, late])
+
+
+## 2b. 幕的后半段, 一发秒杀不能成为常态。
+##
+## _check_one_shot 只挡住了"某一层 100% 全秒"这个极端。但秒杀率长期停在
+## 七成也一样要命: ARMOR(4) / BATTLESHIP(6) / TRAIN_BOSS(14) 这套血量分层是
+## 这个游戏用来做**敌人种类差异**的主要手段之一, 而七成的敌人一发就没,
+## 意味着玩家绝大多数时候感觉不到这层差异, 分层退化成了外形不同。
+##
+## 阈值卡在 floor 5 之后 —— 前五层是教学段, 一发一个正是坦克大战的手感,
+## 不该动。60% 这个数是量出来定的, 不是拍的:
+##
+##     攻击力每 3 级 +1 (改前)   floor 5-13 平均 71% / 74% / 71%
+##     每 4 级 +1, 首点 3 级     floor 5-13 平均 48% / 49% / 50% / 52%
+##
+## 两簇之间隔着二十个百分点, 阈值放中间偏上一侧。**不要收紧到 55%** ——
+## 试过, 通过侧的四次采样是 48-52, 只剩 3 个点的余量, 那种闸门迟早会无缘无故
+## 红一次, 然后就没人信它了。闸门要挡的是"伤害成长又跑掉了"这一类量级的回归,
+## 不是三个百分点的漂移。
+##
+## 再硬一档是有空间的 (首点放回 4 级能到 39-41%), 但那样 floor 1 会变成一发
+## 都秒不掉 —— 见 rpg_manager.gd::ATK_FIRST_POINT_LEVEL。要绕开那个坑就得动
+## enemy.gd 里血量缩放的 ceil() 取整, 那会把每一只敌人的血量都改一遍, 属于
+## 另一件事, 没在这次一起做。
+##
+## 用"多层平均"而不是"每层都要低于"是有原因的: 伤害是整数, 每跳 1 点就会把
+## 一大片样本从"两发"翻成"一发", 于是逐层的秒杀率是锯齿状的 (实测同一次跑里
+## 相邻层能从 23% 跳到 63%)。同样的锯齿也让"平均几发打死一只"(stk) 无法用来
+## 判趋势 —— 那个数照样在 1.24 和 2.01 之间来回跳, 早期窗口和后期窗口谁高谁低
+## 纯看采样落在锯齿的哪一侧。stk 仍然记进日志备查, 但不拿它做断言。
+##
+## 另外注意: 这里的刹车踩在**玩家伤害成长**上 (rpg_manager.gd 的
+## ATK_LEVELS_PER_POINT), 不是给敌人加血。抬敌人血量的楼层斜率试过 ——
+## 0.08 -> 0.11 完全无效 (血量涨 2.5 倍而伤害涨 8 倍, 差一个数量级), 而且
+## "给所有敌人偷偷加数值"是这个项目明确否掉的难度路线。
+const LATE_ONE_SHOT_CEILING := 60.0
+
+func _check_late_act_one_shot(stats: Dictionary) -> void:
+	var tot := 0.0
+	var n := 0
+	var per_floor := PackedStringArray()
+	for f in range(5, 14):
+		if stats[f]["bt"] != "battle":
+			continue
+		tot += float(stats[f]["one_shot"])
+		n += 1
+		per_floor.append("f%d %.0f%%" % [f, float(stats[f]["one_shot"])])
+	if n == 0:
+		return
+	var avg := tot / float(n)
+	if avg <= LATE_ONE_SHOT_CEILING:
+		ok("floor 5-13 常规战平均秒杀率 %.0f%% (上限 %.0f%%) —— 敌人的血量分层还认得出来"
+			% [avg, LATE_ONE_SHOT_CEILING])
+	else:
+		fail("floor 5-13 常规战平均秒杀率 %.0f%%, 超过 %.0f%% 上限 (逐层: %s) —— "
+			% [avg, LATE_ONE_SHOT_CEILING, " ".join(per_floor)]
+			+ "后半幕大多数敌人一发就没, ARMOR/BATTLESHIP/TRAIN_BOSS 的血量分层退化成了外形差异; "
+			+ "检查 rpg_manager.gd::ATK_LEVELS_PER_POINT 的攻击力成长节奏")
+
+
+## 把这次跑出来的曲线落盘, 交给 tools/analyze_balance_log.py 做分布/前后对比。
+## 闸门只回答"过没过", 日志才回答"比上次好了多少"。
+func _log(stats: Dictionary) -> void:
+	var rows: Array = []
+	for f in stats:
+		var r = stats[f]
+		rows.append({
+			"floor": int(f), "bt": str(r["bt"]), "dmg": int(r["dmg"]),
+			"avg_hp": float(r["avg_hp"]), "stk": float(r["stk"]),
+			"one_shot_pct": float(r["one_shot"]),
+			"cheap_pct": float(r["cheap_pct"]), "train_pct": float(r["train_pct"]),
+		})
+	BalanceLog.emit_batch("curve_gate", rows)
+	print("  %s" % BalanceLog.summary())
 
 
 ## 3. TRAIN_BOSS 只能是遭遇身份, 不能当常规填充兵。

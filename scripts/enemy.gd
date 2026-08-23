@@ -13,6 +13,28 @@ signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
 enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER }
 
+## 幕内的楼层缩放斜率, 血量和奖励共用。
+##
+## 这里**故意不给血量单独开一条更陡的斜率**, 试过, 没用而且方向错了。
+##
+## 症状是真的: 玩家伤害 (1 + atk_bonus) 一幕之内从 1 涨到 8, 敌人均血同期从
+## 1.00 涨到 8.17, 两条线几乎完全重合 —— 相对强度纹丝不动, 整幕没有爬坡感。
+## 但把这条斜率抬到 0.11 之后实测"平均几发打死一只"是 1.37 -> 1.27, 反而更
+## 低: 因为敌人血量只涨 2.5 倍, 玩家伤害涨 8 倍, 差着一个数量级, 靠血量斜率
+## 这点余量根本追不上。要追上得把斜率抬到会让后期常规战变成磨血的程度。
+##
+## 而且方向也不对: 这个项目的难度设计是"靠敌人种类而不是数值堆砌"
+## (见 ENEMY_MIN_FLOOR 的按机制分层解锁)。偷偷给所有敌人加血是被明确否掉的
+## 那条路。真正跑赢了血量分层的是**玩家伤害的成长速度**, 所以刹车踩在
+## rpg_manager.gd::_auto_level_bonus() 那边 —— 那不是"给敌人加隐藏数值",
+## 而是让 ARMOR(4)/BATTLESHIP(6)/TRAIN_BOSS(14) 这套本来就存在的血量分层
+## 到了后期还认得出来。
+##
+## 改这个数之前先跑 tools/probe_balance_report.gd 存一份基准, 改完再跑一次,
+## 用 `python tools/analyze_balance_log.py --vs <改前的 commit>` 看差多少 ——
+## 数值失衡既不 crash 也不报错, 只能量。
+const FLOOR_SCALE_SLOPE := 0.08
+
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
 
@@ -230,16 +252,16 @@ func _setup_tank_type() -> void:
 			fire_interval = 2.3
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
-	var floor_mult = 1.0 + float(GameState.current_floor) * 0.08
+	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
 
 	# 血量也吃楼层缩放 —— 以前 floor_mult 只乘 xp/gold/score, **不乘
 	# max_health**, 于是一幕之内敌人强度完全恒定: 实测 floor 5 到 floor 14
 	# 的遭遇总血量一直在 58-69 之间打转, 后十层没有任何强度爬升, 涨的只有
 	# 奖励。而玩家每一层都在升级, 相对难度是一路往下走的。
 	#
-	# 这条要和 rpg_manager.gd::_auto_level_bonus() 里"攻击力改为每 3 级 +1"
-	# 一起看: 单独加血量追不上原来线性无上限的伤害成长, 单独压伤害又会让
-	# 后期空转。两边一起动才谈得上曲线。
+	# 这条要和 rpg_manager.gd::_auto_level_bonus() 里的攻击力节奏一起看:
+	# 单独加血量追不上伤害的成长 (见 FLOOR_SCALE_SLOPE 上面那段实测), 单独
+	# 压伤害又会让后期空转。两边一起动才谈得上曲线。
 	max_health = int(ceil(float(max_health) * floor_mult))
 
 	if GameState.battle_type == "elite":

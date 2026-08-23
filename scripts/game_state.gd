@@ -300,27 +300,6 @@ static func _generate_spire_map() -> void:
 				pool.shuffle()
 				floor_types.append(pool[0])
 
-	# 保底: 一幕之内至少要有一个商店。
-	#
-	# 每层只从 band 池里抽**一行**, 而好几行整行都不含 shop —— 实测 300 局里
-	# 有 0.3% 的图整幅都没有商店, 另有 4% 只有一个。平时这只是运气差, 但
-	# 商店是 GameState.structure_inventory 的**唯一**来源
-	# (add_structure_stock 全项目只被 shop_dialog.gd 调用), 所以"这一幕没有
-	# 商店"等于"这一幕整个建造系统不存在" —— 热键栏空着, 买不到也造不出任何
-	# 东西, 而玩家无从知道这是随机结果还是功能坏了。
-	#
-	# 补的位置放在 early_mid 一带而不是靠后: 建材要早点拿到才有得用。
-	var has_shop := false
-	for types in floor_types:
-		if "shop" in types:
-			has_shop = true
-			break
-	if not has_shop:
-		var target := clampi(int(round(float(max_floors) * 0.3)), 1, max_floors - 2)
-		var row: Array = floor_types[target]
-		if not row.is_empty():
-			row[randi() % row.size()] = "shop"
-
 	for f_idx in range(floor_types.size()):
 		var types = floor_types[f_idx]
 		var count = types.size()
@@ -384,10 +363,129 @@ static func _generate_spire_map() -> void:
 				if next_lo > hi and randf() < 0.5:
 					spire_connections.append({"from": from_id, "to": "f%d_n%d" % [f_idx + 1, next_lo]})
 
+	_ensure_shop_coverage()
+
 	for c_idx in range(floor_types[0].size()):
 		var n_id = "f0_n%d" % c_idx
 		if spire_nodes.has(n_id):
 			spire_nodes[n_id]["status"] = "available"
+
+
+## 一条路线上至少能走到 MIN_SHOPS_PER_ACT 个商店。
+##
+## 以前的保底只管"整幅图里存在一个 shop 节点", 而玩家走的是**一条路径**, 不是
+## 整张图 —— 两回事。用 DAG 上的 DP 实测 (tools/probe_balance_report.gd) 最优
+## 路线上的商店数从 1 到 7 都有, 而金币的盈余倍率几乎完全由这个数字决定:
+##
+##     路线商店数   1     2     3     4     5     6     7
+##     盈余倍率   3.82  1.80  1.12  0.75  0.58  0.39  0.29
+##
+## 也就是说抽到 1-2 个商店的那 19.3% 的局, 玩家手里揣着两到四倍花不掉的金币,
+## 整幕的战利品有一多半是废纸; 而这跟他打得好不好毫无关系, 纯粹是发图时摇出来
+## 的。这不是"运气差一点", 是一整套资源系统在这些局里不工作。保底到 3 之后
+## 实测盈余倍率均值 1.07 -> 0.76, p90 1.94 -> 1.22, 3.8 倍那条尾巴整个消失。
+##
+## 顺带一提, 强行插商店**会**压低收入 —— 那一层的战斗节点被换掉了, 上表里
+## 商店多的路线收入反而更低 (7555 -> 3929)。这是设计内的代价, 不是副作用:
+## "多逛店还是多刷钱"本来就该是玩家自己权衡的事。
+const MIN_SHOPS_PER_ACT := 3
+
+## 可以被改成商店的节点类型。boss 不能动 (它是幕的终点), floor 0 也不动
+## (开局三个都是 battle, 换掉会让新手第一步就进商店而身上只有起始金)。
+const SHOP_CONVERTIBLE := ["battle", "elite", "challenge", "event", "rest"]
+
+static func _ensure_shop_coverage() -> void:
+	# 每补一个就要重算路径 —— 补进去之后"最优路线"本身会变。上限防死循环。
+	for _guard in range(MIN_SHOPS_PER_ACT * 4):
+		var path := best_shop_route()
+		var have := 0
+		for nid in path:
+			if str(spire_nodes[nid]["type"]) == "shop":
+				have += 1
+		if have >= MIN_SHOPS_PER_ACT:
+			return
+
+		# 插在幕长度的 30% / 55% / 80% 附近: 建材和强化要早点拿到才有得用,
+		# 全堆在 pre_boss 等于没给。且不与已有商店相邻 —— 连着两层商店的话,
+		# 第二个货架基本上是空手看橱窗。
+		var want: float = [0.30, 0.55, 0.80][mini(have, 2)] * float(max_floors)
+		var target := ""
+		var best_score := -1.0
+		for i in range(path.size()):
+			var nid: String = path[i]
+			var fl := int(spire_nodes[nid]["floor"])
+			if fl == 0 or fl >= max_floors - 1:
+				continue
+			if not (str(spire_nodes[nid]["type"]) in SHOP_CONVERTIBLE):
+				continue
+			if i > 0 and str(spire_nodes[path[i - 1]]["type"]) == "shop":
+				continue
+			if i + 1 < path.size() and str(spire_nodes[path[i + 1]]["type"]) == "shop":
+				continue
+			var score := 1.0 / (1.0 + absf(float(fl) - want))
+			if score > best_score:
+				best_score = score
+				target = nid
+		if target == "":
+			return # 这条路径实在插不进去, 不硬塞 (硬塞只会塞出连着两层的商店)
+		spire_nodes[target]["type"] = "shop"
+		spire_nodes[target]["challenge_mode"] = ""
+
+
+## DAG 上求"商店最多"的一条路径, 返回 node_id 数组 (floor 0 到顶层)。
+##
+## 必须是 DP, 不能用随机漫步近似: 真实玩家是**冲着商店走**的。早先用随机漫步
+## 量"整幕无商店"的比例, 报出来 8%, 换成 DP 之后真实值是 0.3% —— 差一个数量级,
+## 而且方向是把问题夸大, 会引出错误的补救。
+static func best_shop_route() -> Array:
+	var succ := {}
+	for c in spire_connections:
+		var f := str(c["from"])
+		if not succ.has(f):
+			succ[f] = []
+		succ[f].append(str(c["to"]))
+
+	var by_floor := {}
+	for nid in spire_nodes:
+		var fl := int(spire_nodes[nid]["floor"])
+		if not by_floor.has(fl):
+			by_floor[fl] = []
+		by_floor[fl].append(str(nid))
+
+	var floors: Array = by_floor.keys()
+	floors.sort()
+	floors.reverse()
+
+	var best := {} # nid -> 从这里往上最多能碰到几个商店
+	var step := {} # nid -> 走哪个后继
+	for fl in floors:
+		for nid in by_floor[fl]:
+			var s := 1 if str(spire_nodes[nid]["type"]) == "shop" else 0
+			var pick := ""
+			var pick_s := -1
+			for t in succ.get(nid, []):
+				if best.has(t) and int(best[t]) > pick_s:
+					pick_s = int(best[t])
+					pick = str(t)
+			if pick != "":
+				s += pick_s
+			best[nid] = s
+			step[nid] = pick
+
+	var head := ""
+	var head_s := -1
+	for nid in by_floor.get(0, []):
+		if int(best.get(nid, -1)) > head_s:
+			head_s = int(best[nid])
+			head = str(nid)
+
+	var path: Array = []
+	var cur := head
+	while cur != "":
+		path.append(cur)
+		cur = str(step.get(cur, ""))
+	return path
+
 
 static func is_node_available(node_id: String) -> bool:
 	if not spire_nodes.has(node_id):

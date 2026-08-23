@@ -2,11 +2,14 @@ extends SceneTree
 
 ## 商店经济结构的回归测试 —— 锁住三条"不会报错但会让资源失去意义"的性质。
 ##
-## 1. 一幕之内必须至少有一个商店。商店是 GameState.structure_inventory 的
-##    **唯一**来源 (add_structure_stock 全项目只被 shop_dialog.gd 调用),
-##    所以一幅没有商店的图 = 这一幕整个建造系统不存在, 热键栏空着, 而玩家
-##    无从分辨这是运气还是功能坏了。实测保底逻辑加入前, 300 局里有 0.3%
-##    的图整幅无商店, 另有 4% 只有一个。
+## 1. 一条路线上至少能走到 GameState.MIN_SHOPS_PER_ACT 个商店。商店是
+##    GameState.structure_inventory 的**唯一**来源 (add_structure_stock 全项目
+##    只被 shop_dialog.gd 调用), 所以商店不够 = 这一幕的建造系统半瘫, 热键栏
+##    大半是空的, 而玩家无从分辨这是运气还是功能坏了。
+##
+##    注意断言的是**路线**而不是整幅图: 最早的版本只查"图里存在 shop 节点",
+##    可玩家走的是一条路径, 分散在互不相通的支路上的商店对他毫无意义。实测
+##    路线商店数从 1 到 7 都有, 而它几乎单独决定了金币的盈余倍率。
 ##
 ## 2. 售价要随楼层缩放。表里的价格是"第 1 层的价格", 而收入侧一路在涨 ——
 ##    实测一层的期望金币从 91 G 涨到 678 G。价格不动的话, 金币在中后期就
@@ -17,6 +20,7 @@ extends SceneTree
 ##    收入够刷三十次, 那条约束纯属装饰。
 
 const GameState = preload("res://scripts/game_state.gd")
+const BalanceLog = preload("res://scripts/balance_log.gd")
 
 var failures: int = 0
 
@@ -53,25 +57,52 @@ func _run() -> void:
 		quit(0)
 
 
+## 保底管的是"**一条路线上**能走到几个商店", 不是"整幅图里存在几个"。
+##
+## 玩家走的是一条路径。整幅图有五个商店但分散在互不相通的三条支路上, 对玩家
+## 来说和只有一个没区别。实测 (tools/probe_balance_report.gd) 最优路线上的
+## 商店数直接决定金币的盈余倍率:
+##
+##     路线商店数   1     2     3     4     5     6     7
+##     盈余倍率   3.82  1.80  1.12  0.75  0.58  0.39  0.29
+##
+## 保底之前 21.6% 的局最优路线只有 1-2 个商店, 那些局玩家揣着两到四倍花不掉的
+## 金币, 而这跟他打得好不好毫无关系。
 func _check_shop_guaranteed() -> void:
-	print("\n--- 每一幕都必须至少有一个商店 ---")
+	print("\n--- 一条路线上至少能走到 %d 个商店 ---" % GameState.MIN_SHOPS_PER_ACT)
 	var runs := 400
-	var shopless := 0
+	var bad := 0
 	var min_shops := 999
+	var hist := {}
+	var rows: Array = []
 	for i in range(runs):
 		GameState.reset_campaign(1)
 		var count := 0
-		for nid in GameState.spire_nodes:
+		for nid in GameState.best_shop_route():
 			if str(GameState.spire_nodes[nid]["type"]) == "shop":
 				count += 1
-		if count == 0:
-			shopless += 1
+		if count < GameState.MIN_SHOPS_PER_ACT:
+			bad += 1
 		min_shops = mini(min_shops, count)
-	if shopless == 0:
-		ok("%d 局全部至少有一个商店 (最少的一局有 %d 个)" % [runs, min_shops])
+		hist[count] = int(hist.get(count, 0)) + 1
+		rows.append({"run_seed": GameState.run_seed, "route_shops": count})
+
+	# 顺手落一份盘, 这样"改了发图逻辑之后商店数分布变了没有"是可以 diff 的
+	BalanceLog.emit_batch("route_shops", rows)
+
+	var keys: Array = hist.keys()
+	keys.sort()
+	var parts := PackedStringArray()
+	for k in keys:
+		parts.append("%d:%.1f%%" % [k, 100.0 * float(hist[k]) / float(runs)])
+
+	if bad == 0:
+		ok("%d 局的最优路线全部 >= %d 个商店 (最少 %d, 分布 %s)"
+			% [runs, GameState.MIN_SHOPS_PER_ACT, min_shops, " ".join(parts)])
 	else:
-		fail("%d/%d 局整幅图没有任何商店 —— 那一幕买不到也造不出任何建材"
-			% [shopless, runs])
+		fail("%d/%d 局的最优路线不足 %d 个商店 (最少只有 %d, 分布 %s) —— "
+			% [bad, runs, GameState.MIN_SHOPS_PER_ACT, min_shops, " ".join(parts)]
+			+ "这些局的金币有一大半没有地方花, 而且建材也拿不够")
 
 
 func _check_price_scales_with_floor() -> void:
