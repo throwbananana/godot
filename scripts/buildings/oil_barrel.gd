@@ -122,6 +122,12 @@ func detonate() -> void:
 				collider.take_damage(blast_damage)
 			else:
 				collider.queue_free()
+		# C2. 钢墙也炸得开 —— 四个爆炸源统一口径, 见
+		#     tools/test_explosive_terrain_matrix.gd。地图边界 (border) 除外:
+		#     它同样挂在 steel 组上, 炸穿了坦克就能开出地图。
+		elif collider.is_in_group("steel") and not collider.is_in_group("border"):
+			VFXAnimator.spawn_shockwave(get_parent(), collider.global_position)
+			collider.queue_free()
 		# D. Deal heavy blast damage to tanks
 		elif collider is PlayerTank or collider is EnemyTank or collider.has_method("take_damage"):
 			collider.take_damage(blast_damage)

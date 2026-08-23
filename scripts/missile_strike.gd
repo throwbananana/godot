@@ -156,4 +156,13 @@ func _detonate() -> void:
 				if h.has_method("take_hit"):
 					h.take_hit(99)
 
+	# 钢墙也炸得开 —— 四个爆炸源统一口径, 见
+	# tools/test_explosive_terrain_matrix.gd。地图边界 (border) 除外, 它同样
+	# 挂在 steel 组上, 炸穿了坦克就能开出地图。
+	for s in get_tree().get_nodes_in_group("steel"):
+		if is_instance_valid(s) and s is Node2D and not s.is_in_group("border"):
+			if global_position.distance_to(s.global_position) <= aoe_radius:
+				VFXAnimator.spawn_shockwave(get_parent(), s.global_position)
+				s.queue_free()
+
 	get_tree().create_timer(0.4).timeout.connect(queue_free)

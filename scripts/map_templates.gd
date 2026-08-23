@@ -6,7 +6,9 @@ const MapDirector = preload("res://scripts/map_director.gd")
 # Tile Legend:
 # 0 = Empty Ground
 # 1 = Brick Wall (2x2 Destructible Subdivided)
-# 2 = Steel Wall (Indestructible / Plasma Only)
+# 2 = Steel Wall (子弹只有 tier3 plasma 能破; 但**所有爆炸物都能炸开** ——
+#     定时炸弹/导弹打击/油桶/地雷。地图边界墙也挂在 steel 组上, 但它额外挂
+#     border 组且永不被摧毁。见 tools/test_explosive_terrain_matrix.gd)
 # 3 = Water / River (Bullet passable, tank impassable)
 # 4 = Trees / Foliage (Camouflage cover)
 # 5 = Anti-Tank Landmine (Hazard trap)

@@ -139,10 +139,21 @@ func _resolve_flame_impact(pos: Vector2) -> bool:
 	var hit_radius = 24.0
 	var main = get_tree().current_scene
 
-	# Check Steel Walls (stops flame)
+	# Check Steel Walls -- 炸得开, 但地图边界永远炸不开。
+	#
+	# 钢墙原来只是挡住火焰而不被摧毁, 但**地雷是炸得掉的** ——
+	# 四个爆炸源各写了一套地形判定, 于是 40G 的地雷能拆钢墙, 60G 的定时炸弹
+	# 和 90G 的导弹反而不能。玩家看到的就是"这个炸弹炸得掉那个炸不掉"。
+	# 现在统一成"爆炸物都能开钢墙", 见 tools/test_explosive_terrain_matrix.gd。
+	#
+	# border 组必须排除: 地图四周的边界墙也在 steel 组里, 炸穿了坦克就能开
+	# 出地图外面。它仍然挡火焰, 只是不消失。
 	for s in get_tree().get_nodes_in_group("steel"):
 		if is_instance_valid(s) and s is Node2D:
 			if pos.distance_to(s.global_position) <= hit_radius:
+				if not s.is_in_group("border"):
+					VFXAnimator.spawn_shockwave(get_parent(), s.global_position)
+					s.queue_free()
 				stop_flame = true
 
 	# Check Bricks (destroys and stops flame)

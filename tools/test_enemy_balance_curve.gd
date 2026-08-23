@@ -296,6 +296,32 @@ func _max_of(stats: Dictionary, key: String, from_floor: int) -> float:
 	return m
 
 
+## 等到坦克真的都入树了。
+##
+## **不能睡一个固定时长。** _request_spawn_enemy() 并不同步造坦克 —— 它先往
+## actors_container 里放一个出生星星 (spawn_star.tscn), 真正的坦克要等星星的
+## 动画播完、finished 信号回调时才 add_child。原来这里写的是
+## `await create_timer(1.3).timeout`, 机器一忙星星就播不完, 采样直接拿到**零只**
+## 坦克, 报出来是"这一层均血 0.00", 看着像平衡崩了, 实际是测试没等够。
+## 实测约 17% 的运行会这样翻车, 而且加一句 print 就不复现了 —— 典型的
+## 海森堡 bug, 靠重跑是查不出来的。
+##
+## 改成等"入树数量连续若干帧不再增长"。上限 240 帧 (~4 秒) 兜底, 真卡住时
+## 不至于死等。
+func _await_spawns() -> void:
+	var stable := 0
+	var last := -1
+	for _i in range(240):
+		await process_frame
+		if _pending.size() == last:
+			stable += 1
+			if stable >= 20 and last > 0:
+				return
+		else:
+			stable = 0
+			last = _pending.size()
+
+
 func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 	GameState.reset_campaign(1)
 	GameState.mode = GameState.GameMode.CAMPAIGN
@@ -315,7 +341,7 @@ func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 	_main.enemies_spawned = 0
 	for i in range(SAMPLES):
 		_main._request_spawn_enemy()
-	await create_timer(1.3).timeout
+	await _await_spawns()
 
 	var hp_tot := 0.0
 	var xp_tot := 0.0

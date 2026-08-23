@@ -200,6 +200,21 @@ func _shelf_prices() -> float:
 	return tot / float(trials)
 
 
+## 等到坦克真的都入树了 —— 等增长停下来, 不是睡固定时长。理由见调用处。
+func _await_spawns() -> void:
+	var stable := 0
+	var last := -1
+	for _i in range(240):
+		await process_frame
+		if _pending.size() == last:
+			stable += 1
+			if stable >= 20 and last > 0:
+				return
+		else:
+			stable = 0
+			last = _pending.size()
+
+
 func _sample_floor(bt: String, floor_idx: int) -> Dictionary:
 	GameState.reset_campaign(1)
 	GameState.mode = GameState.GameMode.CAMPAIGN
@@ -225,7 +240,13 @@ func _sample_floor(bt: String, floor_idx: int) -> Dictionary:
 		_main._request_spawn_enemy()
 	# 入树瞬间计数, 不能等一会儿数场上剩谁: 自爆卡车 84px 的 AoE 会把周围脆皮
 	# 一起带走, 存活样本严重偏向高血量单位 (实测 TRAIN_BOSS 会从 15% 读成 26%)。
-	await create_timer(1.0).timeout
+	#
+	# 而且等的方式必须是"等到不再增长", 不能睡固定时长:
+	# _request_spawn_enemy() 先放出生星星, 坦克要等星星动画播完的 finished
+	# 回调才入树。固定 sleep 在机器忙的时候会拿到零只坦克, 报出来是"均血 0.00"
+	# —— 看着像平衡崩了, 其实是没等够 (test_enemy_balance_curve.gd 上实测约
+	# 17% 的运行会这样翻车)。
+	await _await_spawns()
 
 	var hp_tot := 0.0
 	var gold_tot := 0.0
