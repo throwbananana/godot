@@ -330,14 +330,24 @@ func _setup_tank_type() -> void:
 		GameState.current_floor, GameState.battle_type, cycle)
 	max_health += armor_plates * ARMOR_PLATE_HP
 
+	# 关于下面这些乘数, 有一条界线:
+	#
+	#   **强弱量 (血量、伤害) 必须是整数, 而且必须看得见** —— 见上面的装甲板。
+	#   速率与时序 (射击间隔) 可以按比例缩放, 因为它本来就是连续量, 而且
+	#   "弹幕变密"是玩家当场感觉得到的; 奖励 (xp/gold/score) 同理, 它显示在
+	#   结算界面上, 本身就是可见的。
+	#
+	# 移动速度曾经也在这里挨乘 (精英/Boss x1.08, 每圈再 x1.07)。已删:
+	# 75 -> 81 px/s, 过一格 48px 是 0.64 秒对 0.59 秒 —— 既感觉不到, 也读不出来,
+	# 属于两头不占的隐藏数值。难度圈丢掉的那部分改由**遭遇规模**承担
+	# (main.gd::encounter_size), 那是一个整数, 而且"这一场来了 20 辆而不是 12 辆"
+	# 是一眼能看出来的。
 	if GameState.battle_type == "elite":
-		speed = speed * 1.08
 		xp_value = int(xp_value * 1.6)
 		gold_value = int(gold_value * 1.5)
 		score_value = int(score_value * 1.5)
 		fire_interval = fire_interval * 0.85
 	elif GameState.battle_type == "boss":
-		speed = speed * 1.08
 		xp_value = int(xp_value * 1.8)
 		gold_value = int(gold_value * 1.8)
 		score_value = int(score_value * 1.8)
@@ -349,10 +359,9 @@ func _setup_tank_type() -> void:
 
 	# Acts beyond 3 re-lap the same 3 visual themes (GameState.get_visual_act()),
 	# so without this they'd just be Acts 1-3 replayed at identical difficulty.
-	# 血量部分由 roll_armor_plates() 里的下界处理 (第二三圈的素车越来越少),
-	# 这里只剩速度和奖励: +7% speed / +15% rewards per completed lap。
+	# 强度部分由两处承担, 都是整数且可见: roll_armor_plates() 抬装甲下界
+	# (素车越来越少), main.gd::encounter_size() 抬遭遇规模。这里只剩奖励。
 	if cycle > 0:
-		speed *= (1.0 + cycle * 0.07)
 		xp_value = int(xp_value * (1.0 + cycle * 0.15))
 		gold_value = int(gold_value * (1.0 + cycle * 0.15))
 		score_value = int(score_value * (1.0 + cycle * 0.15))

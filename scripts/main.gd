@@ -302,6 +302,66 @@ func _toggle_pause() -> void:
 	get_tree().paused = paused
 	pause_menu.visible = paused
 
+## 遭遇规模 —— 一场要打多少辆车, 按战斗类型 + 难度圈。
+##
+## 这里承担了难度圈 (act 4-8 重走前三幕主题) 原本挂在敌人身上的那部分强度。
+## 以前是 enemy.gd 里 max_health x (1 + cycle * 0.18) 加 speed x (1 + cycle * 0.07),
+## 两个都是看不见的乘数, 速度那个还小到根本感觉不出来 (75 -> 81 px/s)。
+##
+## 换成遭遇规模的理由很简单: 它是一个**整数**, 而且"这一场来了 20 辆而不是
+## 12 辆"是玩家一眼就能看出来的 —— 和装甲板同一条原则 (敌人的强弱只能是整数,
+## 而且必须看得见, 见 enemy.gd 的 ARMOR_PLATE_HP 那段)。血量那部分则由
+## roll_armor_plates() 抬装甲下界来承担: 第二三圈的素车越来越少。
+##
+## static 是为了可测: tools/test_enemy_balance_curve.gd 直接调它算每圈的
+## 遭遇总血量, 不用把 main.tscn 起三遍, 也不用在测试里手抄一份规模表
+## (手抄的表必然和这里发散)。
+const ENCOUNTER_BASE := {
+	"elite": 18,
+	"boss": 24,
+	"challenge": 14,
+	"battle": 12,
+}
+const ENCOUNTER_PER_LAP := 4
+
+const SPAWN_INTERVAL_BASE := {
+	"elite": 2.0,
+	"boss": 1.6,
+	"challenge": 2.4,
+	"battle": 2.5,
+}
+## 每圈出车间隔收紧多少; 下限 1.2 秒 —— 再快的话三个出生点会堵住,
+## 车挤在门口反而比正常涌出来好打。
+const SPAWN_INTERVAL_PER_LAP := 0.25
+const SPAWN_INTERVAL_FLOOR := 1.2
+
+## 场上同时存在的敌人上限。
+##
+## 这一条是难度圈真正加压的地方。光加遭遇规模不够 —— 上限锁死在 4 的话,
+## "一场 20 辆"和"一场 12 辆"的区别只是**打得久**, 每一刻的压力一模一样,
+## 而更长不等于更难。上限抬到 6, 场上多两辆车才是实打实的压迫感, 而且它同样
+## 是个整数、同样一眼看得见 (屏幕上就是多两辆)。
+##
+## 封顶 6: 13x13 的地图加三个出生点, 再多就变成敌人互相堵路, 反而更好打。
+const MAX_ALIVE_BASE := 4
+const MAX_ALIVE_CAP := 6
+
+var max_alive_cap: int = MAX_ALIVE_BASE
+
+static func max_alive_for(cycle: int) -> int:
+	return mini(MAX_ALIVE_CAP, MAX_ALIVE_BASE + maxi(0, cycle))
+
+
+static func encounter_size(battle_type: String, cycle: int) -> int:
+	var base: int = int(ENCOUNTER_BASE.get(battle_type, ENCOUNTER_BASE["battle"]))
+	return base + maxi(0, cycle) * ENCOUNTER_PER_LAP
+
+
+static func spawn_interval_for(battle_type: String, cycle: int) -> float:
+	var base: float = float(SPAWN_INTERVAL_BASE.get(battle_type, SPAWN_INTERVAL_BASE["battle"]))
+	return maxf(SPAWN_INTERVAL_FLOOR, base - float(maxi(0, cycle)) * SPAWN_INTERVAL_PER_LAP)
+
+
 func start_game() -> void:
 	score = 0
 	enemies_spawned = 0
@@ -310,6 +370,9 @@ func start_game() -> void:
 	is_victory = false
 	battle_gold_earned = 0
 	battle_start_msec = Time.get_ticks_msec()
+	# 每场重置 —— 只有战役模式的难度圈会抬它, 街机/每日挑战用基准值。
+	# 不重置的话重开一局会继承上一局的上限。
+	max_alive_cap = MAX_ALIVE_BASE
 	shovel_timer = 0.0
 	is_shovel_active = false
 	hud_status.visible = false
@@ -326,17 +389,16 @@ func start_game() -> void:
 		p2_lives = GameState.p2_lives
 		rpg_mgr.sync_from_game_state()
 		
+		var cycle: int = GameState.get_difficulty_cycle()
+		total_enemies = encounter_size(GameState.battle_type, cycle)
+		spawn_interval = spawn_interval_for(GameState.battle_type, cycle)
+		max_alive_cap = max_alive_for(cycle)
+
 		if GameState.battle_type == "elite":
-			total_enemies = 18
-			spawn_interval = 2.0
 			show_toast("⚠️ ELITE BATTLE: HEAVY ARMORED CORPS!")
 		elif GameState.battle_type == "boss":
-			total_enemies = 24
-			spawn_interval = 1.6
 			show_toast("👑 BOSS BATTLE: REGIONAL COMMANDER FORTRESS!")
 		elif GameState.battle_type == "challenge":
-			total_enemies = 14
-			spawn_interval = 2.4
 			if GameState.challenge_mode == "bomb_rain":
 				is_bomb_rain_active = true
 				bomb_rain_timer = 2.0
@@ -354,8 +416,6 @@ func start_game() -> void:
 			else:
 				show_toast("🏆 隐秘宝藏挑战：击破隐藏地块或消灭敌军寻找【金钥匙】！")
 		else:
-			total_enemies = 12
-			spawn_interval = 2.5
 			show_toast("FLOOR %d: TACTICAL ENGAGEMENT" % (GameState.current_floor + 1))
 	elif GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
 		# Seed the global RNG stream from today's date so every randf()/randi()
@@ -1264,7 +1324,7 @@ func _process(delta: float) -> void:
 			bomb_rain_interval = randf_range(3.8, 6.0)
 			_spawn_falling_bomb()
 
-	if enemies_spawned < total_enemies and enemies_alive < 4:
+	if enemies_spawned < total_enemies and enemies_alive < max_alive_cap:
 		spawn_timer += delta
 		if spawn_timer >= spawn_interval:
 			spawn_timer = 0.0

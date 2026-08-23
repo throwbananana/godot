@@ -29,6 +29,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const EnemyTank = preload("res://scripts/enemy.gd")
 const RPGManager = preload("res://scripts/rpg_manager.gd")
 const BalanceLog = preload("res://scripts/balance_log.gd")
+const MainGame = preload("res://scripts/main.gd")
 
 const SAMPLES := 140
 
@@ -108,6 +109,7 @@ func _run() -> void:
 	_check_late_act_one_shot(stats)
 	_check_no_train_filler(stats)
 	_check_gate_variety(stats)
+	await _check_lap_ramp()
 	_log(stats)
 
 	print("==================================================")
@@ -203,6 +205,45 @@ func _check_late_act_one_shot(stats: Dictionary) -> void:
 			+ "检查 rpg_manager.gd::ATK_LEVELS_PER_POINT 的攻击力成长节奏")
 
 
+## 5. 难度圈必须真的更难。
+##
+## act 4-8 重走前三幕的主题 (只有 3 套视觉), 所以没有额外强度的话就是原样再打
+## 一遍。这部分强度以前挂在 enemy.gd 的两个隐藏乘数上 —— max_health x
+## (1 + cycle * 0.18) 和 speed x (1 + cycle * 0.07)。两个都看不见, 速度那个还
+## 小到根本感觉不出来 (75 -> 81 px/s, 过一格 0.64 秒对 0.59 秒)。
+##
+## 现在改由两处整数、可见的东西承担: 装甲板下界 (素车越来越少, 看得出来) 和
+## 遭遇规模 (main.gd::encounter_size, 一场多来几辆, 更看得出来)。这条断言就是
+## 保证换完之后强度**没有反而掉下去** —— 删掉一个隐藏乘数很容易顺手把难度也
+## 删掉, 而这种事不会报任何错。
+##
+## 量的是"一场的总血量" = 遭遇规模 x 单只均血, 因为两个承担者一个改规模一个
+## 改单只血量, 只看其中一个都会漏。
+func _check_lap_ramp() -> void:
+	var tot: Array[float] = []
+	var detail := PackedStringArray()
+	for cycle in range(3):
+		# act 1 / 4 / 7 分别是第 0 / 1 / 2 圈 (GameState.get_difficulty_cycle)
+		var r = await _sample("battle", 12, 1 + cycle * 3)
+		var size: float = float(MainGame.encounter_size("battle", cycle))
+		var enc_hp: float = size * float(r["avg_hp"])
+		tot.append(enc_hp)
+		detail.append("圈%d: %.0f辆 x %.2f血 = %.0f (同屏上限 %d)"
+			% [cycle, size, float(r["avg_hp"]), enc_hp, MainGame.max_alive_for(cycle)])
+
+	var up := true
+	for i in range(1, tot.size()):
+		if tot[i] <= tot[i - 1] * 1.10:
+			up = false
+	if up:
+		ok("难度圈确实在加压: %s (共 x%.2f)" % [" | ".join(detail), tot[2] / maxf(1.0, tot[0])])
+	else:
+		fail("后面的难度圈没有比前一圈更难: %s —— act 4-8 会变成原样再打一遍; "
+			% " | ".join(detail)
+			+ "强度现在由 enemy.gd::armor_plate_range 的下界和 main.gd::encounter_size 承担, "
+			+ "检查是不是删隐藏乘数时把难度也一起删了")
+
+
 ## 把这次跑出来的曲线落盘, 交给 tools/analyze_balance_log.py 做分布/前后对比。
 ## 闸门只回答"过没过", 日志才回答"比上次好了多少"。
 func _log(stats: Dictionary) -> void:
@@ -255,10 +296,10 @@ func _max_of(stats: Dictionary, key: String, from_floor: int) -> float:
 	return m
 
 
-func _sample(bt: String, floor_idx: int) -> Dictionary:
+func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 	GameState.reset_campaign(1)
 	GameState.mode = GameState.GameMode.CAMPAIGN
-	GameState.current_act = 1
+	GameState.current_act = act
 	GameState.current_floor = floor_idx
 	GameState.battle_type = bt
 
