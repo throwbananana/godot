@@ -11,7 +11,7 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -90,6 +90,12 @@ var plane_shadow: Sprite2D = null
 var wake_timer: float = 0.0
 var warp_blink_timer: float = 0.0
 
+# 敌方护盾塔增益与护盾气泡
+var shield_sources: Array = []
+var shield_bubble_sprite: Sprite2D = null
+var shield_bubble_textures: Array[Texture2D] = []
+var shield_anim_timer: float = 0.0
+
 var facing_direction: Vector2 = Vector2.DOWN
 var tank_frames: Array[Texture2D] = []
 var current_frame: int = 0
@@ -114,6 +120,10 @@ func _ready() -> void:
 	coin_scene = load("res://scenes/gold_coin.tscn")
 	carriage_scene = load("res://scenes/train_carriage.tscn")
 	tree_tex = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
+	for i in range(8):
+		var s_tex = TextureHelper.get_tex("res://assets/sprites/effects/shield_bubble_%d.png" % i)
+		if s_tex:
+			shield_bubble_textures.append(s_tex)
 	_setup_tank_type()
 	rotation = facing_direction.angle() + PI / 2.0
 	change_dir_timer = randf_range(1.0, 2.5)
@@ -131,6 +141,33 @@ func _ready() -> void:
 			plane_shadow.scale = Vector2(0.20, 0.20)
 			plane_shadow.z_index = 5
 			get_parent().call_deferred("add_child", plane_shadow)
+
+func is_shielded() -> bool:
+	return shield_sources.size() > 0
+
+func add_shield_source(source: Node) -> void:
+	if not shield_sources.has(source):
+		shield_sources.append(source)
+		_update_shield_state()
+
+func remove_shield_source(source: Node) -> void:
+	shield_sources.erase(source)
+	_update_shield_state()
+
+func _update_shield_state() -> void:
+	if is_shielded():
+		if shield_bubble_sprite == null:
+			shield_bubble_sprite = Sprite2D.new()
+			shield_bubble_sprite.z_index = 25
+			var s_scale = Vector2(0.26, 0.26) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER) else (Vector2(0.16, 0.16) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.21, 0.21))
+			shield_bubble_sprite.scale = s_scale
+			if shield_bubble_textures.size() > 0:
+				shield_bubble_sprite.texture = shield_bubble_textures[0]
+			add_child(shield_bubble_sprite)
+		shield_bubble_sprite.visible = true
+	else:
+		if shield_bubble_sprite:
+			shield_bubble_sprite.visible = false
 
 ## 摇这辆车带几层装甲。返回 0..MAX_ARMOR_PLATES 的整数。
 ##
@@ -351,6 +388,22 @@ func _setup_tank_type() -> void:
 			xp_value = 115
 			gold_value = 75
 			fire_interval = 2.4 # 扇形 3 路扩散破片霰弹
+		EnemyType.SPLITTER:
+			prefix = "enemy_splitter"
+			speed = 52.0 # 沉重推进的大型母体战车
+			max_health = 7 # 坚厚母体装甲，被摧毁后分裂出 4 辆小型战车
+			score_value = 1000
+			xp_value = 200
+			gold_value = 120
+			fire_interval = 2.2 # 双联重型火炮
+		EnemyType.SPLIT_MINI:
+			prefix = "enemy_split_mini"
+			speed = 130.0 # 敏捷高速的小型分裂子战车
+			max_health = 1 # 脆弱但迅速
+			score_value = 150
+			xp_value = 30
+			gold_value = 15
+			fire_interval = 1.8
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
@@ -413,10 +466,10 @@ func _setup_tank_type() -> void:
 		var tex = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f%d.png" % [prefix, i])
 		if tex:
 			tank_frames.append(tex)
-	if tank_frames.size() > 0 and sprite:
-		sprite.texture = tank_frames[0]
-		if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER:
+		if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
 			sprite.scale = Vector2(0.24, 0.24)
+		elif enemy_type == EnemyType.SPLIT_MINI:
+			sprite.scale = Vector2(0.14, 0.14)
 
 func freeze(duration: float) -> void:
 	freeze_timer = duration
@@ -557,6 +610,14 @@ func _physics_process(delta: float) -> void:
 				rotation = facing_direction.angle() + PI / 2.0
 			var charge_flash = int(Time.get_ticks_msec() / 75) % 2 == 0
 			sprite.modulate = Color(1.2, 2.4, 3.0) if charge_flash else Color(1.0, 1.0, 1.0)
+
+	# 9. 护盾发生气泡动画更新
+	if is_shielded():
+		shield_anim_timer += delta * 8.0
+		if is_instance_valid(shield_bubble_sprite) and shield_bubble_textures.size() > 0:
+			var s_idx = int(shield_anim_timer) % shield_bubble_textures.size()
+			shield_bubble_sprite.texture = shield_bubble_textures[s_idx]
+			shield_bubble_sprite.rotation += delta * 1.5
 
 	# 喷火兵、自爆车与粉碎者不发射常规子弹
 	if enemy_type != EnemyType.FLAMETHROWER and enemy_type != EnemyType.SUICIDE and enemy_type != EnemyType.CRUSHER:
@@ -867,6 +928,35 @@ func _shoot() -> void:
 		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
 		SoundManager.play_shot(get_tree())
+	elif enemy_type == EnemyType.SPLITTER:
+		# 双联重型破甲火炮齐射
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-9.0, 9.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = facing_direction
+			b.speed = 420.0
+			b.damage = 1
+			b.can_destroy_steel = false
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 28.0 + right_vec * side
+			b.global_position = m_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+		SoundManager.play_shot(get_tree())
+	elif enemy_type == EnemyType.SPLIT_MINI:
+		var bullet = bullet_scene.instantiate()
+		bullet.direction = facing_direction
+		bullet.speed = 400.0
+		bullet.damage = 1
+		bullet.can_destroy_steel = false
+		bullet.shooter = self
+		bullet.shooter_type = "enemy"
+		get_parent().add_child(bullet)
+		bullet.global_position = muzzle_pos
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+		SoundManager.play_shot(get_tree())
 	else:
 		var bullet = bullet_scene.instantiate()
 		bullet.direction = facing_direction
@@ -917,20 +1007,29 @@ func _find_player_target() -> Node2D:
 	return players[0]
 
 func take_damage(amount: int) -> void:
+	if is_shielded():
+		SoundManager.play_shield_hit(get_tree())
+		if is_instance_valid(shield_bubble_sprite):
+			shield_bubble_sprite.modulate = Color(3.0, 3.0, 3.5, 1.0)
+			var tw = create_tween()
+			tw.tween_property(shield_bubble_sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.12)
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+		return
+
 	health -= amount
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
 	# 按敌人类型追加额外特效
-	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER:
+	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
 		VFXAnimator.spawn_dust_puff(get_parent(), global_position)
 	elif enemy_type == EnemyType.POWER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
-	if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER:
+	if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
 	# 受击形变晃动
-	var base_scale = Vector2(0.24, 0.24) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER) else Vector2(0.196, 0.196)
+	var base_scale = Vector2(0.24, 0.24) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER) else (Vector2(0.14, 0.14) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.196, 0.196))
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
 	hit_tween = create_tween()
@@ -1093,8 +1192,44 @@ func _die() -> void:
 		coin.value = gold_value
 		spawn_parent.call_deferred("add_child", coin)
 
+	if enemy_type == EnemyType.SPLITTER:
+		_split_into_mini_tanks()
+
 	enemy_destroyed.emit(score_value, is_bonus, global_position)
 	queue_free()
+
+func _split_into_mini_tanks() -> void:
+	if not is_inside_tree() or get_parent() == null:
+		return
+
+	# 4 个对角线方向向外弹射
+	var spawn_dirs = [
+		Vector2(-1.0, -1.0).normalized(),
+		Vector2(1.0, -1.0).normalized(),
+		Vector2(-1.0, 1.0).normalized(),
+		Vector2(1.0, 1.0).normalized()
+	]
+
+	var enemy_scene = load("res://scenes/enemy.tscn")
+	if not enemy_scene:
+		return
+
+	VFXAnimator.spawn_shockwave(get_parent(), global_position)
+
+	for dir in spawn_dirs:
+		var mini_tank = enemy_scene.instantiate()
+		mini_tank.enemy_type = EnemyType.SPLIT_MINI
+		mini_tank.facing_direction = dir
+		mini_tank.rotation = dir.angle() + PI / 2.0
+		get_parent().add_child(mini_tank)
+
+		var target_pos = global_position + dir * 28.0
+		target_pos.x = clampf(target_pos.x, 32.0, 592.0)
+		target_pos.y = clampf(target_pos.y, 32.0, 592.0)
+		mini_tank.global_position = target_pos
+
+		VFXAnimator.spawn_dust_puff(get_parent(), target_pos)
+		VFXAnimator.spawn_clay_debris(get_parent(), target_pos)
 
 func get_points() -> int:
 	return score_value

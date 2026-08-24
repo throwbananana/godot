@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://ttl101scene01"]
+[gd_scene load_steps=3 format=3 uid="uid://ttl101scene01"]
 
 [ext_resource type="Script" path="res://scripts/title_screen.gd" id="1_ttl"]
+[ext_resource type="PackedScene" uid="uid://encyclopedia101dlg" path="res://scenes/encyclopedia_dialog.tscn" id="2_enc"]
 
 [node name="TitleScreen" type="Control"]
 layout_mode = 3
@@ -100,9 +101,20 @@ theme_override_colors/font_color = Color(0.75, 0.68, 1, 1)
 theme_override_font_sizes/font_size = 16
 text = "DAILY CHALLENGE (每日挑战)"
 
+[node name="EncyclopediaButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
+custom_minimum_size = Vector2(360, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.88, 0.95, 1)
+theme_override_font_sizes/font_size = 16
+text = "COMPENDIUM (战术图鉴百科)"
+
 [node name="QuitButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
 custom_minimum_size = Vector2(360, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.48, 0.44, 1)
 theme_override_font_sizes/font_size = 15
 text = "EXIT GAME (退出游戏)"
+
+[node name="EncyclopediaDialog" parent="." instance=ExtResource("2_enc")]
+visible = false
+layout_mode = 1

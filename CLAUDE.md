@@ -232,16 +232,27 @@ After adding sprites, run `godot --headless --path . --import` and then that tes
 
 Sprite naming, which now mixes two schemes:
 
-- **Enemies**: `enemy_{basic,fast,power,armor,missile,laser,boss,desert,bomber,suicide,mirage,battleship,aircraft,warp,flame,crusher,sniper,gatling,shotgun}[_bonus]_f{0..5}.png` — **6 frames**, same as players (they were 2-frame historically). Plus `enemy_plate_t{1,2,3}.png`, single-frame armor-tier overlays drawn on top of *any* enemy type (one set for all 20 types, rather than 20 × 6 × 3 = 360 per-type variants).
+- **Enemies**: `enemy_{basic,fast,power,armor,missile,laser,boss,desert,bomber,suicide,mirage,battleship,aircraft,warp,flame,crusher,sniper,gatling,shotgun,splitter,split_mini}[_bonus]_f{0..5}.png` — **6 frames**, same as players (they were 2-frame historically). Plus `enemy_plate_t{1,2,3}.png`, single-frame armor-tier overlays drawn on top of *any* enemy type (one set for all 22 types, rather than 22 × 6 × 3 = 396 per-type variants).
 - **Players**: 6-frame, prefixed by both player slot and branch (`player.gd::_update_tier_appearance()`): `{player|player2}_tier{0-3}` for the default branch, or `{player|player2}_{speed|heavy}_t{1,2}` / `{player|player2}_train_loco_t{1,2}` once a branch is picked. `player2` means P2's tank, not a tier — there is no shared or recoloured sprite between P1 and P2.
 
 ### Enemies: variety gated by floor, not stat inflation
 
-`enemy.gd::EnemyType` has 20 members. Which ones can appear is governed by `main.gd::ENEMY_MIN_FLOOR`, grouped by *mechanic* rather than raw stats — floor 1 unlocks reskins of the direct-fire loop (POWER/SUICIDE/ARMOR), floor 2 adds close-range burst (SHOTGUN), floor 3 adds area denial (BOMBER's delayed AoE, FLAMETHROWER's sustained forward cone), floor 4 adds high-contrast archetypes (SNIPER's high-speed long-charge railgun, GATLING's slow heavy suppression stream), floor 5 adds genuinely new counterplay (AIRCRAFT ignores all terrain, MIRAGE cloaks, BATTLESHIP/LASER hit in AoE/pierce lines, CRUSHER smashes through all steel and structures), floor 8 adds the boss-adjacent tier (MISSILE/WARP). `_gate_enemy_type()` downgrades anything spawned too early to BASIC/FAST.
+`enemy.gd::EnemyType` has 22 members. Which ones can appear is governed by `main.gd::ENEMY_MIN_FLOOR`, grouped by *mechanic* rather than raw stats — floor 1 unlocks reskins of the direct-fire loop (POWER/SUICIDE/ARMOR), floor 2 adds close-range burst (SHOTGUN), floor 3 adds area denial (BOMBER's delayed AoE, FLAMETHROWER's sustained forward cone), floor 4 adds high-contrast archetypes (SNIPER's high-speed long-charge railgun, GATLING's slow heavy suppression stream), floor 5 adds genuinely new counterplay (AIRCRAFT ignores all terrain, MIRAGE cloaks, BATTLESHIP/LASER hit in AoE/pierce lines, CRUSHER smashes through all steel and structures), floor 6 adds colony/split mechanics (SPLITTER heavy mother tank, splitting into 4 agile SPLIT_MINI drones on death), floor 8 adds the boss-adjacent tier (MISSILE/WARP). `_gate_enemy_type()` downgrades anything spawned too early to BASIC/FAST.
 
 FLAMETHROWER is the one enemy whose weapon is a *persistent* node rather than a per-shot call: `scripts/flame_jet.gd` is a `Node2D` parented to the tank, so the cone inherits the tank's transform and never needs per-frame coordinate syncing — which is also why it sidesteps the local-vs-global trap described above. It bypasses `fire_timer` entirely and runs its own burn/rest cycle (`FLAME_BURN_TIME` / `FLAME_REST_TIME` in `enemy.gd`); the rest window is the counterplay, and the always-lit pilot flame on the nozzle sprite is its visual tell. Range is deliberately short (132px, 2.75 tiles) so flanking beats it — lengthen that and it stops being a positioning puzzle and becomes a stat check. Its `_physics_process` branch must **not** `return` early: everything below it is movement, so an early return turns the tank into scenery (`test_flamethrower.gd` asserts this).
 
 One **act-themed "signature" enemy** slot signals which act you're in by silhouette: Act 1 → ARMOR (the default filler), Act 2 → DESERT, Act 3 → WARP, keyed off `get_visual_act()`. Daily Challenge deliberately bypasses the gate entirely and rolls uniformly across the full roster.
+
+### Encyclopedia / Tactical Compendium (`scripts/encyclopedia_data.gd` & `scripts/encyclopedia_dialog.gd`)
+
+The Tactical Compendium (战术图鉴百科) is accessible directly from the Title Screen via `COMPENDIUM (战术图鉴百科)`. It features a two-pane layout with 5 major categories:
+- **UPGRADES (升级路线树)**: 4 Specialization Trees (Classic, Speed, Heavy, Train), 7 Passive Tactical Perks (Rapid Loader, Titan Plating, Nitro Booster, Ricochet Rounds, Amphibious Hull, Nano Repair, High Explosive), and Level Progression Curves.
+- **TANKS (坦克战车)**: Player tank branches (Classic, Speed, Heavy, Train) and all 22 enemy types with full combat stats, mechanics, and counterplay tips.
+- **ITEMS (道具宝物)**: Core power-ups (Star, Bomb, Clock, Helmet, Shovel, Life) and battle loot (Gems, Keys, Chests, Supplies).
+- **BUILDINGS (防御建筑)**: Deployable defense structures (Turrets, Electric Walls, Repair Stations, Shield Stations, Wind Turbines, Street Lamps, Oil Barrels, Roller Walls, etc.).
+- **TERRAIN (战场地形)**: Environmental and hazard tiles (Brick, Steel, Forest Trees, River Water, Sand Dunes, Ice, Hard Clay, Conveyors, Jump Pads, Wormholes, and Base Eagle).
+
+All entries are strictly typed, contain high-resolution sprite icons, and integrate seamlessly with gamepad/keyboard navigation via `UIThemeHelper.focus_first()`. Automated coverage is enforced via `tools/test_encyclopedia.gd`.
 
 #### Enemy toughness is integer and visible — armor plates, never a multiplier
 

@@ -1,0 +1,229 @@
+[gd_scene load_steps=2 format=3 uid="uid://encyclopedia101dlg"]
+
+[ext_resource type="Script" path="res://scripts/encyclopedia_dialog.gd" id="1_enc"]
+
+[node name="EncyclopediaDialog" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_enc")
+
+[node name="DimBackground" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.06, 0.1, 0.88)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MainPanel" type="PanelContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(960, 680)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/MainPanel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Header" type="HBoxContainer" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/MainPanel/VBox/Header"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "📖 TACTICAL COMPENDIUM (战术图鉴百科)"
+
+[node name="Spacer" type="Control" parent="CenterContainer/MainPanel/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CloseTopBtn" type="Button" parent="CenterContainer/MainPanel/VBox/Header"]
+custom_minimum_size = Vector2(100, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "CLOSE (关闭)"
+
+[node name="TabsBar" type="HBoxContainer" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="BtnTabUpgrades" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
+custom_minimum_size = Vector2(175, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "🌟 升级路线 (UPGRADES)"
+
+[node name="BtnTabTanks" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
+custom_minimum_size = Vector2(175, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "🛡️ 坦克战车 (TANKS)"
+
+[node name="BtnTabItems" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
+custom_minimum_size = Vector2(175, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "⚡ 道具宝物 (ITEMS)"
+
+[node name="BtnTabBuildings" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
+custom_minimum_size = Vector2(175, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "🏗️ 防御建筑 (BUILDINGS)"
+
+[node name="BtnTabTerrain" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
+custom_minimum_size = Vector2(175, 38)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "🌲 战场地形 (TERRAIN)"
+
+[node name="HSeparator1" type="HSeparator" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+
+[node name="ContentSplit" type="HBoxContainer" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="LeftListPanel" type="PanelContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit"]
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/LeftListPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 6
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 6
+theme_override_constants/margin_bottom = 6
+
+[node name="ScrollList" type="ScrollContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/LeftListPanel/Margin"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="ItemListVBox" type="VBoxContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/LeftListPanel/Margin/ScrollList"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="RightDetailPanel" type="PanelContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Margin" type="MarginContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 12
+
+[node name="ScrollDetail" type="ScrollContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="DetailVBox" type="VBoxContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="DetailHeader" type="HBoxContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="IconContainer" type="PanelContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader"]
+custom_minimum_size = Vector2(84, 84)
+layout_mode = 2
+
+[node name="IconTexture" type="TextureRect" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader/IconContainer"]
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TitleBox" type="VBoxContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+alignment = 1
+
+[node name="DetailName" type="Label" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader/TitleBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.98, 0.88, 0.45, 1)
+theme_override_font_sizes/font_size = 18
+text = "NAME"
+
+[node name="DetailTag" type="Label" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader/TitleBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.85, 0.95, 1)
+theme_override_font_sizes/font_size = 13
+text = "TAG"
+
+[node name="StatsSection" type="PanelContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+
+[node name="Margin" type="MarginContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/StatsSection"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 8
+
+[node name="StatsVBox" type="VBoxContainer" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/StatsSection/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="HSeparatorDesc" type="HSeparator" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+
+[node name="DescHeader" type="Label" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.88, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "【机密档案 / ARCHIVE OVERVIEW】"
+
+[node name="DescText" type="Label" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.9, 0.92, 1)
+theme_override_font_sizes/font_size = 13
+text = "Description goes here..."
+autowrap_mode = 3
+
+[node name="HSeparatorTactics" type="HSeparator" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+
+[node name="TacticsHeader" type="Label" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.75, 0.45, 1)
+theme_override_font_sizes/font_size = 14
+text = "【战术应对与实战技巧 / TACTICAL TIPS】"
+
+[node name="TacticsText" type="Label" parent="CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.86, 0.82, 1)
+theme_override_font_sizes/font_size = 13
+text = "Tactics advice goes here..."
+autowrap_mode = 3
+
+[node name="HSeparator2" type="HSeparator" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+
+[node name="BottomBar" type="HBoxContainer" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+alignment = 1
+
+[node name="BottomCloseBtn" type="Button" parent="CenterContainer/MainPanel/VBox/BottomBar"]
+custom_minimum_size = Vector2(280, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "CLOSE / RETURN (返回主界面)"

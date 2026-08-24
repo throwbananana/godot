@@ -63,6 +63,8 @@ referenced_prefixes = [
     # Enemy
     "enemy_basic", "enemy_fast", "enemy_power", "enemy_armor", "enemy_missile", "enemy_laser", "enemy_boss", "tank_desert",
     "enemy_train_loco", "enemy_train_wagon_gunner", "enemy_train_wagon_armor",
+    "enemy_bomber", "enemy_suicide", "enemy_mirage", "enemy_battleship", "enemy_aircraft", "enemy_warp", "enemy_flame",
+    "enemy_crusher", "enemy_sniper", "enemy_gatling", "enemy_shotgun", "enemy_splitter", "enemy_split_mini",
     # Classic
     "player_tier0", "player_tier1", "player_tier2", "player_tier3",
     "player2_tier0", "player2_tier1", "player2_tier2", "player2_tier3",

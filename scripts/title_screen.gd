@@ -12,7 +12,9 @@ const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 @onready var btn_2p_campaign: Button = $CenterContainer/VBox/ButtonsBox/Campaign2PButton
 @onready var btn_2p_arcade: Button = $CenterContainer/VBox/ButtonsBox/Arcade2PButton
 @onready var btn_daily_challenge: Button = $CenterContainer/VBox/ButtonsBox/DailyChallengeButton
+@onready var btn_encyclopedia: Button = $CenterContainer/VBox/ButtonsBox/EncyclopediaButton
 @onready var btn_quit: Button = $CenterContainer/VBox/ButtonsBox/QuitButton
+@onready var encyclopedia_dialog: EncyclopediaDialog = $EncyclopediaDialog
 
 func _ready() -> void:
 	var b_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_title_crest.png")
@@ -27,6 +29,7 @@ func _ready() -> void:
 	UIThemeHelper.apply_icon_button(btn_2p_campaign, "res://assets/sprites/ui/ui_icon_mode_2p.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_2p_arcade, "res://assets/sprites/ui/ui_icon_mode_arcade.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_daily_challenge, "res://assets/sprites/ui/ui_icon_score_trophy.png", Vector2(28, 28))
+	UIThemeHelper.apply_icon_button(btn_encyclopedia, "res://assets/sprites/powerups/star.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_quit, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(28, 28))
 
 	var today_best = GameState.get_daily_best_score()
@@ -40,7 +43,11 @@ func _ready() -> void:
 	btn_2p_campaign.pressed.connect(func(): _start_campaign(2))
 	btn_2p_arcade.pressed.connect(_start_arcade_2p)
 	btn_daily_challenge.pressed.connect(_start_daily_challenge)
+	btn_encyclopedia.pressed.connect(_on_encyclopedia_pressed)
 	btn_quit.pressed.connect(_on_quit_pressed)
+
+	if encyclopedia_dialog:
+		encyclopedia_dialog.closed.connect(func(): btn_encyclopedia.grab_focus())
 
 	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
 	UIThemeHelper.focus_first(self)
@@ -73,6 +80,10 @@ func _start_daily_challenge() -> void:
 	GameState.mode = GameState.GameMode.DAILY_CHALLENGE
 	GameState.player_count = 1
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+func _on_encyclopedia_pressed() -> void:
+	if encyclopedia_dialog:
+		encyclopedia_dialog.open_dialog()
 
 func _on_quit_pressed() -> void:
 	get_tree().quit()

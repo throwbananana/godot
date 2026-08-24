@@ -36,6 +36,7 @@ const MapDirector = preload("res://scripts/map_director.gd")
 # 27 = Signal Jammer Tower (Destructible. Reverses the PLAYER's movement/aim input for anyone standing in its radius -- enemies unaffected. Destroying it frees anyone still caught inside.)
 # 28 = Factory (Destructible escort objective, 16 HP. Surviving to the end of the battle doubles this battle's gold+XP reward; every Factory on the map being destroyed halves it instead.)
 # 29 = Drifting Supplies (Water-look tile that is NOT collision-blocking -- "treated as ground" so any tank can walk onto it -- with a one-time gold+XP crate sitting on top. Doubles as a walkable stepping-stone across an otherwise impassable water tile 3.)
+# 30 = Enemy Shield Tower (Destructible hostile structure, 8 HP. Projects a protective energy barrier covering nearby enemies in a 180px radius with an invulnerable shield. Only when destroyed will the enemy buff be cancelled.)
 
 # 1. 经典十字交叉防线 (Classic Crossroad - with Reinforced Hard Clay Chokepoints)
 const TEMPLATE_CLASSIC = [
@@ -992,6 +993,23 @@ const TEMPLATE_ORCHARD_ROWS = [
 	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]
 
+# 36. 敌方护盾能量要塞 (Enemy Shield Bastion - with Hostile Shield Towers & Fortified Chokepoints)
+const TEMPLATE_ENEMY_SHIELD_BASTION = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 30, 0, 30, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 2, 2, 2, 0, 1, 0, 1, 0],
+	[0, 2, 0, 2, 0, 0, 0, 0, 0, 2, 0, 2, 0],
+	[0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0],
+	[0, 0, 0, 0, 0, 8, 8, 8, 0, 0, 0, 0, 0],
+	[2, 2, 0, 1, 1, 3, 3, 3, 1, 1, 0, 2, 2],
+	[0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 2, 2, 2, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 1, 9, 1, 0, 1, 0, 1, 0],
+	[0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
 ## Per-template floor_idx gate, mirroring the enemy tier table in main.gd's
 ## ENEMY_MIN_FLOOR -- pools below draw by `floor_idx % pool.size()`, which
 ## previously meant a "kitchen sink" template (5+ combined mechanics, or a
@@ -1022,7 +1040,7 @@ const TEMPLATE_MIN_FLOOR: Dictionary = {
 	TEMPLATE_NIGHT_HIGHWAY: 5, TEMPLATE_OIL_REFINERY: 5, TEMPLATE_GLACIER_TESLA: 5,
 	TEMPLATE_INFERNO_REFINERY: 5, TEMPLATE_NIGHTSHADE_WARP: 5, TEMPLATE_MAGNETIC_ARCHIPELAGO: 5,
 	TEMPLATE_QUICKSAND_FOUNDRY: 5, TEMPLATE_HYPERDRIVE_PINBALL: 5, TEMPLATE_TRI_DOMAIN_BIOHAZARD: 5,
-	TEMPLATE_NAVAL_SALVAGE_ROUTE: 5, TEMPLATE_TWIN_LAKES_SALVAGE: 5,
+	TEMPLATE_NAVAL_SALVAGE_ROUTE: 5, TEMPLATE_TWIN_LAKES_SALVAGE: 5, TEMPLATE_ENEMY_SHIELD_BASTION: 5,
 
 	# SOLAR_TITAN_SANCTUM 曾经漏在门禁外, 理由写的是"它只是 battle_type==boss
 	# 的固定返回值, 不走池索引"。那句话是错的 —— 它同时躺在 act3_pool 里,
@@ -1182,13 +1200,14 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_NIGHT_HIGHWAY,
 					TEMPLATE_HYPERDRIVE_PINBALL,
 					TEMPLATE_NAVAL_SALVAGE_ROUTE,
+					TEMPLATE_ENEMY_SHIELD_BASTION,
 				]
 				return _pick_from_pool(act1_pool, floor_idx)
 			2:
-				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE]
+				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE, TEMPLATE_ENEMY_SHIELD_BASTION]
 				return _pick_from_pool(act2_pool, floor_idx)
 			3:
-				var act3_pool = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_ELITE_CITADEL, TEMPLATE_TWIN_LAKES_SALVAGE]
+				var act3_pool = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_ELITE_CITADEL, TEMPLATE_TWIN_LAKES_SALVAGE, TEMPLATE_ENEMY_SHIELD_BASTION]
 				return _pick_from_pool(act3_pool, floor_idx)
 			_:
 				return TEMPLATE_CLASSIC

@@ -53,6 +53,7 @@ var oil_barrel_scene: PackedScene
 var signal_jammer_tower_scene: PackedScene
 var factory_scene: PackedScene
 var drifting_supplies_scene: PackedScene
+var enemy_shield_tower_scene: PackedScene
 var factory_instances: Array[Node] = [] # tracked for the battle-end gold/XP reward multiplier
 var battle_gold_earned: int = 0 # reset in start_game(), read by the Factory reward multiplier at _game_over()
 var battle_start_msec: int = 0 # reset in start_game(), read by the balance log at _game_over()
@@ -200,6 +201,7 @@ func _ready() -> void:
 	signal_jammer_tower_scene = load("res://scenes/buildings/signal_jammer_tower.tscn")
 	factory_scene = load("res://scenes/buildings/factory.tscn")
 	drifting_supplies_scene = load("res://scenes/drifting_supplies.tscn")
+	enemy_shield_tower_scene = load("res://scenes/buildings/enemy_shield_tower.tscn")
 
 	var upg_scene = load("res://scenes/upgrade_selection_dialog.tscn")
 	if upg_scene:
@@ -617,6 +619,8 @@ func _build_map() -> void:
 				_spawn_factory(pos)
 			elif tile_type == 29:
 				_spawn_drifting_supplies(pos)
+			elif tile_type == 30:
+				_spawn_enemy_shield_tower(pos)
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters)
 	if (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
@@ -980,6 +984,14 @@ func _spawn_drifting_supplies(pos: Vector2) -> void:
 		var crate = drifting_supplies_scene.instantiate()
 		crate.position = pos
 		actors_container.add_child(crate)
+
+func _spawn_enemy_shield_tower(pos: Vector2) -> void:
+	if not enemy_shield_tower_scene:
+		enemy_shield_tower_scene = load("res://scenes/buildings/enemy_shield_tower.tscn")
+	if enemy_shield_tower_scene:
+		var tower = enemy_shield_tower_scene.instantiate()
+		tower.position = pos
+		actors_container.add_child(tower)
 
 func _setup_challenge_treasure() -> void:
 	has_treasure_key = false
@@ -1388,6 +1400,7 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.BATTLESHIP: 5,
 	EnemyTank.EnemyType.LASER: 5,
 	EnemyTank.EnemyType.CRUSHER: 5,
+	EnemyTank.EnemyType.SPLITTER: 5,
 	EnemyTank.EnemyType.MISSILE: 8,
 	EnemyTank.EnemyType.WARP: 8,
 }
@@ -1404,7 +1417,7 @@ const GATE_FALLBACK_POOL: Array = [
 	EnemyTank.EnemyType.SNIPER, EnemyTank.EnemyType.GATLING,
 	EnemyTank.EnemyType.AIRCRAFT, EnemyTank.EnemyType.MIRAGE,
 	EnemyTank.EnemyType.BATTLESHIP, EnemyTank.EnemyType.LASER,
-	EnemyTank.EnemyType.CRUSHER,
+	EnemyTank.EnemyType.CRUSHER, EnemyTank.EnemyType.SPLITTER,
 	EnemyTank.EnemyType.MISSILE, EnemyTank.EnemyType.WARP,
 ]
 
@@ -1466,22 +1479,19 @@ func _request_spawn_enemy() -> void:
 		type = all_types[randi() % all_types.size()]
 	elif GameState.battle_type == "boss":
 		if enemies_spawned == 0:
-			type = EnemyTank.EnemyType.TRAIN_BOSS
-			show_toast("🚂 ARMORED TRAIN FORTRESS DETECTED! 🚂")
-			add_trauma(0.60)
-		elif enemies_spawned == total_enemies - 1:
 			type = EnemyTank.EnemyType.BOSS
-			show_toast("⚠️ SUMMIT COLOSSUS DETECTED! ⚠️")
+			show_toast("⚠️ WARLORD SUPER-TANK DETECTED! ⚠️")
 			add_trauma(0.50)
-		elif r < 0.12: type = EnemyTank.EnemyType.AIRCRAFT
-		elif r < 0.24: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
-		elif r < 0.34: type = EnemyTank.EnemyType.MIRAGE
-		elif r < 0.44: type = EnemyTank.EnemyType.GATLING
-		elif r < 0.54: type = EnemyTank.EnemyType.SNIPER
-		elif r < 0.64: type = EnemyTank.EnemyType.MISSILE
-		elif r < 0.74: type = EnemyTank.EnemyType.BOMBER
-		elif r < 0.82: type = EnemyTank.EnemyType.CRUSHER
-		elif r < 0.90: type = EnemyTank.EnemyType.LASER
+		elif r < 0.10: type = EnemyTank.EnemyType.AIRCRAFT
+		elif r < 0.20: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
+		elif r < 0.30: type = EnemyTank.EnemyType.MIRAGE
+		elif r < 0.40: type = EnemyTank.EnemyType.GATLING
+		elif r < 0.50: type = EnemyTank.EnemyType.SNIPER
+		elif r < 0.60: type = EnemyTank.EnemyType.MISSILE
+		elif r < 0.70: type = EnemyTank.EnemyType.BOMBER
+		elif r < 0.78: type = EnemyTank.EnemyType.CRUSHER
+		elif r < 0.86: type = EnemyTank.EnemyType.SPLITTER
+		elif r < 0.92: type = EnemyTank.EnemyType.LASER
 		else: type = EnemyTank.EnemyType.WARP if GameState.get_visual_act() == 3 else EnemyTank.EnemyType.POWER
 	elif GameState.battle_type == "elite":
 		if enemies_spawned == 0:
@@ -1549,19 +1559,19 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.90: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			_:
-				# floor 5 以后同样不再拿 TRAIN_BOSS 当填充兵 (见 floor 3 的说明)。
-				# 这一档全阵容展开: CRUSHER, GATLING, SNIPER, SHOTGUN 与重装 BATTLESHIP 等。
-				if r < 0.08: type = EnemyTank.EnemyType.CRUSHER
-				elif r < 0.16: type = EnemyTank.EnemyType.GATLING
-				elif r < 0.24: type = EnemyTank.EnemyType.SNIPER
-				elif r < 0.32: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.40: type = EnemyTank.EnemyType.BATTLESHIP
-				elif r < 0.48: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.56: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.64: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.74: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.84: type = EnemyTank.EnemyType.MISSILE
-				elif r < 0.92: type = EnemyTank.EnemyType.BOMBER
+				# floor 5 以后全阵容展开: SPLITTER, CRUSHER, GATLING, SNIPER, SHOTGUN 与重装 BATTLESHIP 等。
+				if r < 0.08: type = EnemyTank.EnemyType.SPLITTER
+				elif r < 0.15: type = EnemyTank.EnemyType.CRUSHER
+				elif r < 0.23: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.31: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.39: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.47: type = EnemyTank.EnemyType.BATTLESHIP
+				elif r < 0.55: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.63: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.71: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.79: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.87: type = EnemyTank.EnemyType.MISSILE
+				elif r < 0.94: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 
 	# Floor-gate the roll above -- the boss/elite tables (unlike the plain
