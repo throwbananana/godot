@@ -123,6 +123,19 @@ func _grant_tier_up() -> void:
 	if GameState.player_count == 2:
 		GameState.grant_star_tier_reward(2)
 
+## grant_star_tier_reward() 对已经跑满 3 级的 "default" 分支玩家是纯粹的
+## mini(tier+1, 3) 空操作(见 game_state.gd)。商店的"Star Weapon Module"选项
+## 没有任何资格检查(不像 shop_dialog.gd::_can_buy_item() 那样在按钮上就disable
+## 掉), 玩家会扣 100G、拿到"购买成功"的关闭动画、什么都没变化 —— 正是
+## CLAUDE.md 记录过的"扣了钱、没发东西"同一类问题, 这里补上买价路径里的
+## 资格检查。
+func _tier_up_would_help() -> bool:
+	if GameState.tank_branch != "default" or GameState.player_tier < 3:
+		return true
+	if GameState.player_count == 2 and (GameState.p2_branch != "default" or GameState.p2_tier < 3):
+		return true
+	return false
+
 func _grant_perk(perk_name: String) -> void:
 	GameState.grant_perk_stack(perk_name, 1)
 	if GameState.player_count == 2:
@@ -138,7 +151,7 @@ func _on_choice(idx: int) -> void:
 	elif dialog_type == "shop":
 		match idx:
 			1:
-				if GameState.gold >= 100:
+				if GameState.gold >= 100 and _tier_up_would_help():
 					GameState.gold -= 100
 					_grant_tier_up()
 			2:

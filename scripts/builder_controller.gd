@@ -263,9 +263,16 @@ func _get_target_placement_pos(pid: int) -> Vector2:
 	return get_global_mouse_position()
 
 func _is_placement_valid(pos: Vector2) -> bool:
+	# pos 是 _get_target_placement_pos() 算出来的**全局**坐标(基于
+	# p.global_position), 但 min_bound/max_bound 是按 13x13 地图的**局部**
+	# 格心范围写的 (0..624 网格, 排除半格边距)。BuilderController 本身挂在
+	# GameArea 下且没有额外偏移, 用 to_local() 换算成同一套坐标系再比较 ——
+	# 换算前, 全局的最后一行/列(局部 600, 全局 648, 老鹰所在那一整行)会被
+	# 误判越界, 玩家在地图最右列/最下一行(含老鹰旁边)完全放不了任何建筑。
 	var min_bound = 24.0
 	var max_bound = 13.0 * 48.0 - 24.0
-	if pos.x < min_bound or pos.x > max_bound or pos.y < min_bound or pos.y > max_bound:
+	var local_pos = to_local(pos)
+	if local_pos.x < min_bound or local_pos.x > max_bound or local_pos.y < min_bound or local_pos.y > max_bound:
 		return false
 
 	var space_state = get_world_2d().direct_space_state

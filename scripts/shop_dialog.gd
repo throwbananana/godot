@@ -81,6 +81,11 @@ func _update_ui() -> void:
 	btn_reroll.text = "刷新货架 (Reroll %dG)" % reroll_cost
 	btn_reroll.disabled = (GameState.gold < reroll_cost)
 	_render_item_cards()
+	# _render_item_cards() 把货架卡片(包括当前抓着焦点的那张)全部 queue_free
+	# 再重建, 手柄/键盘的焦点持有者被删掉之后 gui_get_focus_owner() 变 null,
+	# 方向键/摇杆再也无法导航, 只能切回鼠标。买完一件东西或点刷新货架都会走
+	# 到这里, 重建后必须重新指定焦点。
+	UIThemeHelper.focus_first(self)
 
 func _generate_shop_inventory() -> void:
 	current_shop_items.clear()

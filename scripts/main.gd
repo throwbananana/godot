@@ -1046,7 +1046,12 @@ func _drop_treasure_key(drop_pos: Vector2) -> void:
 		treasure_key_scene = load("res://scenes/treasure_key.tscn")
 	if treasure_key_scene:
 		var key = treasure_key_scene.instantiate()
-		key.global_position = drop_pos
+		# add_child 是 deferred 的, 此刻节点还不在树里, 赋 global_position
+		# 等同于赋 position; 真正入树后再叠一次 GameArea 的 (48,48) 偏移,
+		# 钥匙会画在触发源右下方整整一格。用 to_local() 提前把全局坐标转成
+		# actors_container 的局部坐标, 赋给 position 就不受入树时机影响
+		# (跟 enemy.gd:907 金币掉落的写法一致)。
+		key.position = actors_container.to_local(drop_pos)
 		actors_container.call_deferred("add_child", key)
 		SoundManager.play_level_up(get_tree())
 		VFXAnimator.spawn_teleport_burst(actors_container, drop_pos)
@@ -1081,7 +1086,11 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 		var coin_scene = load("res://scenes/gold_coin.tscn")
 		if coin_scene and actors_container:
 			var coin = coin_scene.instantiate()
-			coin.global_position = pos
+			# pos 是调用方传入的全局坐标(bullet.gd/timed_bomb.gd/missile_strike.gd
+			# 都传 body.global_position); add_child 是 deferred 的, 直接赋
+			# global_position 会在节点入树前退化成 position, 入树后再叠一次
+			# GameArea 偏移, 金币画在被打碎砖块的右下方一格。
+			coin.position = actors_container.to_local(pos)
 			actors_container.call_deferred("add_child", coin)
 	elif roll < 0.88:
 		# Rare Diamond Gem (+60G + 30XP)
@@ -1089,7 +1098,7 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 			diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
 		if diamond_gem_scene and actors_container:
 			var dia = diamond_gem_scene.instantiate()
-			dia.global_position = pos
+			dia.position = actors_container.to_local(pos)
 			actors_container.call_deferred("add_child", dia)
 	else:
 		# Rare Power-up (Star / Bomb / Clock / Helmet / Life / Shovel / Missile / Timed Bomb)
@@ -1098,7 +1107,9 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 			var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
 			types.shuffle()
 			p_inst.setup(types[0])
-			p_inst.position = pos
+			# pos 是全局坐标, 这里原来直接赋给 position(局部), 掉落道具落在
+			# 打碎砖块的右下方一格。
+			p_inst.position = actors_container.to_local(pos)
 			actors_container.call_deferred("add_child", p_inst)
 			show_toast("✨ 砖块暗藏极品道具！")
 
@@ -1592,7 +1603,10 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
 		types.shuffle()
 		p_inst.setup(types[0])
-		p_inst.position = drop_pos
+		# drop_pos 来自 enemy.gd 的 enemy_destroyed 信号, 是全局坐标
+		# (enemy_destroyed.emit(score_value, is_bonus, global_position)),
+		# 直接赋 position(局部)会让掉落道具落在死亡敌人右下方一格。
+		p_inst.position = actors_container.to_local(drop_pos)
 		actors_container.call_deferred("add_child", p_inst)
 		show_toast("BONUS ITEM DROPPED!")
 
@@ -1640,7 +1654,10 @@ func _on_player_destroyed(pid: int) -> void:
 			for i in range(coin_count):
 				var coin = coin_scene.instantiate()
 				var offset = Vector2(randf_range(-28.0, 28.0), randf_range(-28.0, 28.0))
-				coin.global_position = death_pos + offset
+				# death_pos 是坦克的全局坐标; add_child 是 deferred 的,
+				# 提前赋 global_position 会在节点入树前退化成 position,
+				# 死亡掉的金币画在坦克右下方一格。
+				coin.position = actors_container.to_local(death_pos + offset)
 				actors_container.call_deferred("add_child", coin)
 
 	show_toast("⚠️ P%d 战车损毁！装甲星级重置，损失 %dG 金币！" % [pid, lost_gold])

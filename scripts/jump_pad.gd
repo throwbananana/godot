@@ -48,8 +48,20 @@ func _launch_body(body: Node2D) -> void:
 		dir = body.velocity.normalized()
 
 	var target_pos = body.global_position + dir * launch_distance
-	target_pos.x = clampf(target_pos.x, 32.0, 13.0 * 48.0 - 32.0)
-	target_pos.y = clampf(target_pos.y, 32.0, 13.0 * 48.0 - 32.0)
+
+	# target_pos 是全局坐标, 但下面的 clamp 边界 (32..13*48-32) 是按 GameArea
+	# 局部坐标系的地图范围写的 —— GameArea 在 main.tscn 里 position=(48,48),
+	# 直接夹全局值会把上/左边界的合法下限(局部32, 全局80)当成局部32来夹,
+	# 相当于把落点允许推到局部 -16, 也就是地图边界墙内部; 上限同理少切了一格。
+	# 用 game_area.global_position 换算到同一套坐标系再夹, 换回全局后再用。
+	var fog_main = get_tree().current_scene
+	var game_area_origin = Vector2.ZERO
+	if fog_main and "game_area" in fog_main and fog_main.game_area:
+		game_area_origin = fog_main.game_area.global_position
+	var local_target = target_pos - game_area_origin
+	local_target.x = clampf(local_target.x, 32.0, 13.0 * 48.0 - 32.0)
+	local_target.y = clampf(local_target.y, 32.0, 13.0 * 48.0 - 32.0)
+	target_pos = local_target + game_area_origin
 
 	# Sound & Launch Pad Compression Animation
 	SoundManager.play_hit_steel(get_tree())

@@ -289,7 +289,13 @@ func apply_powerup(type: PowerUp.Type) -> void:
 					bomb.countdown = 2.0
 					bomb.blast_range = 4 # Extended 4-tile blast for powerup!
 					bomb.damage = 5
-					bomb.global_position = global_position + facing_direction * offset
+					# add_child 是 deferred 的; 这里原来先赋 global_position 再
+					# deferred add_child, 节点入树前赋值等同赋 position, 真正
+					# 入树后再叠一次父级偏移, 炸弹落点比玩家前方目标点多偏右下
+					# 一格。上面 MISSILE 分支是先 add_child 再赋 global_position
+					# (顺序对), 只有这个分支反了。用 to_local() 提前换算, 不受
+					# 入树时机影响。
+					bomb.position = get_parent().to_local(global_position + facing_direction * offset)
 					get_parent().call_deferred("add_child", bomb)
 			SoundManager.play_build(get_tree())
 			powerup_collected.emit("[%s] 💣 强化十字连环定时炸弹！" % p_name)

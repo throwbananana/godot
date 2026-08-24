@@ -130,14 +130,23 @@ func _process(delta: float) -> void:
 	var radius_array: Array[float] = []
 
 	# Update existing flashes
+	#
+	# 下面 lamp/bomb/bullet 三段收集都写了 pos_array.size() < 16 —— shader 那边
+	# extra_lights_pos 是定长 16 的数组, 只有这一段漏写了同样的守卫。一次
+	# blast_range=4 的定时炸弹十字火焰会沿 4 个方向各触发若干次
+	# VFXAnimator.spawn_shockwave(), 每次都经 add_flash() 塞进 flashes,
+	# 短时间内轻松超过 16 条, 不加守卫的话会把一个更长的数组喂给定长 16 的
+	# shader uniform。仍然要给*所有*flash 累计 elapsed 并按到期与否过滤,
+	# 只是不再把超出 16 条的部分也塞进 pos_array/radius_array。
 	var remaining_flashes: Array[Dictionary] = []
 	for f in flashes:
 		f["elapsed"] += delta
 		if f["elapsed"] < f["duration"]:
-			var progress = f["elapsed"] / f["duration"]
-			var cur_radius = f["radius"] * (1.0 - progress * 0.7)
-			pos_array.append(f["pos"])
-			radius_array.append(cur_radius)
+			if pos_array.size() < 16:
+				var progress = f["elapsed"] / f["duration"]
+				var cur_radius = f["radius"] * (1.0 - progress * 0.7)
+				pos_array.append(f["pos"])
+				radius_array.append(cur_radius)
 			remaining_flashes.append(f)
 	flashes = remaining_flashes
 

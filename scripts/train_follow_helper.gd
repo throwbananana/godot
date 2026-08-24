@@ -12,9 +12,20 @@ extends RefCounted
 
 const MAX_HISTORY_DIST: float = 400.0 # generous headroom for a multi-carriage chain
 
+# 静止坦克(卡墙的敌人、暂停前定住的玩家)每物理帧都会 push 同一个点, 相邻点
+# 距离恒为 0 —— 下面按累计距离裁剪的循环永远走不到 MAX_HISTORY_DIST, 数组因此
+# 无界增长; 而这个循环又是从末尾往回全量扫描到触发点为止, 数组越大扫得越久,
+# 相当于每帧一次 O(n) 还在变大, 等效 O(n^2)。用一个与距离无关的绝对条数上限
+# 兜底, 独立于按距离的裁剪, 顺带把下面那个扫描的最坏情况也钉死在这个上限内。
+const MAX_HISTORY_POINTS: int = 600
+
 static func record_history(positions: Array[Vector2], rotations: Array[float], pos: Vector2, rot: float) -> void:
 	positions.push_back(pos)
 	rotations.push_back(rot)
+
+	while positions.size() > MAX_HISTORY_POINTS:
+		positions.pop_front()
+		rotations.pop_front()
 
 	var total_dist = 0.0
 	var trim_to = 0

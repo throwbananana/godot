@@ -65,8 +65,15 @@ func _detonate() -> void:
 				VFXAnimator.spawn_dust_puff(parent, collider.global_position)
 				collider.queue_free()
 			elif collider.is_in_group("steel") and not collider.is_in_group("border"):
-				VFXAnimator.spawn_shockwave(parent, collider.global_position)
-				collider.queue_free()
+				if collider.is_in_group("buildings"):
+					# 同 oil_barrel.gd: 玩家建筑不能被"钢墙统一炸得开"规则
+					# 当无血量地形删掉, 得走 take_damage() 才不会绕过血量系统。
+					if collider.has_method("take_damage"):
+						VFXAnimator.spawn_shockwave(parent, collider.global_position)
+						collider.take_damage(99)
+				else:
+					VFXAnimator.spawn_shockwave(parent, collider.global_position)
+					collider.queue_free()
 
 	SoundManager.play_explosion(get_tree())
 	queue_free()

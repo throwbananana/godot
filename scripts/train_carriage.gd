@@ -161,8 +161,12 @@ func _find_nearest_target() -> Node2D:
 	for node in nodes:
 		if node == self or not is_instance_valid(node) or not (node is Node2D):
 			continue
-		if node.is_in_group("player_carriage") and is_enemy == false:
-			continue
+		# 死分支清理: target_group 在 is_enemy==false 时是 "enemies", "enemies"
+		# 组里不可能出现 "player_carriage"(只有非敌方车厢才加这个组), 所以这个
+		# 条件在两种 is_enemy 取值下都恒为假, 从未真正过滤过任何东西。按
+		# CLAUDE.md 的记录, 车厢特意挂进 "player" 组就是为了让敌方火力认得到
+		# 它 (resolve_train_owner 等逻辑也依赖这一点), 所以不补一条"敌方车厢
+		# 跳过玩家车厢"的新过滤 —— 那会反过来削掉已经确认是设计内的行为。
 		var d = global_position.distance_to(node.global_position)
 		if d < min_dist:
 			min_dist = d

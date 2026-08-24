@@ -85,6 +85,18 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 		card_container.add_child(card_btn)
 
 	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
+	#
+	# 必须 call_deferred, 不能直接调用: 上面 for 循环开头的 queue_free() 要等
+	# 到这一帧末尾才真正把旧卡片移出 card_container.get_children(), 此刻树里
+	# 仍然是"旧卡片 + 新卡片"并存, 而 _first_focusable() 按树序找第一个可见
+	# 可用按钮, 找到的会是马上要被删除的旧卡。main.gd 的 P1->P2 连续弹窗
+	# (player_count == 2 时, P1 选完卡在同一次 _on_card_picked 调用栈里直接
+	# 弹出 P2 的选择框)正是这种情况 —— 旧的 P1 卡片被抓了焦点, 一帧后节点被
+	# 删除, 焦点归零, 手柄/方向键再也无法导航。推迟到旧卡片真正移除之后再找,
+	# 就不会抓到一个即将消失的节点。
+	call_deferred("_apply_initial_focus")
+
+func _apply_initial_focus() -> void:
 	UIThemeHelper.focus_first(self)
 
 func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]:

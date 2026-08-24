@@ -123,6 +123,19 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	if shooter_type == "player" and (body.is_in_group("player") or body.is_in_group("p1") or body.is_in_group("p2")):
+		# 下面这套"误击友军/反射弹打中自己"僵直逻辑只对真正的玩家坦克成立
+		# (有 player_id)。defense_turret.gd 的自动炮塔子弹也标记成
+		# shooter_type="player"(为了复用地形/敌人判定), 但 shooter 是炮塔
+		# 节点本身, 没有 player_id —— 玩家挡在自己炮塔枪口前本该只是白白
+		# 吃一颗子弹消失, 原来的写法会把它也当成"误击友军"处理, 连僵直带一条
+		# "player_id" in shooter 取不到时硬编码兜底成 1 的提示一起发出去,
+		# 读出来是"P1 误击友军 P1"这种自相矛盾的句子。
+		if not ("player_id" in shooter):
+			if is_inside_tree() and get_tree():
+				SoundManager.play_hit_steel(get_tree())
+			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+			queue_free()
+			return
 		# body == shooter only reaches here at all once has_bounced is true
 		# (see the early-return above) -- a ricocheted Ricochet Rounds shot
 		# can now hit the tank that fired it, which is the whole point of
@@ -174,6 +187,33 @@ func _on_body_entered(body: Node2D) -> void:
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 			if armor_piercing:
 				pass # keeps flying straight through -- doesn't consume a ricochet bounce
+			elif _try_ricochet():
+				pass
+			else:
+				is_destroyed = true
+				queue_free()
+		return
+	elif body.is_in_group("oil_barrel") or body.is_in_group("street_lamp"):
+		# 油桶/路灯是可购买的路上道具, 不是需要免友伤保护的防御建筑 ——
+		# 地图模板注释写的是"explodes when hit", 不分敌我一律命中, 走的
+		# 是跟 brick 一样的路径。此前它们只挂 oil_barrel/destructible/
+		# obstacle 或 street_lamp/building(单数, 不在下面 buildings 判定
+		# 分支里)/destructible, 两个组都不在这条 elif 链的判定范围内,
+		# 子弹直接穿过去, 商店卖的这两样东西完全打不响。
+		if not destroyed_bodies.has(body):
+			destroyed_bodies.append(body)
+			if body.has_method("take_hit"):
+				body.take_hit(damage)
+			elif body.has_method("take_damage"):
+				body.take_damage(damage)
+		if not is_destroyed:
+			if is_aoe:
+				_trigger_aoe_explosion()
+			if is_inside_tree() and get_tree():
+				SoundManager.play_hit_steel(get_tree())
+			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+			if armor_piercing:
+				pass
 			elif _try_ricochet():
 				pass
 			else:

@@ -126,8 +126,17 @@ func detonate() -> void:
 		#     tools/test_explosive_terrain_matrix.gd。地图边界 (border) 除外:
 		#     它同样挂在 steel 组上, 炸穿了坦克就能开出地图。
 		elif collider.is_in_group("steel") and not collider.is_in_group("border"):
-			VFXAnimator.spawn_shockwave(get_parent(), collider.global_position)
-			collider.queue_free()
+			if collider.is_in_group("buildings"):
+				# 玩家自建的炮塔/强化墙同时也在 steel 组里(为了扛住普通子弹),
+				# 但它们有自己的血量系统 —— 不能被这条"钢墙统一炸得开"规则当
+				# 无血量地形直接删掉, 那样一次油桶爆炸能瞬间摸死一座 8 血
+				# 炮塔, 无视护甲/护盾等未来可能挂在 take_damage 上的机制。
+				if collider.has_method("take_damage"):
+					VFXAnimator.spawn_shockwave(get_parent(), collider.global_position)
+					collider.take_damage(blast_damage)
+			else:
+				VFXAnimator.spawn_shockwave(get_parent(), collider.global_position)
+				collider.queue_free()
 		# D. Deal heavy blast damage to tanks
 		elif collider is PlayerTank or collider is EnemyTank or collider.has_method("take_damage"):
 			collider.take_damage(blast_damage)

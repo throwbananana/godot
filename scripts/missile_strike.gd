@@ -159,8 +159,13 @@ func _detonate() -> void:
 	# 钢墙也炸得开 —— 四个爆炸源统一口径, 见
 	# tools/test_explosive_terrain_matrix.gd。地图边界 (border) 除外, 它同样
 	# 挂在 steel 组上, 炸穿了坦克就能开出地图。
+	# buildings 组的节点(炮塔/强化墙)同时也在 steel 组里, 但它们有自己的血量
+	# 系统, 已经在上面"Hit Player Defenses"那段按 team=="enemy" 走
+	# take_damage() 了 —— 这里要排除掉, 否则会被这条通用的"钢墙统一炸得开"
+	# 规则当无血量地形直接删掉, 玩家自己的一发 MISSILE 连自家 8 血炮塔一起
+	# 抹掉, 且不区分 team。
 	for s in get_tree().get_nodes_in_group("steel"):
-		if is_instance_valid(s) and s is Node2D and not s.is_in_group("border"):
+		if is_instance_valid(s) and s is Node2D and not s.is_in_group("border") and not s.is_in_group("buildings"):
 			if global_position.distance_to(s.global_position) <= aoe_radius:
 				VFXAnimator.spawn_shockwave(get_parent(), s.global_position)
 				s.queue_free()

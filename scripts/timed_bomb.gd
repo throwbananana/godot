@@ -151,7 +151,15 @@ func _resolve_flame_impact(pos: Vector2) -> bool:
 	for s in get_tree().get_nodes_in_group("steel"):
 		if is_instance_valid(s) and s is Node2D:
 			if pos.distance_to(s.global_position) <= hit_radius:
-				if not s.is_in_group("border"):
+				if s.is_in_group("buildings"):
+					# 玩家自建的炮塔/强化墙同时也在 steel 组里(为了扛住普通
+					# 子弹), 不能被这条"钢墙统一炸得开"规则当无血量地形直接
+					# 删掉。跟 missile_strike.gd 一样按 team 免友伤: 玩家自己
+					# 的定时炸弹伤不到自己的建筑, 只有敌方炸弹会真的扣血。
+					if team == "enemy" and s.has_method("take_damage"):
+						VFXAnimator.spawn_shockwave(get_parent(), s.global_position)
+						s.take_damage(damage)
+				elif not s.is_in_group("border"):
 					VFXAnimator.spawn_shockwave(get_parent(), s.global_position)
 					s.queue_free()
 				stop_flame = true

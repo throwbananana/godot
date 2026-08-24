@@ -174,6 +174,11 @@ func _build_spire_ui() -> void:
 	lines_draw.queue_redraw()
 	_scroll_to_current_floor(map_size)
 
+	# 商店/事件关闭后 _on_event_closed() 会重新调用这个函数, 把节点按钮全部
+	# queue_free 再重建 —— 如果当时手柄/键盘焦点正停在某个节点按钮上, 它会
+	# 跟着被删掉, 焦点归零, 之后方向键/摇杆再也无法导航地图。
+	UIThemeHelper.focus_first(self)
+
 ## Floor 0 sits near the bottom of the canvas and the boss floor near the
 ## top (see the pos_ratio formula in game_state.gd). ScrollContainer opens
 ## scrolled to the top by default, which on a 15-floor map means the player
