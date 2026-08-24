@@ -220,17 +220,29 @@ func _on_body_entered(body: Node2D) -> void:
 				is_destroyed = true
 				queue_free()
 		return
-	elif body.is_in_group("buildings"):
+	elif body.is_in_group("buildings") or body.is_in_group("building"):
 		if not is_destroyed:
 			is_destroyed = true
 			if is_aoe:
 				_trigger_aoe_explosion()
 			if is_inside_tree() and get_tree():
 				SoundManager.play_hit_steel(get_tree())
-			if shooter_type == "enemy":
+			if can_destroy_steel:
+				# 第二阶段的炮弹摧毁所有建筑
+				if body.has_method("destroy"):
+					body.destroy()
+				elif body.has_method("take_damage"):
+					body.take_damage(999)
+				else:
+					VFXAnimator.spawn_shockwave(get_parent(), body.global_position)
+					body.queue_free()
+			elif body.has_method("take_hit_direction"):
+				# 滑轮墙等支持受击推移的建筑响应攻击方向
+				body.take_hit_direction(damage, direction)
+			elif shooter_type == "enemy":
 				if body.has_method("take_damage"):
 					body.take_damage(damage)
-				elif can_destroy_steel:
+				else:
 					body.queue_free()
 			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 			queue_free()
@@ -329,14 +341,23 @@ func _trigger_aoe_explosion(exclude_node: Node = null) -> void:
 		for steel in get_tree().get_nodes_in_group("steel"):
 			if is_instance_valid(steel) and steel is Node2D and not steel.is_in_group("border"):
 				if global_position.distance_to(steel.global_position) <= aoe_radius:
-					if steel.is_in_group("buildings"):
-						if shooter_type == "enemy":
-							VFXAnimator.spawn_shockwave(get_parent(), steel.global_position)
-							if steel.has_method("take_damage"):
-								steel.take_damage(damage)
+					VFXAnimator.spawn_shockwave(get_parent(), steel.global_position)
+					if steel.has_method("destroy"):
+						steel.destroy()
+					elif steel.has_method("take_damage"):
+						steel.take_damage(999)
 					else:
-						VFXAnimator.spawn_shockwave(get_parent(), steel.global_position)
 						steel.queue_free()
+		for bld in get_tree().get_nodes_in_group("buildings"):
+			if is_instance_valid(bld) and bld is Node2D and not bld.is_in_group("border"):
+				if global_position.distance_to(bld.global_position) <= aoe_radius:
+					VFXAnimator.spawn_shockwave(get_parent(), bld.global_position)
+					if bld.has_method("destroy"):
+						bld.destroy()
+					elif bld.has_method("take_damage"):
+						bld.take_damage(999)
+					else:
+						bld.queue_free()
 
 func _on_area_entered(area: Area2D) -> void:
 	if area == shooter or is_destroyed:
@@ -364,12 +385,25 @@ func _on_area_entered(area: Area2D) -> void:
 			area.take_damage_hit()
 		queue_free()
 		return
-	if area.is_in_group("buildings") and shooter_type == "enemy":
+	if area.is_in_group("buildings") or area.is_in_group("building"):
 		is_destroyed = true
 		if is_aoe:
 			_trigger_aoe_explosion()
-		if area.has_method("take_damage"):
-			area.take_damage(damage)
+		if can_destroy_steel:
+			if area.has_method("destroy"):
+				area.destroy()
+			elif area.has_method("take_damage"):
+				area.take_damage(999)
+			else:
+				VFXAnimator.spawn_shockwave(get_parent(), area.global_position)
+				area.queue_free()
+		elif area.has_method("take_hit_direction"):
+			area.take_hit_direction(damage, direction)
+		elif shooter_type == "enemy":
+			if area.has_method("take_damage"):
+				area.take_damage(damage)
+			else:
+				area.queue_free()
 		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 		queue_free()
 		return

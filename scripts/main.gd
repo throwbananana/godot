@@ -1375,15 +1375,19 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.POWER: 1,
 	EnemyTank.EnemyType.SUICIDE: 1,
 	EnemyTank.EnemyType.ARMOR: 1,
+	EnemyTank.EnemyType.SHOTGUN: 2,
 	EnemyTank.EnemyType.BOMBER: 3,
 	# 喷火兵和 BOMBER 同档 (延时/持续的范围压制), 而不是和 LASER 那档 (5 层)。
 	# 它的射程只有 2.75 格, 绕侧面就能解 —— 属于"逼你换位"而不是"逼你换装备",
 	# 早点出现反而能教会玩家侧向机动, 为 5 层以后真正的远程威胁做铺垫。
 	EnemyTank.EnemyType.FLAMETHROWER: 3,
+	EnemyTank.EnemyType.SNIPER: 4,
+	EnemyTank.EnemyType.GATLING: 4,
 	EnemyTank.EnemyType.AIRCRAFT: 5,
 	EnemyTank.EnemyType.MIRAGE: 5,
 	EnemyTank.EnemyType.BATTLESHIP: 5,
 	EnemyTank.EnemyType.LASER: 5,
+	EnemyTank.EnemyType.CRUSHER: 5,
 	EnemyTank.EnemyType.MISSILE: 8,
 	EnemyTank.EnemyType.WARP: 8,
 }
@@ -1395,9 +1399,12 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 const GATE_FALLBACK_POOL: Array = [
 	EnemyTank.EnemyType.BASIC, EnemyTank.EnemyType.FAST,
 	EnemyTank.EnemyType.POWER, EnemyTank.EnemyType.SUICIDE, EnemyTank.EnemyType.ARMOR,
+	EnemyTank.EnemyType.SHOTGUN,
 	EnemyTank.EnemyType.BOMBER, EnemyTank.EnemyType.FLAMETHROWER,
+	EnemyTank.EnemyType.SNIPER, EnemyTank.EnemyType.GATLING,
 	EnemyTank.EnemyType.AIRCRAFT, EnemyTank.EnemyType.MIRAGE,
 	EnemyTank.EnemyType.BATTLESHIP, EnemyTank.EnemyType.LASER,
+	EnemyTank.EnemyType.CRUSHER,
 	EnemyTank.EnemyType.MISSILE, EnemyTank.EnemyType.WARP,
 ]
 
@@ -1466,25 +1473,31 @@ func _request_spawn_enemy() -> void:
 			type = EnemyTank.EnemyType.BOSS
 			show_toast("⚠️ SUMMIT COLOSSUS DETECTED! ⚠️")
 			add_trauma(0.50)
-		elif r < 0.15: type = EnemyTank.EnemyType.AIRCRAFT
-		elif r < 0.30: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
-		elif r < 0.45: type = EnemyTank.EnemyType.MIRAGE
-		elif r < 0.60: type = EnemyTank.EnemyType.MISSILE
-		elif r < 0.75: type = EnemyTank.EnemyType.BOMBER
-		elif r < 0.88: type = EnemyTank.EnemyType.LASER
+		elif r < 0.12: type = EnemyTank.EnemyType.AIRCRAFT
+		elif r < 0.24: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
+		elif r < 0.34: type = EnemyTank.EnemyType.MIRAGE
+		elif r < 0.44: type = EnemyTank.EnemyType.GATLING
+		elif r < 0.54: type = EnemyTank.EnemyType.SNIPER
+		elif r < 0.64: type = EnemyTank.EnemyType.MISSILE
+		elif r < 0.74: type = EnemyTank.EnemyType.BOMBER
+		elif r < 0.82: type = EnemyTank.EnemyType.CRUSHER
+		elif r < 0.90: type = EnemyTank.EnemyType.LASER
 		else: type = EnemyTank.EnemyType.WARP if GameState.get_visual_act() == 3 else EnemyTank.EnemyType.POWER
 	elif GameState.battle_type == "elite":
 		if enemies_spawned == 0:
 			type = EnemyTank.EnemyType.TRAIN_BOSS
 			show_toast("🚂 ELITE ARMORED CONVOY DETECTED! 🚂")
 			add_trauma(0.50)
-		elif r < 0.15: type = EnemyTank.EnemyType.AIRCRAFT
-		elif r < 0.30: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
-		elif r < 0.42: type = EnemyTank.EnemyType.MIRAGE
-		elif r < 0.52: type = EnemyTank.EnemyType.FLAMETHROWER
-		elif r < 0.68: type = EnemyTank.EnemyType.MISSILE
-		elif r < 0.80: type = EnemyTank.EnemyType.BOMBER
-		elif r < 0.90: type = EnemyTank.EnemyType.LASER
+		elif r < 0.12: type = EnemyTank.EnemyType.AIRCRAFT
+		elif r < 0.22: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
+		elif r < 0.32: type = EnemyTank.EnemyType.MIRAGE
+		elif r < 0.42: type = EnemyTank.EnemyType.FLAMETHROWER
+		elif r < 0.52: type = EnemyTank.EnemyType.GATLING
+		elif r < 0.62: type = EnemyTank.EnemyType.SNIPER
+		elif r < 0.72: type = EnemyTank.EnemyType.CRUSHER
+		elif r < 0.80: type = EnemyTank.EnemyType.MISSILE
+		elif r < 0.88: type = EnemyTank.EnemyType.BOMBER
+		elif r < 0.94: type = EnemyTank.EnemyType.LASER
 		else: type = themed_type
 	else:
 		match floor_idx:
@@ -1497,11 +1510,12 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.92: type = EnemyTank.EnemyType.SUICIDE
 				else: type = EnemyTank.EnemyType.AIRCRAFT
 			2:
-				if r < 0.25: type = themed_type
-				elif r < 0.45: type = EnemyTank.EnemyType.FAST
-				elif r < 0.62: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.76: type = EnemyTank.EnemyType.BOMBER
-				elif r < 0.88: type = EnemyTank.EnemyType.AIRCRAFT
+				if r < 0.22: type = themed_type
+				elif r < 0.40: type = EnemyTank.EnemyType.FAST
+				elif r < 0.55: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.68: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.80: type = EnemyTank.EnemyType.BOMBER
+				elif r < 0.90: type = EnemyTank.EnemyType.AIRCRAFT
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.ARMOR
 			3:
 				# 这一档以前是 TRAIN_BOSS。它是 14 血、会点亮 HUD boss 血条、
@@ -1514,33 +1528,40 @@ func _request_spawn_enemy() -> void:
 				# 硬骨头"的手感, 但不再拿遭遇身份当杂兵。
 				if r < 0.12: type = EnemyTank.EnemyType.ARMOR
 				elif r < 0.22: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.32: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.40: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.55: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.70: type = EnemyTank.EnemyType.MISSILE
-				elif r < 0.85: type = EnemyTank.EnemyType.BOMBER
+				elif r < 0.32: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.42: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.50: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.62: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.74: type = EnemyTank.EnemyType.MISSILE
+				elif r < 0.86: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			4:
 				# 同 floor 3: TRAIN_BOSS 不再当常规填充兵, 见上。
-				if r < 0.15: type = EnemyTank.EnemyType.ARMOR
-				elif r < 0.25: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.36: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.60: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.75: type = EnemyTank.EnemyType.BOMBER
-				elif r < 0.88: type = EnemyTank.EnemyType.MISSILE
+				# Floor 4 加入狙击手 SNIPER 与加特林 GATLING 的初期特征。
+				if r < 0.10: type = EnemyTank.EnemyType.ARMOR
+				elif r < 0.20: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.30: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.40: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.50: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.60: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.70: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.80: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.90: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			_:
 				# floor 5 以后同样不再拿 TRAIN_BOSS 当填充兵 (见 floor 3 的说明)。
-				# 这一档换成 BATTLESHIP: 6 血的重装单位, 正好在 floor 5 解锁,
-				# 顶替得上原来"这一格是硬目标"的位置。
-				if r < 0.15: type = EnemyTank.EnemyType.BATTLESHIP
-				elif r < 0.25: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.36: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.45: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.60: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.75: type = EnemyTank.EnemyType.MISSILE
-				elif r < 0.88: type = EnemyTank.EnemyType.BOMBER
+				# 这一档全阵容展开: CRUSHER, GATLING, SNIPER, SHOTGUN 与重装 BATTLESHIP 等。
+				if r < 0.08: type = EnemyTank.EnemyType.CRUSHER
+				elif r < 0.16: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.24: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.32: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.40: type = EnemyTank.EnemyType.BATTLESHIP
+				elif r < 0.48: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.56: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.64: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.74: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.84: type = EnemyTank.EnemyType.MISSILE
+				elif r < 0.92: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 
 	# Floor-gate the roll above -- the boss/elite tables (unlike the plain

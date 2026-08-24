@@ -11,7 +11,7 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -319,6 +319,38 @@ func _setup_tank_type() -> void:
 			xp_value = 130
 			gold_value = 85
 			fire_interval = 2.3
+		EnemyType.CRUSHER:
+			prefix = "enemy_crusher"
+			speed = 40.0 # 行动缓慢的超重装粉碎机
+			max_health = 10 # 极其厚重的重装陶泥装甲
+			score_value = 1600
+			xp_value = 260
+			gold_value = 160
+			fire_interval = 999.0 # 不发射子弹，靠碾碎一切物体推进
+		EnemyType.SNIPER:
+			prefix = "enemy_sniper"
+			speed = 135.0 # 高机动巡航狙击车：移动速度极快，但射击间隔长
+			max_health = 2 # 脆皮轻装甲
+			score_value = 650
+			xp_value = 125
+			gold_value = 80
+			fire_interval = 4.8 # 射击间隔极长（蓄力装填），但一旦射出便是超高速穿甲重弹
+		EnemyType.GATLING:
+			prefix = "enemy_gatling"
+			speed = 42.0 # 重装压制机枪要塞：移动极慢，但射速极快
+			max_health = 5 # 厚重装甲
+			score_value = 850
+			xp_value = 160
+			gold_value = 95
+			fire_interval = 0.40 # 极快连发高密压制弹幕
+		EnemyType.SHOTGUN:
+			prefix = "enemy_shotgun"
+			speed = 95.0 # 中高速近身突击冲锋
+			max_health = 3 # 适中装甲
+			score_value = 600
+			xp_value = 115
+			gold_value = 75
+			fire_interval = 2.4 # 扇形 3 路扩散破片霰弹
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
@@ -383,7 +415,7 @@ func _setup_tank_type() -> void:
 			tank_frames.append(tex)
 	if tank_frames.size() > 0 and sprite:
 		sprite.texture = tank_frames[0]
-		if enemy_type == EnemyType.BOSS:
+		if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER:
 			sprite.scale = Vector2(0.24, 0.24)
 
 func freeze(duration: float) -> void:
@@ -508,17 +540,35 @@ func _physics_process(delta: float) -> void:
 				flame_cycle_t = FLAME_BURN_TIME if flame_is_on else FLAME_REST_TIME
 				flame_jet.set_burning(flame_is_on)
 
-	# 喷火兵不走这套"攒够时间放一发"的逻辑 —— 它的火舌是持续的, 由上面的开合
-	# 周期驱动。这里只跳开火, *不能*提前 return: 下面还有移动、冰面/沙地速度
-	# 修正和 move_and_slide, 直接 return 会让它变成一动不动的摆设。
-	if enemy_type != EnemyType.FLAMETHROWER:
+	# 7. 粉碎者: 前方碾压扫荡，碾碎一切碰到的地形、建筑与坦克
+	elif enemy_type == EnemyType.CRUSHER:
+		_crush_sweep(delta)
+
+	# 8. 狙击手: 射击前 0.6 秒停步锁定玩家方向并高亮闪烁蓄力
+	elif enemy_type == EnemyType.SNIPER:
+		if fire_timer <= 0.6:
+			var target = _find_target()
+			if target and is_instance_valid(target):
+				var to_target = target.global_position - global_position
+				if abs(to_target.x) > abs(to_target.y):
+					facing_direction = Vector2.RIGHT if to_target.x > 0 else Vector2.LEFT
+				else:
+					facing_direction = Vector2.DOWN if to_target.y > 0 else Vector2.UP
+				rotation = facing_direction.angle() + PI / 2.0
+			var charge_flash = int(Time.get_ticks_msec() / 75) % 2 == 0
+			sprite.modulate = Color(1.2, 2.4, 3.0) if charge_flash else Color(1.0, 1.0, 1.0)
+
+	# 喷火兵、自爆车与粉碎者不发射常规子弹
+	if enemy_type != EnemyType.FLAMETHROWER and enemy_type != EnemyType.SUICIDE and enemy_type != EnemyType.CRUSHER:
 		fire_timer -= delta
 		if fire_timer <= 0.0:
 			_shoot()
 			fire_timer = randf_range(fire_interval * 0.8, fire_interval * 1.3)
 
 	var move_speed = speed
-	if is_on_ice:
+	if enemy_type == EnemyType.SNIPER and fire_timer <= 0.6:
+		move_speed = 0.0 # 狙击手开火前夕停步静止架枪蓄力
+	elif is_on_ice:
 		move_speed *= 1.35 # Enemies slide fast across ice
 		if enemy_type == EnemyType.WARP:
 			move_speed *= 1.15 # 虚空坦克在冰面上额外抓地增幅，呼应 Act3 主题
@@ -532,18 +582,108 @@ func _physics_process(delta: float) -> void:
 	var collision = move_and_collide(velocity * delta)
 	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
 	if collision:
+		var col_node = collision.get_collider()
 		if enemy_type == EnemyType.SUICIDE:
-			var col_node = collision.get_collider()
 			if col_node and (col_node.is_in_group("player") or col_node.is_in_group("base_eagle") or col_node.is_in_group("buildings")):
 				_suicide_detonate()
 				return
-		_choose_new_direction()
+		elif enemy_type == EnemyType.CRUSHER:
+			if col_node:
+				var crushed = _crush_target(col_node)
+				if not crushed:
+					_choose_new_direction()
+		else:
+			_choose_new_direction()
 
 	if tank_frames.size() > 0 and not is_camouflaged:
 		var f_idx = int(Time.get_ticks_msec() / 65) % tank_frames.size()
 		if f_idx != current_frame:
 			current_frame = f_idx
 			sprite.texture = tank_frames[current_frame]
+
+func _crush_sweep(_delta: float) -> void:
+	if not is_inside_tree() or get_world_2d() == null:
+		return
+	var space_state = get_world_2d().direct_space_state
+	var query = PhysicsShapeQueryParameters2D.new()
+	var shape = RectangleShape2D.new()
+	shape.size = Vector2(44.0, 44.0)
+	query.shape = shape
+	query.transform = Transform2D(0.0, global_position + facing_direction * 22.0)
+	query.collision_mask = 1 | 2 | 16
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	query.exclude = [get_rid()]
+
+	var hits = space_state.intersect_shape(query, 8)
+	for hit in hits:
+		var col = hit.get("collider")
+		if not is_instance_valid(col) or col == self:
+			continue
+		_crush_target(col)
+
+func _crush_target(col: Object) -> bool:
+	if not is_instance_valid(col) or col == self:
+		return false
+
+	# 1. 砖块、硬泥、树木、冰块、沙丘、陷阱地刺等地形障碍
+	if col.is_in_group("brick") or col.is_in_group("hard_clay") or col.is_in_group("trees") or col.is_in_group("ice") or col.is_in_group("sand_dune") or col.is_in_group("hazard") or col.is_in_group("hazards") or col.is_in_group("obstacle") or col.is_in_group("destructible"):
+		if col.has_method("take_hit"):
+			col.take_hit(99)
+		elif col.has_method("detonate"):
+			col.detonate()
+		elif col.has_method("take_damage"):
+			col.take_damage(99)
+		else:
+			VFXAnimator.spawn_clay_debris(get_parent(), col.global_position)
+			col.queue_free()
+		SoundManager.play_hit_brick(get_tree())
+		return true
+
+	# 2. 钢铁墙体 (非边界) —— 粉碎者可硬生生碾破钢墙！
+	if col.is_in_group("steel") and not col.is_in_group("border") and not col.is_in_group("buildings") and not col.is_in_group("building"):
+		VFXAnimator.spawn_shockwave(get_parent(), col.global_position)
+		SoundManager.play_hit_steel(get_tree())
+		col.queue_free()
+		return true
+
+	# 3. 各种防御建筑 (防御塔、电墙、强化墙、维修站、护盾站、风力涡轮、路灯、油桶、滑轮墙、地雷、定时炸弹等)
+	if col.is_in_group("buildings") or col.is_in_group("building") or col.is_in_group("landmines") or col.is_in_group("landmine") or col.is_in_group("oil_barrel") or col.is_in_group("timed_bomb"):
+		VFXAnimator.spawn_shockwave(get_parent(), col.global_position)
+		SoundManager.play_hit_steel(get_tree())
+		if col.has_method("destroy"):
+			col.destroy()
+		elif col.has_method("detonate"):
+			col.detonate()
+		elif col.has_method("take_damage"):
+			col.take_damage(999)
+		elif col.has_method("take_hit"):
+			col.take_hit(99)
+		else:
+			col.queue_free()
+		return true
+
+	# 4. 玩家坦克与车厢 (P1/P2/Train Carriage)
+	if col.is_in_group("player") or col.is_in_group("p1") or col.is_in_group("p2") or col.is_in_group("player_carriage"):
+		VFXAnimator.spawn_shockwave(get_parent(), col.global_position)
+		SoundManager.play_hit_steel(get_tree())
+		if col.has_method("take_damage"):
+			col.take_damage(4)
+		if col.has_method("stun"):
+			col.stun(1.2)
+		return true
+
+	# 5. 基地老鹰
+	if col.is_in_group("base") or col.is_in_group("base_eagle"):
+		if col.has_method("destroy"):
+			col.destroy()
+		elif col.has_method("take_damage_hit"):
+			col.take_damage_hit()
+		elif col.has_method("take_damage"):
+			col.take_damage(999)
+		return true
+
+	return false
 
 func _choose_new_direction() -> void:
 	var dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
@@ -682,6 +822,51 @@ func _shoot() -> void:
 		tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.12)
 		LaserPiercer.fire_linear_laser(get_parent(), muzzle_pos, facing_direction, self, "enemy", 2)
 		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+	elif enemy_type == EnemyType.SNIPER:
+		# 超高速超远穿甲狙击弹
+		var bullet = bullet_scene.instantiate()
+		bullet.direction = facing_direction
+		bullet.speed = 620.0
+		bullet.damage = 2
+		bullet.can_destroy_steel = true
+		bullet.shooter = self
+		bullet.shooter_type = "enemy"
+		get_parent().add_child(bullet)
+		bullet.global_position = muzzle_pos
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+		SoundManager.play_shot(get_tree())
+	elif enemy_type == EnemyType.GATLING:
+		# 极速轻量压制机枪弹 (微小散布角度)
+		var spread_angle = randf_range(-0.06, 0.06)
+		var dir = facing_direction.rotated(spread_angle)
+		var bullet = bullet_scene.instantiate()
+		bullet.direction = dir
+		bullet.speed = 380.0
+		bullet.damage = 1
+		bullet.can_destroy_steel = false
+		bullet.shooter = self
+		bullet.shooter_type = "enemy"
+		get_parent().add_child(bullet)
+		bullet.global_position = muzzle_pos
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, dir.angle() + PI/2.0)
+		SoundManager.play_shot(get_tree())
+	elif enemy_type == EnemyType.SHOTGUN:
+		# 扇形三路破片霰弹齐射 (-20°, 0°, +20°)
+		for ang_deg in [-20.0, 0.0, 20.0]:
+			var dir = facing_direction.rotated(deg_to_rad(ang_deg))
+			var bullet = bullet_scene.instantiate()
+			bullet.direction = dir
+			bullet.speed = 400.0
+			bullet.damage = 1
+			bullet.can_destroy_steel = false
+			bullet.shooter = self
+			bullet.shooter_type = "enemy"
+			get_parent().add_child(bullet)
+			bullet.global_position = muzzle_pos
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+		SoundManager.play_shot(get_tree())
 	else:
 		var bullet = bullet_scene.instantiate()
 		bullet.direction = facing_direction
@@ -736,16 +921,16 @@ func take_damage(amount: int) -> void:
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
 	# 按敌人类型追加额外特效
-	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.BOSS:
+	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER:
 		VFXAnimator.spawn_dust_puff(get_parent(), global_position)
 	elif enemy_type == EnemyType.POWER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
-	if enemy_type == EnemyType.BOSS:
+	if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
 	# 受击形变晃动
-	var base_scale = Vector2(0.24, 0.24) if enemy_type == EnemyType.BOSS else Vector2(0.196, 0.196)
+	var base_scale = Vector2(0.24, 0.24) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER) else Vector2(0.196, 0.196)
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
 	hit_tween = create_tween()

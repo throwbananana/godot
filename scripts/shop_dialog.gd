@@ -51,6 +51,7 @@ const BUILDING_ITEMS: Array[Dictionary] = [
 	{"id": "wind_blower", "name": "风力涡轮补给 (Wind Turbine)", "desc": "购入 1 座风力涡轮库存，战斗中可用热键放置。", "cost": 70, "icon": "res://assets/sprites/buildings/wind_blower.png", "category": "BUILD"},
 	{"id": "missile_strike", "name": "战术导弹补给 (Missile Strike)", "desc": "购入 1 次战术导弹打击库存，战斗中可用热键呼叫。", "cost": 90, "icon": "res://assets/sprites/powerups/missile_strike.png", "category": "BUILD"},
 	{"id": "timed_bomb", "name": "定时炸弹补给 (Timed Bomb)", "desc": "购入 1 枚定时炸弹库存，战斗中可用热键放置。", "cost": 60, "icon": "res://assets/sprites/buildings/prop_timed_bomb.png", "category": "BUILD"},
+	{"id": "roller_wall", "name": "滑轮防线补给 (Roller Wall)", "desc": "购入 1 面滑轮防线墙体。受击时会向受力方向滚动推移一格，可用来顶撞碾压敌人。", "cost": 35, "icon": "res://assets/sprites/buildings/roller_wall.png", "category": "BUILD"},
 ]
 
 func _ready() -> void:

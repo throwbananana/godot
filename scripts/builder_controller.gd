@@ -4,7 +4,7 @@ extends Node2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 
-enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB }
+enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL }
 
 ## Battle-placement no longer spends gold directly (see GameState.structure_inventory) --
 ## these structures are shop-only stock now: buy N in shop_dialog.gd's Building
@@ -22,10 +22,11 @@ var structure_ids = {
 	StructureType.SHIELD_STATION: "shield_station",
 	StructureType.WIND_BLOWER: "wind_blower",
 	StructureType.MISSILE_STRIKE: "missile_strike",
-	StructureType.TIMED_BOMB: "timed_bomb"
+	StructureType.TIMED_BOMB: "timed_bomb",
+	StructureType.ROLLER_WALL: "roller_wall"
 }
 
-@onready var preview_sprite_p1: Sprite2D = $PreviewSprite
+@onready var preview_sprite_p1: Sprite2D = get_node_or_null("PreviewSprite")
 var preview_sprite_p2: Sprite2D
 
 var turret_scene: PackedScene
@@ -39,6 +40,7 @@ var shield_scene: PackedScene
 var wind_scene: PackedScene
 var missile_strike_scene: PackedScene
 var timed_bomb_scene: PackedScene
+var roller_wall_scene: PackedScene
 
 # Per-player hotbar state so P1 and P2 never clobber each other's selection.
 var selection_by_pid: Dictionary = {1: StructureType.NONE, 2: StructureType.NONE}
@@ -54,7 +56,8 @@ var structure_list: Array[StructureType] = [
 	StructureType.SHIELD_STATION,
 	StructureType.WIND_BLOWER,
 	StructureType.MISSILE_STRIKE,
-	StructureType.TIMED_BOMB
+	StructureType.TIMED_BOMB,
+	StructureType.ROLLER_WALL
 ]
 
 var structure_names = {
@@ -68,7 +71,8 @@ var structure_names = {
 	StructureType.SHIELD_STATION: "SHIELD RECHARGER",
 	StructureType.WIND_BLOWER: "WIND TURBINE",
 	StructureType.MISSILE_STRIKE: "TACTICAL MISSILE",
-	StructureType.TIMED_BOMB: "TIMED BOMB"
+	StructureType.TIMED_BOMB: "TIMED BOMB",
+	StructureType.ROLLER_WALL: "ROLLER WALL"
 }
 
 func _ready() -> void:
@@ -83,7 +87,11 @@ func _ready() -> void:
 	wind_scene = load("res://scenes/buildings/wind_blower.tscn")
 	missile_strike_scene = load("res://scenes/missile_strike.tscn")
 	timed_bomb_scene = load("res://scenes/timed_bomb.tscn")
+	roller_wall_scene = load("res://scenes/buildings/roller_wall.tscn")
 
+	if not preview_sprite_p1:
+		preview_sprite_p1 = Sprite2D.new()
+		add_child(preview_sprite_p1)
 	preview_sprite_p2 = Sprite2D.new()
 	add_child(preview_sprite_p2)
 
@@ -177,6 +185,7 @@ func select_structure(type: StructureType, pid: int = 1) -> void:
 		StructureType.WIND_BLOWER: tex_path = "res://assets/sprites/buildings/wind_blower.png"
 		StructureType.MISSILE_STRIKE: tex_path = "res://assets/sprites/powerups/missile_strike.png"
 		StructureType.TIMED_BOMB: tex_path = "res://assets/sprites/buildings/prop_timed_bomb.png"
+		StructureType.ROLLER_WALL: tex_path = "res://assets/sprites/buildings/roller_wall.png"
 
 	var tex = TextureHelper.get_tex(tex_path)
 	if tex:
@@ -381,6 +390,9 @@ func _try_place_current(pid: int) -> void:
 						new_struct.set_direction(WindBlower.Direction.DOWN)
 					else:
 						new_struct.set_direction(WindBlower.Direction.UP)
+		StructureType.ROLLER_WALL:
+			new_struct = roller_wall_scene.instantiate()
+			name_str = "ROLLER WALL"
 
 	if new_struct:
 		main.actors_container.add_child(new_struct)

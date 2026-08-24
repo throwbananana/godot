@@ -87,6 +87,12 @@ func _check_empty() -> void:
 	if pieces_left == 0:
 		queue_free()
 
+func destroy() -> void:
+	for child in get_children():
+		if child is Piece:
+			child.queue_free()
+	queue_free()
+
 func heal(amount: int) -> void:
 	for child in get_children():
 		if child.has_method("heal"):
