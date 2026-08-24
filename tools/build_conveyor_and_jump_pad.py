@@ -17,6 +17,7 @@ from sokpop_common import (
     render_and_clean,
     ORTHO_SCALE_DEFAULT,
     TILE_FULL_BLEED,
+    TILE_PLATE_BLEED,
 )
 
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR) if os.path.basename(SCRIPT_DIR) == 'tools' else SCRIPT_DIR
@@ -24,7 +25,14 @@ SPRITES_TILES = os.path.join(PROJECT_DIR, "assets", "sprites", "tiles")
 os.makedirs(SPRITES_TILES, exist_ok=True)
 
 # ==================== 1. CONVEYOR BELT TILE ====================
-def build_conveyor_tile():
+def build_conveyor_tile(frame: int = 0):
+    """Build conveyor belt tile. frame 0-5 animates the chevron arrows scrolling upward.
+    
+    Animation strategy: the 3 chevron rows are at fixed Y positions [-0.55, 0.0, +0.55].
+    Each frame shifts them by (frame/6) * tile_height, wrapping around with fmod.
+    This creates a seamless looping scroll when cycled f0→f5→f0.
+    The rails and base plate are static (only the arrows animate).
+    """
     objs = []
     # Full-bleed tile dimensions
     tw = TILE_FULL_BLEED  # 2.0
@@ -61,8 +69,26 @@ def build_conveyor_tile():
             apply_uniform_clay_bevel(roller, width=0.02, segments=2)
             objs.append(roller)
 
-    # 3. Chevron Directional Arrows (Pointing UP)
-    for ay in [-0.55, 0.0, 0.55]:
+    # 3. Chevron Directional Arrows -- animated scroll (frame 0-5)
+    # Shift the 3 chevron rows by (frame/6)*tile_height each frame so they scroll "upward"
+    tile_height = th  # same as th = TILE_FULL_BLEED
+    scroll_offset = (frame / 6.0) * tile_height
+    base_positions = [-0.55, 0.0, 0.55]
+    half_span = tile_height / 2.0
+
+    for base_ay in base_positions:
+        # Wrap position into [-half_span, +half_span]
+        ay = base_ay + scroll_offset
+        # Manual fmod wrap into (-half_span, +half_span)
+        while ay > half_span:
+            ay -= tile_height
+        while ay < -half_span:
+            ay += tile_height
+
+        # Skip chevrons that would be too close to the clipped edge (avoid half-rendered arrows)
+        if abs(ay) > half_span - 0.18:
+            continue
+
         # Left wing of chevron
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-0.24, ay - 0.08, 0.06))
         w1 = bpy.context.active_object
@@ -148,19 +174,37 @@ def main():
     print(" Rendering Conveyor Belt & Jump Pad Tile Sprites.. ")
     print("==================================================")
 
-    # 1. Render Conveyor Belt
+    # 1. Render Conveyor Belt (6 animated frames: tile_conveyor_f0..f5.png)
+    # P1 FIX: Was single static frame. Now 6 frames with scrolling chevron arrows.
+    # seamless=True: point lights cause position-gradients that create visible seam lines
+    # when tiles are adjacent. Sun+ambient-only lighting is uniform across any tile edge.
+    # Note: game script (main.gd / tile_map renderer) must cycle f0..f5 to show animation.
+    for f in range(6):
+        clear_scene()
+        setup_render_settings(256, 256, samples=28)
+        create_sokpop_lighting(seamless=True)   # TILE_FULL_BLEED base stays correct
+        conv_objs = build_conveyor_tile(frame=f)
+        conv_out = os.path.join(SPRITES_TILES, f"tile_conveyor_f{f}.png")
+        render_and_clean(conv_objs, conv_out)
+        print(f"[OK] Conveyor Belt frame {f} rendered -> {conv_out}")
+
+    # Also keep a backwards-compat static copy as tile_conveyor.png (frame 0)
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting()
-    conv_objs = build_conveyor_tile()
-    conv_out = os.path.join(SPRITES_TILES, "tile_conveyor.png")
-    render_and_clean(conv_objs, conv_out)
-    print(f"[OK] Conveyor Belt rendered -> {conv_out}")
+    create_sokpop_lighting(seamless=True)
+    conv_objs = build_conveyor_tile(frame=0)
+    conv_out_static = os.path.join(SPRITES_TILES, "tile_conveyor.png")
+    render_and_clean(conv_objs, conv_out_static)
+    print(f"[OK] Conveyor Belt static (compat) rendered -> {conv_out_static}")
 
     # 2. Render Jump Pad
+    # P0 FIX: Was create_sokpop_lighting() with no args -> ORTHO_SCALE_DEFAULT=3.3.
+    # The octagonal base has radius=0.96 which only spans ~58% of the 3.3 frame, leaving
+    # huge transparent padding (appears ~43% too small in-game at 48px display scale).
+    # TILE_PLATE_BLEED=3.64 with seamless=True gives the correct tiling frame size.
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting()
+    create_sokpop_lighting(ortho_scale=TILE_PLATE_BLEED, seamless=True)
     jump_objs = build_jump_pad_tile()
     jump_out = os.path.join(SPRITES_TILES, "tile_jump_pad.png")
     render_and_clean(jump_objs, jump_out)

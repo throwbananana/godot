@@ -113,7 +113,12 @@ def build_shield_station():
     return objs
 
 # ==================== 2. INDUSTRIAL WIND TURBINE BLOWER ====================
-def build_wind_blower():
+def build_wind_blower(frame: int = 0):
+    """Build wind blower turbine. frame 0-5 rotates the 4 impeller blades.
+    
+    Each frame adds frame*(PI/3) to the blade base rotation so the rotor
+    completes a full 360° spin over 6 frames (6 * 60° = 360°).
+    """
     objs = []
     # Material palette: Industrial Heavy Steel, Hazard Yellow & Black, Cyan Rotor, Exhaust Grille
     mat_casing = create_clay_mat("m_fan_case", (0.28, 0.30, 0.36, 1.0), roughness=0.55)
@@ -175,9 +180,11 @@ def build_wind_blower():
     bpy.ops.object.shade_smooth()
     objs.append(nose)
 
-    # 4 Curved Aerodynamic Impeller Blades
+    # 4 Curved Aerodynamic Impeller Blades (animated: frame adds 60deg per step)
+    # P1 FIX: Each frame rotates blades by frame*(PI/3) so 6 frames = full revolution
+    blade_spin = frame * (math.pi / 3.0)
     for i in range(4):
-        rot_ang = i * (math.pi / 2.0)
+        rot_ang = i * (math.pi / 2.0) + blade_spin
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.24))
         blade = bpy.context.active_object
         blade.scale = (0.16, 0.44, 0.05)
@@ -209,7 +216,7 @@ def main():
     print(" Rendering Shield Station & Wind Blower Assets... ")
     print("==================================================")
 
-    # 1. Render Shield Recharge Station
+    # 1. Render Shield Recharge Station (unchanged -- single static frame)
     clear_scene()
     setup_render_settings(256, 256, samples=28)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
@@ -218,14 +225,27 @@ def main():
     render_and_clean(shld_objs, shld_out)
     print(f"[OK] Shield Station rendered -> {shld_out}")
 
-    # 2. Render Wind Blower Turbine
+    # 2. Render Wind Blower Turbine (6 animated frames: wind_blower_f0..f5.png)
+    # P1 FIX: Was single static frame. Blades now spin 60° per frame over 6 frames.
+    # Game script (wind_blower.gd) currently loads a static png; see note below about
+    # updating it to cycle frames for the full animation effect.
+    for f in range(6):
+        clear_scene()
+        setup_render_settings(256, 256, samples=28)
+        create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
+        blower_objs = build_wind_blower(frame=f)
+        blower_out = os.path.join(SPRITES_BUILDINGS, f"wind_blower_f{f}.png")
+        render_and_clean(blower_objs, blower_out)
+        print(f"[OK] Wind Blower frame {f} rendered -> {blower_out}")
+
+    # Keep backwards-compat static copy (frame 0) so existing wind_blower.gd still loads
     clear_scene()
     setup_render_settings(256, 256, samples=28)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
-    blower_objs = build_wind_blower()
-    blower_out = os.path.join(SPRITES_BUILDINGS, "wind_blower.png")
-    render_and_clean(blower_objs, blower_out)
-    print(f"[OK] Wind Blower rendered -> {blower_out}")
+    blower_objs = build_wind_blower(frame=0)
+    blower_out_static = os.path.join(SPRITES_BUILDINGS, "wind_blower.png")
+    render_and_clean(blower_objs, blower_out_static)
+    print(f"[OK] Wind Blower static (compat) rendered -> {blower_out_static}")
 
 if __name__ == '__main__':
     main()

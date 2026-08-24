@@ -177,22 +177,42 @@ def build_aircraft(frame=0):
 
     return objs
 
-# 3. WATER WAKE VFX (vfx_water_wake.png)
-def build_water_wake_vfx():
+# 3. WATER WAKE VFX (vfx_water_wake_f0..f5.png)
+def build_water_wake_vfx(frame: int = 0):
+    """Build water wake VFX. frame 0-5 animates expanding ripple rings.
+    
+    Each frame expands the V-wake arms outward and modulates sphere sizes,
+    simulating a ship's bow wave spreading and dissipating over 6 steps.
+    """
     objs = []
     mat_foam = create_clay_mat("m_wk_foam", (0.75, 0.95, 1.0, 0.90), emission=(0.75, 0.95, 1.0, 1.0), emission_str=2.5)
     mat_wave = create_clay_mat("m_wk_wave", (0.35, 0.70, 0.90, 0.80), roughness=0.30)
+
+    # Phase drives the ripple expansion: 0.0 (compact) -> 1.0 (fully spread)
+    phase = frame / 6.0
+    spread = 1.0 + phase * 0.55  # expand wake arms outward each frame
 
     # V-Shaped Expanding Foam Wake
     for side in [-1, 1]:
         for i in range(5):
             wy = 0.6 - i * 0.35
-            wx = side * (0.3 + i * 0.22)
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.14 + i * 0.05, location=(wx, wy, 0))
+            wx = side * (0.3 + i * 0.22) * spread
+            # Ripple: outer rings get bigger and lighter as wave travels outward
+            radius = (0.14 + i * 0.05) * (1.0 + phase * 0.3)
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=radius, location=(wx, wy, 0))
             p = bpy.context.active_object
             p.data.materials.append(mat_foam if i % 2 == 0 else mat_wave)
             bpy.ops.object.shade_smooth()
             objs.append(p)
+
+    # Expanding circular ripple ring (grows with each frame)
+    ring_radius = 0.45 + phase * 0.90
+    bpy.ops.mesh.primitive_torus_add(major_radius=ring_radius, minor_radius=0.04 + phase * 0.03,
+                                      major_segments=20, minor_segments=6, location=(0, 0, 0))
+    ripple = bpy.context.active_object
+    ripple.data.materials.append(mat_foam)
+    bpy.ops.object.shade_smooth()
+    objs.append(ripple)
 
     return objs
 
@@ -241,13 +261,23 @@ def main():
         render_and_clean(objs, out_p)
         print(f"[OK] Aircraft Frame {f} Rendered.")
 
-    # 3. Render Water Wake VFX
+    # 3. Render Water Wake VFX (6 animated frames: vfx_water_wake_f0..f5.png)
+    # P1 FIX: Was single static frame. Now 6 frames with expanding ripple rings.
+    for f in range(6):
+        clear_scene()
+        setup_render_settings(256, 256, samples=28)
+        create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
+        objs = build_water_wake_vfx(frame=f)
+        render_and_clean(objs, os.path.join(SPRITES_EFFECTS, f"vfx_water_wake_f{f}.png"))
+        print(f"[OK] Water Wake VFX frame {f} Rendered.")
+
+    # Keep static compat copy (frame 0) for any existing code referencing vfx_water_wake.png
     clear_scene()
     setup_render_settings(256, 256, samples=28)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_PROP)
-    objs = build_water_wake_vfx()
+    objs = build_water_wake_vfx(frame=0)
     render_and_clean(objs, os.path.join(SPRITES_EFFECTS, "vfx_water_wake.png"))
-    print("[OK] Water Wake VFX Rendered.")
+    print("[OK] Water Wake VFX static (compat) Rendered.")
 
     # 4. Render Plane Shadow VFX
     clear_scene()

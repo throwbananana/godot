@@ -158,23 +158,26 @@ def main():
 
     reset_jitter_seed(0)
 
+    # P0 FIX: armor_piercing_rounds was 128×128 @ ortho_scale=2.0, rendering it ~49% too small
+    # vs the project-wide 256×256 @ ORTHO_SCALE_PROP=2.7 standard for powerup icons.
+    # All three shop icons upgraded to 256×256 + ORTHO_SCALE_PROP for consistency.
     clear_scene()
-    setup_render_settings(128, 128, samples=24)
-    create_sokpop_lighting(ortho_scale=2.00)
+    setup_render_settings(256, 256, samples=24)
+    create_sokpop_lighting(ortho_scale=2.70)
     objs = build_icon_ricochet()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "ricochet_rounds.png"))
     print("[OK] Ricochet Rounds icon rendered.")
 
     clear_scene()
-    setup_render_settings(128, 128, samples=24)
-    create_sokpop_lighting(ortho_scale=2.00)
+    setup_render_settings(256, 256, samples=24)
+    create_sokpop_lighting(ortho_scale=2.70)
     objs = build_icon_amphibious()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "amphibious_hull.png"))
     print("[OK] Amphibious Hull icon rendered.")
 
     clear_scene()
-    setup_render_settings(128, 128, samples=24)
-    create_sokpop_lighting(ortho_scale=2.00)
+    setup_render_settings(256, 256, samples=24)
+    create_sokpop_lighting(ortho_scale=2.70)
     objs = build_icon_armor_piercing()
     render_and_clean(objs, os.path.join(SPRITES_POWERUPS, "armor_piercing_rounds.png"))
     print("[OK] Armor-Piercing Rounds icon rendered.")

@@ -17,6 +17,7 @@ from sokpop_common import (
     render_and_clean,
     ORTHO_SCALE_DEFAULT,
     TILE_FULL_BLEED,
+    TILE_PLATE_BLEED,
 )
 
 PROJECT_DIR = os.path.dirname(SCRIPT_DIR) if os.path.basename(SCRIPT_DIR) == 'tools' else SCRIPT_DIR
@@ -114,8 +115,8 @@ def build_street_lamp(lit: bool = True):
 # ==============================================================================
 def build_electric_wall(frame_idx: int = 0):
     objs = []
-    tw = TILE_FULL_BLEED
-    th = TILE_FULL_BLEED
+    tw = TILE_PLATE_BLEED   # use TILE_PLATE_BLEED so bevel falls outside the 256px frame
+    th = TILE_PLATE_BLEED
 
     mat_base = create_clay_mat("m_elec_base", (0.22, 0.24, 0.30, 1.0), roughness=0.60)
     mat_pillar = create_clay_mat("m_elec_pyl", (0.35, 0.38, 0.45, 1.0), roughness=0.45)
@@ -287,12 +288,12 @@ def main():
     # ordering bug is why street_lamp/oil_barrel/electric_wall previously
     # rendered at 1920x1080 instead of the project-wide 256x256 tile canvas.
 
-    # 1. Street Lamp (Lit & Unlit)
-    print("Rendering: street_lamp.png...")
+    # 1. Street Lamp (Unlit & Lit) -- NOTE: street_lamp.png is the UNLIT version
+    print("Rendering: street_lamp.png (unlit)...")
     clear_scene()
     setup_render_settings(rx=256, ry=256)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
-    objs = build_street_lamp(lit=True)
+    objs = build_street_lamp(lit=False)   # P0 FIX: was lit=True, made both lamps identical
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "street_lamp.png"))
 
     print("Rendering: street_lamp_lit.png...")
@@ -303,12 +304,17 @@ def main():
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "street_lamp_lit.png"))
 
     # 2. Electric Wall (4 Animation Frames)
+    # P0 FIX: switched from TILE_FULL_BLEED point-light rig to TILE_PLATE_BLEED + seamless=True.
+    # Point lights cause a position-gradient across the tile: the +Y edge is brighter than -Y
+    # (RimLight at Y=+5), so every tile seam shows a sudden brightness step. seamless=True
+    # removes both point lights; TILE_PLATE_BLEED (3.64) pushes the base-plate bevel rim
+    # outside the 256px frame so it doesn't produce a quilt border.
     for f in range(4):
         out_name = "tile_electric_wall_f%d.png" % f
         print("Rendering: %s..." % out_name)
         clear_scene()
         setup_render_settings(rx=256, ry=256)
-        create_sokpop_lighting(ortho_scale=TILE_FULL_BLEED)
+        create_sokpop_lighting(ortho_scale=TILE_PLATE_BLEED, seamless=True)
         objs = build_electric_wall(frame_idx=f)
         render_and_clean(objs, os.path.join(SPRITES_TILES, out_name))
 
