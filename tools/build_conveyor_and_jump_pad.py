@@ -122,46 +122,49 @@ def build_jump_pad_tile():
     mat_chevron = create_clay_mat("m_pad_chev", (1.0, 0.90, 0.20, 1.0), emission=(1.0, 0.90, 0.20, 1.0), emission_str=2.8)
 
     # 1. Heavy Outer Octagonal Steel Foundation
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.96, depth=0.22, vertices=8, location=(0, 0, -0.04))
+    # P0 FIX (geometry): radius was 0.96 → 134px displayed in a TILE_PLATE_BLEED(3.64) frame.
+    # Scaled up to 1.55 → fills ~85% of the frame (218px), matching other full-tile buildings.
+    # All sub-elements scaled by the same 1.55/0.96 = 1.615 ratio to maintain proportions.
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.55, depth=0.22, vertices=8, location=(0, 0, -0.04))
     base = bpy.context.active_object
     base.data.materials.append(mat_base)
     apply_uniform_clay_bevel(base, width=0.08, segments=3)
     objs.append(base)
 
-    # 2. Four Corner Reinforced Shock Absorbers
-    for (cx, cy) in [(-0.68, -0.68), (0.68, -0.68), (-0.68, 0.68), (0.68, 0.68)]:
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.18, depth=0.34, vertices=16, location=(cx, cy, 0.08))
+    # 2. Four Corner Reinforced Shock Absorbers (scaled from ±0.68 to ±1.10)
+    for (cx, cy) in [(-1.10, -1.10), (1.10, -1.10), (-1.10, 1.10), (1.10, 1.10)]:
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.22, depth=0.34, vertices=16, location=(cx, cy, 0.08))
         absorber = bpy.context.active_object
         absorber.data.materials.append(mat_corner)
         apply_uniform_clay_bevel(absorber, width=0.04, segments=2)
         objs.append(absorber)
 
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.14, minor_radius=0.035, location=(cx, cy, 0.20))
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.18, minor_radius=0.04, location=(cx, cy, 0.20))
         coil = bpy.context.active_object
         coil.data.materials.append(mat_spring)
         bpy.ops.object.shade_smooth()
         objs.append(coil)
 
-    # 3. Central Spring-Loaded Launch Plate
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.62, depth=0.26, vertices=24, location=(0, 0, 0.12))
+    # 3. Central Spring-Loaded Launch Plate (scaled from radius=0.62 to 1.00)
+    bpy.ops.mesh.primitive_cylinder_add(radius=1.00, depth=0.26, vertices=24, location=(0, 0, 0.12))
     piston = bpy.context.active_object
     piston.data.materials.append(mat_spring)
     apply_uniform_clay_bevel(piston, width=0.06, segments=2)
     objs.append(piston)
 
-    # Luminous Core Eye
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.26, location=(0, 0, 0.24))
+    # Luminous Core Eye (scaled from radius=0.26 to 0.42)
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.42, location=(0, 0, 0.24))
     core = bpy.context.active_object
     core.data.materials.append(mat_core)
     bpy.ops.object.shade_smooth()
     objs.append(core)
 
-    # Concentric Ejector Launch Target Cross
+    # Concentric Ejector Launch Target Cross (scaled arm offset from 0.42 to 0.68)
     for ang in [0, math.radians(90), math.radians(180), math.radians(270)]:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0.26))
         chev = bpy.context.active_object
-        chev.scale = (0.09, 0.22, 0.04)
-        chev.location = (math.cos(ang) * 0.42, math.sin(ang) * 0.42, 0.26)
+        chev.scale = (0.12, 0.32, 0.04)
+        chev.location = (math.cos(ang) * 0.68, math.sin(ang) * 0.68, 0.26)
         chev.rotation_euler = (0, 0, ang)
         chev.data.materials.append(mat_chevron)
         apply_uniform_clay_bevel(chev, width=0.02, segments=2)

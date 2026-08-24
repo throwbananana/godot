@@ -583,7 +583,10 @@ def build_banner_victory():
         apply_uniform_clay_bevel(wing, width=0.10, segments=2)
         objs.append(wing)
 
-    star_locs = [(-0.85, 0.58), (0.0, 0.68), (0.85, 0.58)]
+    # P2 FIX: Stars were at Y=0.58-0.68 with radius 0.22-0.28 → top reached Y=0.96.
+    # Canvas half-height = 5.0*(160/512)/2 = 0.781 — stars were clipped by ~12% at top.
+    # Lower all star Y by 0.22 so the tallest point (central star) is at Y=0.68-0.22+0.28=0.74 < 0.781.
+    star_locs = [(-0.85, 0.36), (0.0, 0.46), (0.85, 0.36)]
     for i, (sx, sy) in enumerate(star_locs):
         r = 0.28 if i == 1 else 0.22
         bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=0.25, vertices=5, location=(sx, sy, 0.28))

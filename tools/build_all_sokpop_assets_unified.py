@@ -1641,15 +1641,19 @@ def build_sokpop_powerup(p_type):
         objs.append(spark_core)
 
     elif p_type == "clock":
+        # P2 FIX: clock was centered at Y=-0.08 but alarm bells at Y=0.88+r=0.32 and striker
+        # torus at Y=1.05+mr=0.22 → top content at Y≈1.27. Shift everything down 0.18 so
+        # top reaches Y≈1.09 and the whole design is more centered in the 256×256 frame.
+        cy = -0.26  # was -0.08; shift down 0.18
         # 1. Main Cylinder Body
-        bpy.ops.mesh.primitive_cylinder_add(radius=1.05, depth=0.32, vertices=24, location=(0, -0.08, 0))
+        bpy.ops.mesh.primitive_cylinder_add(radius=1.05, depth=0.32, vertices=24, location=(0, cy, 0))
         clk = bpy.context.active_object
         clk.data.materials.append(mat_cyan)
         apply_uniform_clay_bevel(clk, width=0.10, segments=3)
         objs.append(clk)
 
-        # 2. Twin Top Alarm Bells (Left & Right)
-        for (bx, by, rot) in [(-0.75, 0.88, 30), (0.75, 0.88, -30)]:
+        # 2. Twin Top Alarm Bells (Left & Right) — Y adjusted with cy
+        for (bx, by, rot) in [(-0.75, 0.88 + cy, 30), (0.75, 0.88 + cy, -30)]:
             bpy.ops.mesh.primitive_cylinder_add(radius=0.32, depth=0.22, vertices=16, location=(bx, by, 0))
             bell = bpy.context.active_object
             bell.rotation_euler = (0, 0, math.radians(rot))
@@ -1657,40 +1661,40 @@ def build_sokpop_powerup(p_type):
             apply_uniform_clay_bevel(bell, width=0.04, segments=2)
             objs.append(bell)
 
-        # 3. Top Striker Button
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.22, minor_radius=0.06, location=(0, 1.05, 0))
+        # 3. Top Striker Button — Y adjusted with cy
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.22, minor_radius=0.06, location=(0, 1.05 + cy, 0))
         btn = bpy.context.active_object
         btn.data.materials.append(mat_gold)
         bpy.ops.object.shade_smooth()
         objs.append(btn)
 
-        # 4. Dial Face
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.82, depth=0.10, vertices=24, location=(0, -0.08, 0.16))
+        # 4. Dial Face — Y adjusted with cy
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.82, depth=0.10, vertices=24, location=(0, cy, 0.16))
         face = bpy.context.active_object
         face.data.materials.append(mat_white)
         objs.append(face)
 
-        # 5. 12 Hour Dial Tick Dots
+        # 5. 12 Hour Dial Tick Dots — Y adjusted with cy
         for i in range(12):
             ang = i * (math.pi / 6.0)
             tx = math.sin(ang) * 0.68
-            ty = math.cos(ang) * 0.68 - 0.08
+            ty = math.cos(ang) * 0.68 + cy
             bpy.ops.mesh.primitive_uv_sphere_add(radius=0.035, location=(tx, ty, 0.22))
             dot = bpy.context.active_object
             dot.data.materials.append(mat_dark)
             bpy.ops.object.shade_smooth()
             objs.append(dot)
 
-        # 6. Hour & Minute Hands
+        # 6. Hour & Minute Hands — Y adjusted with cy
         for (hx, hy, hl, ang) in [(-0.14, 0.12, 0.40, -40), (0.16, 0.12, 0.48, 45)]:
-            bpy.ops.mesh.primitive_cylinder_add(radius=0.045, depth=hl, vertices=8, location=(hx, hy - 0.08, 0.23))
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.045, depth=hl, vertices=8, location=(hx, hy + cy, 0.23))
             h = bpy.context.active_object
             h.rotation_euler = (0, 0, math.radians(ang))
             h.data.materials.append(mat_dark)
             objs.append(h)
 
-        # Center Pin Cap
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(0, -0.08, 0.25))
+        # Center Pin Cap — Y adjusted with cy
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.08, location=(0, cy, 0.25))
         pin = bpy.context.active_object
         pin.data.materials.append(mat_red)
         bpy.ops.object.shade_smooth()
