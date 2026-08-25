@@ -94,6 +94,15 @@ static func spawn_dust_puff(parent: Node, pos: Vector2) -> void:
 	]
 	create_anim(parent, pos, paths, 0.1875, 18.0)
 
+static func spawn_wood_debris(parent: Node, pos: Vector2) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/wood_debris_f0.png",
+		"res://assets/sprites/effects/wood_debris_f1.png",
+		"res://assets/sprites/effects/wood_debris_f2.png",
+		"res://assets/sprites/effects/wood_debris_f3.png"
+	]
+	create_anim(parent, pos, paths, 0.22, 18.0)
+
 ## 自爆卡车的爆炸 —— 全场最大的一声响。
 ##
 ## 刻意比通用爆炸大一圈也慢一点: 它的 AoE 是 84px (1.75 格), 画面得对得上伤害

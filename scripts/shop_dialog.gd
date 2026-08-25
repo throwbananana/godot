@@ -53,6 +53,8 @@ const BUILDING_ITEMS: Array[Dictionary] = [
 	{"id": "timed_bomb", "name": "定时炸弹补给 (Timed Bomb)", "desc": "购入 1 枚定时炸弹库存，战斗中可用热键放置。", "cost": 60, "icon": "res://assets/sprites/buildings/prop_timed_bomb.png", "category": "BUILD"},
 	{"id": "roller_wall", "name": "滑轮防线补给 (Roller Wall)", "desc": "购入 1 面滑轮防线墙体。受击时会向受力方向滚动推移一格，可用来顶撞碾压敌人。", "cost": 35, "icon": "res://assets/sprites/buildings/roller_wall.png", "category": "BUILD"},
 	{"id": "pipe_conduit", "name": "导流管道补给 (Conduit Pipe)", "desc": "购入 1 个导流管道。子弹从入口打入会改变方向射出，在非入口方向受击可被破坏。", "cost": 30, "icon": "res://assets/sprites/buildings/pipe_conduit.png", "category": "BUILD"},
+	{"id": "bunker", "name": "战术防御堡垒 (Tactical Bunker)", "desc": "购入 1 座防御堡垒。坦克可躲在后方射穿射击孔出膛，正面格挡阻挡低阶炮弹，从左右侧面受击可被破坏。", "cost": 45, "icon": "res://assets/sprites/buildings/bunker.png", "category": "BUILD"},
+	{"id": "wooden_wall", "name": "便携木墙补给 (Wooden Wall)", "desc": "购入 1 面可移动木制防线。具有韧性且可被推移，撞击敌军或障碍物时造成接触破坏，承受多次撞击与攻击后碎裂。", "cost": 30, "icon": "res://assets/sprites/buildings/wooden_wall.png", "category": "BUILD"},
 ]
 
 func _ready() -> void:

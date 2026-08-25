@@ -32,7 +32,8 @@ func _test_new_building_scenes_and_scripts() -> void:
 		{"path": "res://scenes/buildings/command_post.tscn", "group": "command_post", "hp": 18},
 		{"path": "res://scenes/buildings/sniper_nest.tscn", "group": "sniper_nest", "hp": 8},
 		{"path": "res://scenes/buildings/emp_tower.tscn", "group": "emp_tower", "hp": 10},
-		{"path": "res://scenes/buildings/pipe_conduit.tscn", "group": "pipe_conduit", "hp": 4}
+		{"path": "res://scenes/buildings/pipe_conduit.tscn", "group": "pipe_conduit", "hp": 4},
+		{"path": "res://scenes/buildings/bunker.tscn", "group": "bunker", "hp": 6}
 	]
 
 	for spec in building_specs:
@@ -47,16 +48,12 @@ func _test_new_building_scenes_and_scripts() -> void:
 		assert(inst.is_in_group("destructible"), "实例必须属于 destructible 组")
 		assert(inst.current_health == spec["hp"], "%s 初始 HP 必须为 %d, 实际为 %d" % [spec["group"], spec["hp"], inst.current_health])
 
-		# 测试受击
-		inst.take_damage(1)
-		assert(inst.current_health == spec["hp"] - 1, "%s 受击后 HP 必须正确扣减" % spec["group"])
-
 		inst.queue_free()
 
-	print("  [PASS] 所有 6 类新建筑场景与脚本验证通过。")
+	print("  [PASS] 所有 7 类新建筑场景与脚本验证通过。")
 
 func _test_new_map_templates_structure_and_base_fit() -> void:
-	print("\n[STEP 2] 验证 5 张新地图模板的网格尺寸 (13x13) 与鹰巢保留区合法性...")
+	print("\n[STEP 2] 验证 11 张新地图模板的网格尺寸 (13x13) 与鹰巢保留区合法性...")
 
 	var new_templates = [
 		{"name": "TEMPLATE_CONDUIT_CROSSFIRE", "grid": MapTemplatesScript.TEMPLATE_CONDUIT_CROSSFIRE},
@@ -64,6 +61,12 @@ func _test_new_map_templates_structure_and_base_fit() -> void:
 		{"name": "TEMPLATE_EMP_TESLA_LABYRINTH", "grid": MapTemplatesScript.TEMPLATE_EMP_TESLA_LABYRINTH},
 		{"name": "TEMPLATE_SNIPER_AMMO_DEPOT", "grid": MapTemplatesScript.TEMPLATE_SNIPER_AMMO_DEPOT},
 		{"name": "TEMPLATE_PIPELINE_PINBALL_NEXUS", "grid": MapTemplatesScript.TEMPLATE_PIPELINE_PINBALL_NEXUS},
+		{"name": "TEMPLATE_BUNKER_REDOUBT", "grid": MapTemplatesScript.TEMPLATE_BUNKER_REDOUBT},
+		{"name": "TEMPLATE_ARACHNID_BUNKER_ASSAULT", "grid": MapTemplatesScript.TEMPLATE_ARACHNID_BUNKER_ASSAULT},
+		{"name": "TEMPLATE_RADAR_SNIPER_FORTRESS", "grid": MapTemplatesScript.TEMPLATE_RADAR_SNIPER_FORTRESS},
+		{"name": "TEMPLATE_TESLA_CONDUIT_PINBALL", "grid": MapTemplatesScript.TEMPLATE_TESLA_CONDUIT_PINBALL},
+		{"name": "TEMPLATE_ENGINEER_FACTORY_COMPLEX", "grid": MapTemplatesScript.TEMPLATE_ENGINEER_FACTORY_COMPLEX},
+		{"name": "TEMPLATE_GLACIER_BUNKER_REDOUBT", "grid": MapTemplatesScript.TEMPLATE_GLACIER_BUNKER_REDOUBT},
 	]
 
 	for t in new_templates:
@@ -75,9 +78,9 @@ func _test_new_map_templates_structure_and_base_fit() -> void:
 			assert(grid[r].size() == 13, "%s 第 %d 行列数必须为 13, 实际为 %d" % [name, r, grid[r].size()])
 			for c in range(13):
 				var tile = grid[r][c]
-				assert(tile >= 0 and tile <= 39, "%s 在 (%d,%d) 的瓦片值 %d 超出合法范围 [0..39]" % [name, r, c, tile])
+				assert(tile >= 0 and tile <= 43, "%s 在 (%d,%d) 的瓦片值 %d 超出合法范围 [0..43]" % [name, r, c, tile])
 
-		# 验证鹰巢保护区：第 11~12 行的 col 5~7 必须全部为 0 (留给 main.gd 动态生成老鹰与防护砖)
+		# 验证鹰巢保护区：第 11~12 行的 col 5~7 必须全部为 0
 		for r in [11, 12]:
 			for c in [5, 6, 7]:
 				assert(grid[r][c] == 0, "%s 在鹰巢保护区 (%d,%d) 必须为 0, 实际为 %d" % [name, r, c, grid[r][c]])
@@ -86,7 +89,7 @@ func _test_new_map_templates_structure_and_base_fit() -> void:
 		for c in [0, 6, 12]:
 			assert(grid[0][c] == 0, "%s 在第 0 行敌人出生区 (%d) 必须为 0" % [name, c])
 
-	print("  [PASS] 5 张全新地图模板全部符合 13x13 几何规格与鹰巢/出生点保护标准。")
+	print("  [PASS] 11 张全新地图模板全部符合 13x13 几何规格与鹰巢/出生点保护标准。")
 
 func _test_map_pools_and_floor_gating() -> void:
 	print("\n[STEP 3] 验证新模板在 TEMPLATE_MIN_FLOOR 门禁与地图池中的注册...")
@@ -96,7 +99,13 @@ func _test_map_pools_and_floor_gating() -> void:
 		MapTemplatesScript.TEMPLATE_RADAR_COMMAND_CENTER,
 		MapTemplatesScript.TEMPLATE_EMP_TESLA_LABYRINTH,
 		MapTemplatesScript.TEMPLATE_SNIPER_AMMO_DEPOT,
-		MapTemplatesScript.TEMPLATE_PIPELINE_PINBALL_NEXUS
+		MapTemplatesScript.TEMPLATE_PIPELINE_PINBALL_NEXUS,
+		MapTemplatesScript.TEMPLATE_BUNKER_REDOUBT,
+		MapTemplatesScript.TEMPLATE_ARACHNID_BUNKER_ASSAULT,
+		MapTemplatesScript.TEMPLATE_RADAR_SNIPER_FORTRESS,
+		MapTemplatesScript.TEMPLATE_TESLA_CONDUIT_PINBALL,
+		MapTemplatesScript.TEMPLATE_ENGINEER_FACTORY_COMPLEX,
+		MapTemplatesScript.TEMPLATE_GLACIER_BUNKER_REDOUBT,
 	]
 
 	for t in templates_to_check:

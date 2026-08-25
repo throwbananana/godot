@@ -44,8 +44,11 @@ const MapDirector = preload("res://scripts/map_director.gd")
 # 35 = Radar Station (Strategic scanning beacon, reveals area and pulses)
 # 36 = Ammo Depot (Explosive high-yield munitions storage, triggers secondary blasts)
 # 37 = Command Post (High-durability 18HP headquarters fortress)
-# 38 = Sniper Nest (Automated perimeter sniper turret)
-# 39 = EMP Tower (Periodic electro-magnetic shockwave tower, stuns nearby tanks)
+# 40 = Tactical Bunker UP (Forward frontal armor, rear entry, firing slit)
+# 41 = Tactical Bunker RIGHT
+# 42 = Tactical Bunker DOWN
+# 43 = Tactical Bunker LEFT
+# 44 = Movable Wooden Wall (Movable timber barricade: can be pushed by contact or kinetic impacts, crushes bricks/damages enemies on contact, destructible)
 
 # 1. 经典十字交叉防线 (Classic Crossroad - with Reinforced Hard Clay Chokepoints)
 const TEMPLATE_CLASSIC = [
@@ -1112,29 +1115,298 @@ const TEMPLATE_PIPELINE_PINBALL_NEXUS = [
 	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]
 
-## Per-template floor_idx gate, mirroring the enemy tier table in main.gd's
-## ENEMY_MIN_FLOOR -- pools below draw by `floor_idx % pool.size()`, which
-## previously meant a "kitchen sink" template (5+ combined mechanics, or a
-## jammer/factory encounter) could show up as early as floor_idx 1 purely by
-## index luck. Tiers here are by mechanic count (see the tools/Explore audit
-## that produced this table), not template name:
-##   Floor 0 (ungated) -- plain terrain, at most one of hard clay/landmine/
-##                        sand, nothing the player has to learn mid-fight.
-##   Floor 2 -- exactly one or two environmental mechanics (ice, a single
-##              wormhole, a shield+wind pair, or a standalone jammer/factory
-##              encounter).
-##   Floor 5 -- three or more combined mechanics, or any street-lamp/
-##              electric-wall/oil-barrel building combo map.
-## Keyed by template array identity (Dictionary compares Array keys by
-## content, and no two templates share a layout, so this resolves uniquely).
+# 60. 战术堡垒防御要塞 (Bunker Redoubt Citadel) -- 部署战术防御堡垒 (40/41/42/43)、
+# 导流管道、狙击碉堡与硬黏土，构筑正面固若金汤、侧面穿插突袭的立体攻防线。
+const TEMPLATE_BUNKER_REDOUBT = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 42, 0, 2, 0, 38, 0, 38, 0, 2, 0, 42, 0],
+	[0, 1, 0, 2, 0, 8, 0, 8, 0, 2, 0, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[41, 0, 2, 2, 0, 8, 37, 8, 0, 2, 2, 0, 43],
+	[0, 1, 1, 0, 40, 2, 0, 2, 40, 0, 1, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 0, 40, 2, 0, 2, 40, 0, 1, 1, 0],
+	[41, 0, 2, 2, 0, 8, 36, 8, 0, 2, 2, 0, 43],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 0, 2, 0, 8, 0, 8, 0, 2, 0, 1, 0],
+	[0, 40, 0, 2, 0, 0, 0, 0, 0, 2, 0, 40, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 61. 蛛形突击与战术堡垒防线 (Arachnid Bunker Assault) -- 结合跳板 (22)、战术堡垒 (40/41/43)、
+# 硬黏土与 EMP 电磁塔 (39)，跳蛛坦克可发动高空跨越突袭，玩家可利用正面堡垒抵御火力。
+const TEMPLATE_ARACHNID_BUNKER_ASSAULT = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 42, 0, 8, 8, 38, 0, 38, 8, 8, 0, 42, 0],
+	[0, 8, 0, 8, 0, 0, 0, 0, 0, 8, 0, 8, 0],
+	[0, 8, 0, 2, 2, 39, 0, 39, 2, 2, 0, 8, 0],
+	[41, 0, 0, 2, 0, 0, 37, 0, 0, 2, 0, 0, 43],
+	[0, 8, 8, 0, 22, 8, 0, 8, 22, 0, 8, 8, 0],
+	[0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0],
+	[0, 8, 8, 0, 22, 8, 0, 8, 22, 0, 8, 8, 0],
+	[41, 0, 0, 2, 0, 0, 36, 0, 0, 2, 0, 0, 43],
+	[0, 8, 0, 2, 2, 0, 0, 0, 2, 2, 0, 8, 0],
+	[0, 8, 0, 8, 0, 40, 0, 40, 0, 8, 0, 8, 0],
+	[0, 40, 0, 8, 8, 0, 0, 0, 8, 8, 0, 40, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 62. 雷达立体狙击阵地 (Radar Sniper Fortress) -- 后置双雷达站 (35)、中轴狙击碉堡 (38) 与
+# 导流管道 (31/32/33/34)、弹药库 (36)，构筑超宽视野远程狙击体系。
+const TEMPLATE_RADAR_SNIPER_FORTRESS = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 35, 0, 31, 0, 38, 2, 38, 0, 34, 0, 35, 0],
+	[0, 2, 0, 2, 0, 42, 0, 42, 0, 2, 0, 2, 0],
+	[0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0],
+	[0, 36, 0, 2, 2, 8, 37, 8, 2, 2, 0, 36, 0],
+	[0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0],
+	[31, 0, 38, 0, 0, 2, 0, 2, 0, 0, 38, 0, 34],
+	[0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0],
+	[0, 36, 0, 2, 2, 8, 36, 8, 2, 2, 0, 36, 0],
+	[0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0],
+	[0, 2, 0, 32, 0, 40, 0, 40, 0, 33, 0, 2, 0],
+	[0, 35, 0, 2, 0, 0, 0, 0, 0, 2, 0, 35, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 63. 特斯拉管道电磁回环 (Tesla Conduit Pinball) -- EMP 特斯拉塔 (39)、磁极线圈 (25) 与
+# 四向导流管道 (31..34)、传送带 (18/19/20/21) 构成的全域电磁弹道回廊。
+const TEMPLATE_TESLA_CONDUIT_PINBALL = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 31, 18, 18, 0, 39, 0, 39, 0, 18, 18, 34, 0],
+	[0, 20, 31, 0, 0, 25, 0, 25, 0, 0, 34, 21, 0],
+	[0, 20, 0, 2, 2, 0, 37, 0, 2, 2, 0, 21, 0],
+	[0, 0, 0, 2, 22, 0, 0, 0, 22, 2, 0, 0, 0],
+	[0, 39, 0, 0, 0, 32, 2, 33, 0, 0, 0, 39, 0],
+	[18, 0, 25, 36, 0, 2, 0, 2, 0, 36, 25, 0, 19],
+	[0, 39, 0, 0, 0, 31, 2, 34, 0, 0, 0, 39, 0],
+	[0, 0, 0, 2, 22, 0, 0, 0, 22, 2, 0, 0, 0],
+	[0, 20, 0, 2, 2, 0, 36, 0, 2, 2, 0, 21, 0],
+	[0, 20, 32, 0, 0, 25, 0, 25, 0, 0, 33, 21, 0],
+	[0, 32, 19, 19, 0, 0, 0, 0, 0, 19, 19, 33, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 64. 军工施工厂前线综合体 (Industrial Engineer Complex) -- 军工兵工厂 (27)、敌方护盾塔 (30)、
+# 防御堡垒 (40/42)、弹药库 (36) 与传送带构成的重工业战区。
+const TEMPLATE_ENGINEER_FACTORY_COMPLEX = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 27, 0, 30, 0, 42, 2, 42, 0, 30, 0, 27, 0],
+	[0, 18, 0, 8, 8, 2, 0, 2, 8, 8, 0, 18, 0],
+	[0, 18, 0, 31, 0, 0, 0, 0, 0, 34, 0, 18, 0],
+	[0, 2, 2, 0, 36, 8, 37, 8, 36, 0, 2, 2, 0],
+	[0, 0, 0, 0, 8, 2, 0, 2, 8, 0, 0, 0, 0],
+	[30, 0, 36, 0, 0, 0, 2, 0, 0, 0, 36, 0, 30],
+	[0, 0, 0, 0, 8, 2, 0, 2, 8, 0, 0, 0, 0],
+	[0, 2, 2, 0, 36, 8, 37, 8, 36, 0, 2, 2, 0],
+	[0, 19, 0, 32, 0, 0, 0, 0, 0, 33, 0, 19, 0],
+	[0, 19, 0, 8, 8, 2, 0, 2, 8, 8, 0, 19, 0],
+	[0, 27, 0, 40, 0, 0, 0, 0, 0, 40, 0, 27, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 65. 极地冰川堡垒前哨 (Glacial Bunker Redoubt) -- 冰面 (5)、钢墙 (2)、四向战术堡垒 (40/41/42/43)、
+# 激光发射器 (24) 与跳板 (22) 构成的极地高速滑行攻防堡垒群。
+const TEMPLATE_GLACIER_BUNKER_REDOUBT = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 5, 5, 42, 0, 24, 2, 24, 0, 42, 5, 5, 0],
+	[0, 5, 5, 2, 0, 12, 0, 12, 0, 2, 5, 5, 0],
+	[0, 41, 2, 2, 0, 0, 0, 0, 0, 2, 2, 43, 0],
+	[0, 0, 0, 0, 22, 5, 37, 5, 22, 0, 0, 0, 0],
+	[0, 24, 0, 0, 5, 5, 5, 5, 5, 0, 0, 24, 0],
+	[2, 0, 12, 0, 5, 5, 2, 5, 5, 0, 12, 0, 2],
+	[0, 24, 0, 0, 5, 5, 5, 5, 5, 0, 0, 24, 0],
+	[0, 0, 0, 0, 22, 5, 36, 5, 22, 0, 0, 0, 0],
+	[0, 41, 2, 2, 0, 0, 0, 0, 0, 2, 2, 43, 0],
+	[0, 5, 5, 2, 0, 12, 0, 12, 0, 2, 5, 5, 0],
+	[0, 5, 5, 40, 0, 0, 0, 0, 0, 40, 5, 5, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 58. 原木防线与可移动木墙要塞 (Timber Barricade & Movable Wooden Wall Redoubt)
+const TEMPLATE_TIMBER_BARRICADE_DEFENSE = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 0, 44, 0, 1, 0, 1, 0, 44, 0, 1, 0],
+	[0, 1, 0, 1, 0, 8, 0, 8, 0, 1, 0, 1, 0],
+	[0, 44, 0, 1, 0, 2, 2, 2, 0, 1, 0, 44, 0],
+	[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+	[0, 1, 0, 44, 0, 8, 8, 8, 0, 44, 0, 1, 0],
+	[2, 2, 0, 1, 1, 3, 3, 3, 1, 1, 0, 2, 2],
+	[0, 4, 4, 0, 0, 4, 4, 4, 0, 0, 4, 4, 0],
+	[0, 1, 0, 44, 0, 0, 0, 0, 0, 44, 0, 1, 0],
+	[0, 1, 0, 1, 0, 2, 0, 2, 0, 1, 0, 1, 0],
+	[0, 44, 0, 1, 0, 8, 0, 8, 0, 1, 0, 44, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 59. 木墙推进与战术冲锋突围 (Wooden Wall Mobile Rampart & Chokepoint Advance)
+const TEMPLATE_WOODEN_WALL_RAMPART = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 0, 44, 0, 0, 0, 44, 0, 1, 1, 0],
+	[0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0],
+	[0, 44, 0, 0, 1, 8, 0, 8, 1, 0, 0, 44, 0],
+	[0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+	[0, 0, 0, 0, 44, 2, 2, 2, 44, 0, 0, 0, 0],
+	[2, 2, 0, 1, 1, 3, 3, 3, 1, 1, 0, 2, 2],
+	[0, 0, 0, 0, 44, 0, 0, 0, 44, 0, 0, 0, 0],
+	[0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+	[0, 44, 0, 0, 1, 8, 0, 8, 1, 0, 0, 44, 0],
+	[0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0],
+	[0, 0, 0, 0, 44, 0, 0, 0, 44, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 66. 木墙迷宫要塞 (Timber Fortress Labyrinth) -- 原木推移木墙 (44)、多层强化硬黏土 (8)、迷彩树林 (4) 与弹药库 (36)
+const TEMPLATE_WOODEN_FORTRESS_LABYRINTH = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 44, 1, 0, 4, 4, 0, 4, 4, 0, 1, 44, 0],
+	[0, 1, 0, 44, 0, 8, 0, 8, 0, 44, 0, 1, 0],
+	[0, 0, 8, 1, 0, 1, 44, 1, 0, 1, 8, 0, 0],
+	[0, 44, 0, 0, 44, 2, 0, 2, 44, 0, 0, 44, 0],
+	[0, 1, 8, 0, 0, 0, 0, 0, 0, 0, 8, 1, 0],
+	[2, 0, 1, 44, 0, 8, 36, 8, 0, 44, 1, 0, 2],
+	[0, 1, 8, 0, 0, 0, 0, 0, 0, 0, 8, 1, 0],
+	[0, 44, 0, 0, 44, 2, 0, 2, 44, 0, 0, 44, 0],
+	[0, 0, 8, 1, 0, 1, 44, 1, 0, 1, 8, 0, 0],
+	[0, 1, 0, 44, 0, 8, 0, 8, 0, 44, 0, 1, 0],
+	[0, 44, 1, 0, 0, 0, 0, 0, 0, 0, 1, 44, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 67. 碉堡交叉火力峡谷 (Bunker Crossfire Valley) -- 四向战术射孔碉堡 (40/41/42/43)、传送带 (18/19)、雷达站 (35) 与弹药库 (36)
+const TEMPLATE_BUNKER_CROSSFIRE_VALLEY = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 42, 0, 18, 0, 1, 2, 1, 0, 18, 0, 42, 0],
+	[0, 2, 0, 18, 0, 8, 0, 8, 0, 18, 0, 2, 0],
+	[0, 41, 0, 0, 36, 2, 0, 2, 36, 0, 0, 43, 0],
+	[0, 0, 0, 44, 0, 0, 35, 0, 0, 44, 0, 0, 0],
+	[0, 2, 1, 0, 8, 2, 0, 2, 8, 0, 1, 2, 0],
+	[2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+	[0, 2, 1, 0, 8, 2, 0, 2, 8, 0, 1, 2, 0],
+	[0, 0, 0, 44, 0, 0, 35, 0, 0, 44, 0, 0, 0],
+	[0, 41, 0, 0, 36, 2, 0, 2, 36, 0, 0, 43, 0],
+	[0, 2, 0, 19, 0, 8, 0, 8, 0, 19, 0, 2, 0],
+	[0, 40, 0, 19, 0, 0, 0, 0, 0, 19, 0, 40, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 68. 特斯拉传送带铸造厂 (Tesla Conveyor Foundry) -- 高压电网 (25)、四向加速传送带 (18/19/20/21)、高能弹药库 (36) 与跳板 (22)
+const TEMPLATE_TESLA_CONVEYOR_FOUNDRY = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 25, 0, 21, 21, 21, 0, 20, 20, 20, 0, 25, 0],
+	[0, 25, 0, 18, 0, 26, 0, 26, 0, 19, 0, 25, 0],
+	[0, 0, 0, 18, 0, 2, 22, 2, 0, 19, 0, 0, 0],
+	[0, 21, 21, 32, 0, 25, 0, 25, 0, 33, 20, 20, 0],
+	[0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0],
+	[2, 0, 2, 0, 22, 0, 36, 0, 22, 0, 2, 0, 2],
+	[0, 0, 26, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0],
+	[0, 21, 21, 31, 0, 25, 0, 25, 0, 34, 20, 20, 0],
+	[0, 0, 0, 18, 0, 2, 22, 2, 0, 19, 0, 0, 0],
+	[0, 25, 0, 18, 0, 26, 0, 26, 0, 19, 0, 25, 0],
+	[0, 25, 0, 21, 21, 0, 0, 0, 20, 20, 0, 25, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 69. 极光冰川虫洞卫城 (Glacial Aurora Warp Citadel) -- 极速滑冰 (9)、空间虫洞 (12)、充能护盾站 (13)、弹药库 (37) 与碉堡 (40/41/42/43)
+const TEMPLATE_GLACIAL_WORMHOLE_CITADEL = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 9, 9, 42, 0, 12, 2, 12, 0, 42, 9, 9, 0],
+	[0, 9, 9, 2, 0, 9, 0, 9, 0, 2, 9, 9, 0],
+	[0, 41, 2, 2, 0, 13, 0, 13, 0, 2, 2, 43, 0],
+	[0, 9, 0, 0, 22, 9, 0, 9, 22, 0, 0, 9, 0],
+	[0, 9, 12, 0, 9, 9, 9, 9, 9, 0, 12, 9, 0],
+	[2, 0, 0, 0, 9, 9, 37, 9, 9, 0, 0, 0, 2],
+	[0, 9, 12, 0, 9, 9, 9, 9, 9, 0, 12, 9, 0],
+	[0, 9, 0, 0, 22, 9, 0, 9, 22, 0, 0, 9, 0],
+	[0, 41, 2, 2, 0, 13, 0, 13, 0, 2, 2, 43, 0],
+	[0, 9, 9, 2, 0, 9, 0, 9, 0, 2, 9, 9, 0],
+	[0, 9, 9, 40, 0, 0, 0, 0, 0, 40, 9, 9, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 70. 流沙前哨碉堡群 (Quicksand Bunker Redoubt) -- 阻滞流沙 (6)、易塌沙丘 (7)、可推木墙 (44)、侧翼碉堡 (41/43) 与雷达站 (35)
+const TEMPLATE_QUICKSAND_BUNKER_OUTPOST = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 6, 6, 44, 0, 7, 2, 7, 0, 44, 6, 6, 0],
+	[0, 6, 6, 7, 0, 6, 0, 6, 0, 7, 6, 6, 0],
+	[0, 41, 2, 7, 0, 44, 0, 44, 0, 7, 2, 43, 0],
+	[0, 6, 0, 0, 6, 6, 35, 6, 6, 0, 0, 6, 0],
+	[0, 6, 7, 0, 6, 6, 6, 6, 6, 0, 7, 6, 0],
+	[2, 0, 0, 0, 36, 6, 2, 6, 36, 0, 0, 0, 2],
+	[0, 6, 7, 0, 6, 6, 6, 6, 6, 0, 7, 6, 0],
+	[0, 6, 0, 0, 6, 6, 35, 6, 6, 0, 0, 6, 0],
+	[0, 41, 2, 7, 0, 44, 0, 44, 0, 7, 2, 43, 0],
+	[0, 6, 6, 7, 0, 6, 0, 6, 0, 7, 6, 6, 0],
+	[0, 6, 6, 44, 0, 0, 0, 0, 0, 44, 6, 6, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 71. 水网摆渡打捞前线 (Naval Ferry Salvage Delta) -- 水系 (3)、巡逻摆渡平台 (10)、漂流物资 (29)、弹药库 (36/37) 与跳板 (22)
+const TEMPLATE_NAVAL_FERRY_SALVAGE = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 0, 3, 3, 29, 3, 3, 0, 1, 1, 0],
+	[0, 1, 1, 0, 3, 10, 3, 10, 3, 0, 1, 1, 0],
+	[0, 44, 0, 0, 3, 3, 29, 3, 3, 0, 0, 44, 0],
+	[0, 0, 0, 22, 0, 0, 0, 0, 0, 22, 0, 0, 0],
+	[3, 3, 29, 3, 3, 2, 37, 2, 3, 3, 29, 3, 3],
+	[3, 10, 3, 10, 3, 0, 0, 0, 3, 10, 3, 10, 3],
+	[3, 3, 29, 3, 3, 2, 36, 2, 3, 3, 29, 3, 3],
+	[0, 0, 0, 22, 0, 0, 0, 0, 0, 22, 0, 0, 0],
+	[0, 44, 0, 0, 3, 3, 29, 3, 3, 0, 0, 44, 0],
+	[0, 1, 1, 0, 3, 10, 3, 10, 3, 0, 1, 1, 0],
+	[0, 1, 1, 0, 3, 0, 0, 0, 3, 0, 1, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 72. 折射导管与弹药库竞技场 (Pipe Conduit Reflex Arena) -- 四向折射弯管 (31/32/33/34)、引爆弹药库 (36)、推进木墙 (44) 与强化硬黏土 (8)
+const TEMPLATE_PIPE_AMMO_REFLEX_ARENA = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 32, 0, 33, 0, 1, 2, 1, 0, 32, 0, 33, 0],
+	[0, 0, 36, 0, 0, 8, 0, 8, 0, 0, 36, 0, 0],
+	[0, 31, 0, 34, 0, 2, 0, 2, 0, 31, 0, 34, 0],
+	[0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0],
+	[0, 1, 8, 2, 0, 32, 36, 33, 0, 2, 8, 1, 0],
+	[2, 0, 0, 0, 0, 31, 37, 34, 0, 0, 0, 0, 2],
+	[0, 1, 8, 2, 0, 32, 36, 33, 0, 2, 8, 1, 0],
+	[0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0],
+	[0, 32, 0, 33, 0, 2, 0, 2, 0, 32, 0, 33, 0],
+	[0, 0, 36, 0, 0, 8, 0, 8, 0, 0, 36, 0, 0],
+	[0, 31, 0, 34, 0, 0, 0, 0, 0, 31, 0, 34, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+# 73. 全域要塞防御中枢 (Sector Defense Nexus) -- 护盾电塔 (13)、兵工厂 (28)、干扰塔 (27)、弹药库 (36)、四向碉堡 (40/41/42/43) 与可推木墙 (44)
+const TEMPLATE_SECTOR_DEFENSE_NEXUS = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 27, 0, 42, 0, 13, 2, 13, 0, 42, 0, 27, 0],
+	[0, 44, 0, 2, 0, 8, 0, 8, 0, 2, 0, 44, 0],
+	[0, 0, 44, 2, 0, 36, 0, 36, 0, 2, 44, 0, 0],
+	[0, 41, 0, 0, 22, 2, 28, 2, 22, 0, 0, 43, 0],
+	[0, 0, 8, 0, 2, 8, 0, 8, 2, 0, 8, 0, 0],
+	[2, 0, 0, 0, 0, 0, 37, 0, 0, 0, 0, 0, 2],
+	[0, 0, 8, 0, 2, 8, 0, 8, 2, 0, 8, 0, 0],
+	[0, 41, 0, 0, 22, 2, 28, 2, 22, 0, 0, 43, 0],
+	[0, 0, 44, 2, 0, 36, 0, 36, 0, 2, 44, 0, 0],
+	[0, 44, 0, 2, 0, 8, 0, 8, 0, 2, 0, 44, 0],
+	[0, 27, 0, 40, 0, 0, 0, 0, 0, 40, 0, 27, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
 const TEMPLATE_MIN_FLOOR: Dictionary = {
+	TEMPLATE_TIMBER_BARRICADE_DEFENSE: 1, TEMPLATE_WOODEN_WALL_RAMPART: 2,
+	TEMPLATE_WOODEN_FORTRESS_LABYRINTH: 2, TEMPLATE_BUNKER_CROSSFIRE_VALLEY: 2,
+	TEMPLATE_QUICKSAND_BUNKER_OUTPOST: 2, TEMPLATE_PIPE_AMMO_REFLEX_ARENA: 2,
 	TEMPLATE_GLACIER_ICE: 2, TEMPLATE_VOID_FERRY: 2, TEMPLATE_COSMIC_WORMHOLES: 2,
 	TEMPLATE_WARP_GLACIER: 2, TEMPLATE_VOID_CANAL: 2, TEMPLATE_DESERT_LABYRINTH: 2,
 	TEMPLATE_METEOR_CRATER: 2, TEMPLATE_TWIN_ISLANDS: 2, TEMPLATE_ELITE_CITADEL: 2,
 	TEMPLATE_SHIELD_OUTPOST: 2, TEMPLATE_SHIELD_LABYRINTH: 2,
 	TEMPLATE_JAMMER_OUTPOST: 2, TEMPLATE_FACTORY_ESCORT: 2,
 	TEMPLATE_CONDUIT_CROSSFIRE: 2, TEMPLATE_RADAR_COMMAND_CENTER: 2, TEMPLATE_SNIPER_AMMO_DEPOT: 2,
+	TEMPLATE_BUNKER_REDOUBT: 2, TEMPLATE_ARACHNID_BUNKER_ASSAULT: 2, TEMPLATE_RADAR_SNIPER_FORTRESS: 2,
 
+	TEMPLATE_TESLA_CONVEYOR_FOUNDRY: 5, TEMPLATE_GLACIAL_WORMHOLE_CITADEL: 5,
+	TEMPLATE_NAVAL_FERRY_SALVAGE: 5, TEMPLATE_SECTOR_DEFENSE_NEXUS: 5,
 	TEMPLATE_WIND_TEMPEST: 5, TEMPLATE_CYCLONE_ARENA: 5, TEMPLATE_WARP_TURBINE_VALLEY: 5,
 	TEMPLATE_CONVEYOR_FACTORY: 5, TEMPLATE_JUMP_ARCHIPELAGO: 5, TEMPLATE_TURBINE_CONVEYOR_LAB: 5,
 	TEMPLATE_NEO_TITAN_BASTION: 5, TEMPLATE_CONVEYOR_PINBALL: 5, TEMPLATE_WARP_CITADEL_APEX: 5,
@@ -1145,72 +1417,31 @@ const TEMPLATE_MIN_FLOOR: Dictionary = {
 	TEMPLATE_QUICKSAND_FOUNDRY: 5, TEMPLATE_HYPERDRIVE_PINBALL: 5, TEMPLATE_TRI_DOMAIN_BIOHAZARD: 5,
 	TEMPLATE_NAVAL_SALVAGE_ROUTE: 5, TEMPLATE_TWIN_LAKES_SALVAGE: 5, TEMPLATE_ENEMY_SHIELD_BASTION: 5,
 	TEMPLATE_EMP_TESLA_LABYRINTH: 5, TEMPLATE_PIPELINE_PINBALL_NEXUS: 5,
+	TEMPLATE_TESLA_CONDUIT_PINBALL: 5, TEMPLATE_ENGINEER_FACTORY_COMPLEX: 5, TEMPLATE_GLACIER_BUNKER_REDOUBT: 5,
 
-	# SOLAR_TITAN_SANCTUM 曾经漏在门禁外, 理由写的是"它只是 battle_type==boss
-	# 的固定返回值, 不走池索引"。那句话是错的 —— 它同时躺在 act3_pool 里,
-	# 而缺省 min_floor=0 让它成为该池**唯一**在 floor 0/1 就合格的条目, 于是
-	# act 3 的头两层必然是它: 全游戏机制最密的一张图 (8 个机制族), 连开两层。
-	# 对比 act 1/2 的开场都是 0 族的纯地形图。
-	# 这正是 MapDirector 刚修好的"最难的图出现在最前面"在模板侧的镜像。
 	TEMPLATE_SOLAR_TITAN_SANCTUM: 5,
-	# TEMPLATE_BOSS_ARENA / TEMPLATE_SPEEDWAY 才是真的只作 boss 固定返回、
-	# 不出现在任何池里, 所以确实不需要门禁。
 }
 
-## Filters a pool down to templates unlocked at floor_idx, falling back to
-## the pool's floor-0 (ungated) subset, and finally the whole pool, so a
-## pool that happens to be all-advanced at very low floor_idx still returns
-## something instead of an empty array.
 static func _pick_from_pool(pool: Array, floor_idx: int) -> Array:
 	var eligible = pool.filter(func(t): return floor_idx >= TEMPLATE_MIN_FLOOR.get(t, 0))
 	if not eligible.is_empty():
 		return eligible[_pool_index(eligible.size(), floor_idx)]
-	# Nothing in this pool is unlocked yet (some curated pools -- e.g.
-	# "challenge" -- skew entirely toward multi-mechanic templates with no
-	# floor-0 entry at all). Fall back to whichever template(s) have the
-	# lowest min_floor requirement in the pool, rather than ignoring the
-	# gate outright and handing back an arbitrary high-tier one.
 	var lowest = 999999
 	for t in pool:
 		lowest = mini(lowest, TEMPLATE_MIN_FLOOR.get(t, 0))
 	var closest = pool.filter(func(t): return TEMPLATE_MIN_FLOOR.get(t, 0) == lowest)
 	return closest[_pool_index(closest.size(), floor_idx)]
 
-
-## 在一个已经过门禁筛选的候选表里选一个下标。
-##
-## 原来是裸的 `floor_idx % size` —— 完全确定性, 于是**每一局的每一层都是同一
-## 张图**。实测 act 1 的 15 层永远是 MEADOW_OUTPOST, CLASSIC, 程序生成,
-## ORCHARD_ROWS, ... 一字不差, 54 张模板一幕只用到 8-10 张。对一个 roguelite
-## 来说这是重复可玩性的硬伤。
-##
-## 现在按 run_seed 给下标加一个每局不同、但**同一局内稳定**的偏移。稳定是硬
-## 要求: 存档读回来、或者同一层重进, 都必须还是那张图。所以偏移只由
-## (run_seed, floor_idx, 候选表大小) 决定, 不碰全局 RNG 流 —— 顺带也不会
-## 干扰每日挑战靠 seed() 建立的全局可复现性。
-##
-## run_seed == 0 表示老存档或未开局, 退回原来的取模行为。
 static func _pool_index(size: int, floor_idx: int) -> int:
 	if size <= 0:
 		return 0
 	if GameState.run_seed == 0 or size == 1:
 		return floor_idx % size
-	# 用"每局不同的起点 + 每局不同的步长"来扫描候选表, 而不是拿
-	# (种子, 楼层) 直接 hash 出一个下标。
-	#
-	# 两者都能做到每局不一样, 但 per-floor hash 等于每层独立均匀抽样, 一局
-	# 之内会撞车 —— 实测某个种子下 ORCHARD_ROWS 在 15 层里出现了 3 次。原来
-	# 那个朴素的 floor_idx % size 虽然每局都一样, 至少保证了**局内**顺序扫描
-	# 不重复, 这个性质不能丢。
-	#
-	# 步长与候选表长度互质时, (off + floor*stride) % size 会不重复地走遍整张
-	# 表, 既保住局内不重复, 又让起点和遍历顺序每局都不同。
 	var off: int = abs(hash("%d:pool_off" % GameState.run_seed)) % size
 	var stride: int = 1 + abs(hash("%d:pool_stride" % GameState.run_seed)) % (size - 1)
 	while _gcd(stride, size) != 1:
 		stride = (stride % (size - 1)) + 1
 	return (off + floor_idx * stride) % size
-
 
 static func _gcd(a: int, b: int) -> int:
 	while b != 0:
@@ -1240,29 +1471,29 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 			2: return TEMPLATE_SPEEDWAY
 			3: return TEMPLATE_SOLAR_TITAN_SANCTUM
 			_: return TEMPLATE_APEX_TRI_ARMOR_CITADEL
-	elif battle_type == "challenge":
+	elif battle_type == "challenge" or GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
 		match current_act:
 			1:
-				var pc1 = [TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_CONVEYOR_PINBALL, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_PIPELINE_PINBALL_NEXUS]
+				var pc1 = [TEMPLATE_CHECKERBOARD, TEMPLATE_CITADEL, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_ENEMY_SHIELD_BASTION, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_BUNKER_REDOUBT, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA]
 				return _pick_from_pool(pc1, floor_idx)
 			2:
-				var pc2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_WIND_TEMPEST, TEMPLATE_INFERNO_REFINERY, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_RADAR_COMMAND_CENTER]
+				var pc2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_WIND_TEMPEST, TEMPLATE_INFERNO_REFINERY, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_ENGINEER_FACTORY_COMPLEX, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE]
 				return _pick_from_pool(pc2, floor_idx)
 			3:
-				var pc3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_OIL_REFINERY, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_EMP_TESLA_LABYRINTH]
+				var pc3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_OIL_REFINERY, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_GLACIER_BUNKER_REDOUBT, TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_SECTOR_DEFENSE_NEXUS]
 				return _pick_from_pool(pc3, floor_idx)
 			_:
 				return TEMPLATE_SHIELD_OUTPOST
 	elif battle_type == "elite":
 		match current_act:
 			1:
-				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER]
+				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA]
 				return _pick_from_pool(p1, floor_idx)
 			2:
-				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_EMP_TESLA_LABYRINTH]
+				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_ENGINEER_FACTORY_COMPLEX, TEMPLATE_BUNKER_REDOUBT, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE]
 				return _pick_from_pool(p2, floor_idx)
 			3:
-				var p3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_TWIN_LAKES_SALVAGE, TEMPLATE_PIPELINE_PINBALL_NEXUS]
+				var p3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_TWIN_LAKES_SALVAGE, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_GLACIER_BUNKER_REDOUBT, TEMPLATE_TESLA_CONDUIT_PINBALL, TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_SECTOR_DEFENSE_NEXUS]
 				return _pick_from_pool(p3, floor_idx)
 			_:
 				return TEMPLATE_CITADEL
@@ -1292,13 +1523,41 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_CONDUIT_CROSSFIRE,
 					TEMPLATE_RADAR_COMMAND_CENTER,
 					TEMPLATE_PIPELINE_PINBALL_NEXUS,
+					TEMPLATE_BUNKER_REDOUBT,
+					TEMPLATE_ARACHNID_BUNKER_ASSAULT,
+					TEMPLATE_RADAR_SNIPER_FORTRESS,
+					TEMPLATE_TESLA_CONDUIT_PINBALL,
+					TEMPLATE_TIMBER_BARRICADE_DEFENSE,
+					TEMPLATE_WOODEN_WALL_RAMPART,
+					TEMPLATE_WOODEN_FORTRESS_LABYRINTH,
+					TEMPLATE_BUNKER_CROSSFIRE_VALLEY,
+					TEMPLATE_PIPE_AMMO_REFLEX_ARENA,
 				]
 				return _pick_from_pool(act1_pool, floor_idx)
 			2:
-				var act2_pool = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE, TEMPLATE_ENEMY_SHIELD_BASTION, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_EMP_TESLA_LABYRINTH]
+				var act2_pool = [
+					TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY,
+					TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_STORM, TEMPLATE_OASIS_DUNES, TEMPLATE_DESERT_LABYRINTH,
+					TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST,
+					TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE, TEMPLATE_ENEMY_SHIELD_BASTION,
+					TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_BUNKER_REDOUBT,
+					TEMPLATE_ENGINEER_FACTORY_COMPLEX, TEMPLATE_ARACHNID_BUNKER_ASSAULT,
+					TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE,
+					TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA
+				]
 				return _pick_from_pool(act2_pool, floor_idx)
 			3:
-				var act3_pool = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_ELITE_CITADEL, TEMPLATE_TWIN_LAKES_SALVAGE, TEMPLATE_ENEMY_SHIELD_BASTION, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_PIPELINE_PINBALL_NEXUS]
+				var act3_pool = [
+					TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD,
+					TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_APEX_TRI_ARMOR_CITADEL,
+					TEMPLATE_GLACIER_ICE, TEMPLATE_WARP_GLACIER, TEMPLATE_COSMIC_WORMHOLES, TEMPLATE_CYCLONE_ARENA,
+					TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_VOID_FERRY, TEMPLATE_TWIN_ISLANDS,
+					TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WIND_TEMPEST, TEMPLATE_SHIELD_OUTPOST,
+					TEMPLATE_ELITE_CITADEL, TEMPLATE_TWIN_LAKES_SALVAGE, TEMPLATE_ENEMY_SHIELD_BASTION, TEMPLATE_CONDUIT_CROSSFIRE,
+					TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_GLACIER_BUNKER_REDOUBT,
+					TEMPLATE_TESLA_CONDUIT_PINBALL, TEMPLATE_ENGINEER_FACTORY_COMPLEX,
+					TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_NAVAL_FERRY_SALVAGE, TEMPLATE_SECTOR_DEFENSE_NEXUS
+				]
 				return _pick_from_pool(act3_pool, floor_idx)
 			_:
 				return TEMPLATE_CLASSIC

@@ -11,7 +11,7 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -97,6 +97,33 @@ var is_leaping: bool = false
 var jump_cooldown_timer: float = 0.0
 const JUMP_COOLDOWN: float = 3.5
 var leap_shadow: Sprite2D = null
+
+# 火墙坦克火墙轨迹
+var firewall_trail_queue: Array[Node2D] = []
+const MAX_FIREWALL_TRAIL_LENGTH: int = 10
+var last_firewall_drop_pos: Vector2 = Vector2.ZERO
+const FIREWALL_DROP_DISTANCE: float = 36.0
+
+# 猎手坦克潜伏与伏击
+var is_in_ambush: bool = false
+var hunter_target_bush_pos: Vector2 = Vector2.INF
+var ambush_check_timer: float = 0.0
+var ambush_cooldown: float = 0.0
+
+# 沙虫坦克潜地钻掘与破土突袭
+var is_burrowed: bool = false
+var is_burrowing: bool = false
+var burrow_timer: float = 6.0
+const BURROW_INTERVAL: float = 6.5
+
+# 巨炮坦克 (Colossus Siege Cannon Tank) 变形驻扎固定要塞炮机制
+var is_cannon_deployed: bool = false
+var cannon_undeploy_timer: float = 0.0
+var cannon_mobile_frames: Array[Texture2D] = []
+var cannon_deploy_frames: Array[Texture2D] = []
+const CANNON_DEPLOY_DIST: float = 192.0 # 离玩家 <= 4 格时主动变形驻扎为固定炮
+const CANNON_UNDEPLOY_DIST: float = 270.0 # 玩家远离超 5.6 格且保持脱离时收起驻扎恢复巡航
+const CANNON_UNDEPLOY_DELAY: float = 2.5
 
 # 敌方护盾塔增益与护盾气泡
 var shield_sources: Array = []
@@ -430,6 +457,42 @@ func _setup_tank_type() -> void:
 			gold_value = 70
 			fire_interval = 1.6 # 头部双联毒针速射炮
 			jump_cooldown_timer = 1.0 # 入场 1 秒后即可发动首次越障跳跃
+		EnemyType.FIREWALL:
+			prefix = "enemy_firewall"
+			speed = 78.0 # 重型压迫机动
+			max_health = 4 # 耐高温黑曜熔岩重甲
+			score_value = 650
+			xp_value = 130
+			gold_value = 75
+			fire_interval = 2.0 # 重型高压喷火自卫
+			last_firewall_drop_pos = global_position
+		EnemyType.HUNTER:
+			prefix = "enemy_hunter"
+			speed = 88.0 # 敏捷潜伏机动
+			max_health = 2 # 隐蔽轻型战术甲
+			score_value = 550
+			xp_value = 110
+			gold_value = 60
+			fire_interval = 1.8 # 消音穿甲狙击炮
+		EnemyType.SANDWORM:
+			prefix = "enemy_sandworm"
+			speed = 72.0 # 几丁质节肢地面蠕动巡逻
+			max_health = 3 # 分段式几丁质硬壳装甲
+			score_value = 600
+			xp_value = 120
+			gold_value = 70
+			fire_interval = 2.0 # 背部双联沙爆迫击炮
+			burrow_timer = 5.0 # 入场 5 秒后触发首次钻地
+		EnemyType.CANNON:
+			prefix = "enemy_cannon"
+			speed = 65.0 # 重型要塞巡航移速
+			max_health = 6 # 极其坚固的重装甲结构
+			score_value = 800
+			xp_value = 160
+			gold_value = 95
+			fire_interval = 2.4 # 巡航模式射击间隔
+			is_cannon_deployed = false
+			cannon_undeploy_timer = 0.0
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
@@ -488,14 +551,27 @@ func _setup_tank_type() -> void:
 
 	health = max_health
 	tank_frames.clear()
-	for i in range(6):
-		var tex = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f%d.png" % [prefix, i])
-		if tex:
-			tank_frames.append(tex)
-		if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
-			sprite.scale = Vector2(0.24, 0.24)
-		elif enemy_type == EnemyType.SPLIT_MINI:
-			sprite.scale = Vector2(0.14, 0.14)
+	if enemy_type == EnemyType.CANNON:
+		cannon_mobile_frames.clear()
+		cannon_deploy_frames.clear()
+		for i in range(6):
+			var m_tex = TextureHelper.get_tex("res://assets/sprites/tanks/enemy_cannon_f%d.png" % i)
+			if m_tex:
+				cannon_mobile_frames.append(m_tex)
+			var d_tex = TextureHelper.get_tex("res://assets/sprites/tanks/enemy_cannon_deploy_f%d.png" % i)
+			if d_tex:
+				cannon_deploy_frames.append(d_tex)
+		tank_frames = cannon_mobile_frames
+		sprite.scale = Vector2(0.20, 0.20)
+	else:
+		for i in range(6):
+			var tex = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f%d.png" % [prefix, i])
+			if tex:
+				tank_frames.append(tex)
+			if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
+				sprite.scale = Vector2(0.24, 0.24)
+			elif enemy_type == EnemyType.SPLIT_MINI:
+				sprite.scale = Vector2(0.14, 0.14)
 
 func freeze(duration: float) -> void:
 	freeze_timer = duration
@@ -659,7 +735,28 @@ func _physics_process(delta: float) -> void:
 		else:
 			_check_and_trigger_spider_jump()
 
-	# 11. 护盾发生气泡动画更新
+	# 11. 火墙坦克: 移动时在身后铺设最多 10 格火墙轨迹
+	elif enemy_type == EnemyType.FIREWALL:
+		if global_position.distance_to(last_firewall_drop_pos) >= FIREWALL_DROP_DISTANCE:
+			_drop_firewall_hazard()
+
+	# 12. 猎手坦克: 草丛搜寻、隐蔽潜伏与路过伏击突袭
+	elif enemy_type == EnemyType.HUNTER:
+		_process_hunter_ambush_behavior(delta)
+
+	# 13. 沙虫坦克: 周期性钻地潜行与随机破土突袭
+	elif enemy_type == EnemyType.SANDWORM:
+		if is_burrowed or is_burrowing:
+			return # 潜地状态中由协程与动画驱动，不执行常规地面碰撞
+		burrow_timer -= delta
+		if burrow_timer <= 0.0:
+			_start_sandworm_burrow()
+
+	# 14. 巨炮坦克: 接近玩家时变形驻扎为固定要塞炮，极大提升防御与火力
+	elif enemy_type == EnemyType.CANNON:
+		_process_cannon_siege_behavior(delta)
+
+	# 15. 护盾发生气泡动画更新
 	if is_shielded():
 		shield_anim_timer += delta * 8.0
 		if is_instance_valid(shield_bubble_sprite) and shield_bubble_textures.size() > 0:
@@ -667,15 +764,17 @@ func _physics_process(delta: float) -> void:
 			shield_bubble_sprite.texture = shield_bubble_textures[s_idx]
 			shield_bubble_sprite.rotation += delta * 1.5
 
-	# 喷火兵、自爆车与粉碎者不发射常规子弹
-	if enemy_type != EnemyType.FLAMETHROWER and enemy_type != EnemyType.SUICIDE and enemy_type != EnemyType.CRUSHER:
+	# 喷火兵、自爆车与粉碎者不发射常规子弹；潜伏中的猎手坦克与钻地中的沙虫坦克静候触发
+	if enemy_type != EnemyType.FLAMETHROWER and enemy_type != EnemyType.SUICIDE and enemy_type != EnemyType.CRUSHER and not is_in_ambush and not is_burrowed:
 		fire_timer -= delta
 		if fire_timer <= 0.0:
 			_shoot()
 			fire_timer = randf_range(fire_interval * 0.8, fire_interval * 1.3)
 
 	var move_speed = speed
-	if enemy_type == EnemyType.SNIPER and fire_timer <= 0.6:
+	if is_in_ambush or is_cannon_deployed:
+		move_speed = 0.0 # 草丛潜伏期间或驻扎要塞形态下牢固抓地不移动
+	elif enemy_type == EnemyType.SNIPER and fire_timer <= 0.6:
 		move_speed = 0.0 # 狙击手开火前夕停步静止架枪蓄力
 	elif is_on_ice:
 		move_speed *= 1.35 # Enemies slide fast across ice
@@ -702,6 +801,8 @@ func _physics_process(delta: float) -> void:
 				if not crushed:
 					_choose_new_direction()
 		else:
+			if col_node and is_instance_valid(col_node) and col_node.has_method("take_push"):
+				col_node.take_push(facing_direction, self)
 			_choose_new_direction()
 
 	if tank_frames.size() > 0 and not is_camouflaged:
@@ -1005,6 +1106,34 @@ func _shoot() -> void:
 		bullet.global_position = muzzle_pos
 		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 		SoundManager.play_shot(get_tree())
+	elif enemy_type == EnemyType.CANNON:
+		var bullet = bullet_scene.instantiate()
+		bullet.direction = facing_direction
+		bullet.shooter = self
+		bullet.shooter_type = "enemy"
+		if is_cannon_deployed:
+			# 驻扎要塞巨炮: 超高威力 2 伤害 + 54px 范围重型高爆 AoE + 破钢穿障
+			bullet.speed = 460.0
+			bullet.damage = 2
+			bullet.is_aoe = true
+			bullet.aoe_radius = 54.0
+			bullet.can_destroy_steel = true
+			get_parent().add_child(bullet)
+			bullet.global_position = muzzle_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+			VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+			SoundManager.play_shot(get_tree())
+		else:
+			# 移动巡航形态: 基础重型榴弹 (1 伤害 + 36px 范围 AoE)
+			bullet.speed = 380.0
+			bullet.damage = 1
+			bullet.is_aoe = true
+			bullet.aoe_radius = 36.0
+			bullet.can_destroy_steel = false
+			get_parent().add_child(bullet)
+			bullet.global_position = muzzle_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+			SoundManager.play_shot(get_tree())
 	else:
 		var bullet = bullet_scene.instantiate()
 		bullet.direction = facing_direction
@@ -1064,6 +1193,16 @@ func take_damage(amount: int) -> void:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 		return
 
+	# 巨炮坦克驻扎要塞形态下：前展重盾与地钉咬合，防御力大幅度上升 (免伤 65%，单次受击伤害至少削减至 1)
+	if enemy_type == EnemyType.CANNON and is_cannon_deployed:
+		var reduced_amount = maxi(1, int(ceil(float(amount) * 0.35)))
+		amount = reduced_amount
+		SoundManager.play_hit_steel(get_tree())
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+		var flash_tw = create_tween()
+		flash_tw.tween_property(sprite, "modulate", Color(2.5, 1.8, 1.2), 0.06)
+		flash_tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.08)
+
 	health -= amount
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
@@ -1077,7 +1216,7 @@ func take_damage(amount: int) -> void:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
 	# 受击形变晃动
-	var base_scale = Vector2(0.24, 0.24) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER) else (Vector2(0.14, 0.14) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.196, 0.196))
+	var base_scale = Vector2(0.24, 0.24) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER or (enemy_type == EnemyType.CANNON and is_cannon_deployed)) else (Vector2(0.14, 0.14) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.196, 0.196))
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
 	hit_tween = create_tween()
@@ -1243,6 +1382,12 @@ func _die() -> void:
 	if enemy_type == EnemyType.SPLITTER:
 		_split_into_mini_tanks()
 
+	if enemy_type == EnemyType.FIREWALL:
+		for fire in firewall_trail_queue:
+			if is_instance_valid(fire) and fire.has_method("fade_out_and_destroy"):
+				fire.fade_out_and_destroy()
+		firewall_trail_queue.clear()
+
 	enemy_destroyed.emit(score_value, is_bonus, global_position)
 	queue_free()
 
@@ -1352,8 +1497,8 @@ func _perform_engineer_build() -> void:
 	if not found_pos:
 		return
 
-	# 随机建造地形或建筑 (0..8)
-	var choice = randi() % 9
+	# 随机建造地形或建筑 (0..9)
+	var choice = randi() % 10
 	var spawned_node: Node2D = null
 
 	match choice:
@@ -1409,6 +1554,15 @@ func _perform_engineer_build() -> void:
 					nest.set_fire_direction(dirs[randi() % dirs.size()])
 				actors_container.add_child(nest)
 				spawned_node = nest
+		9: # 战术防御堡垒
+			var bunker_scene = load("res://scenes/buildings/bunker.tscn")
+			if bunker_scene:
+				var bunker = bunker_scene.instantiate()
+				bunker.position = target_pos
+				if bunker.has_method("set_facing"):
+					bunker.set_facing(randi() % 4)
+				actors_container.add_child(bunker)
+				spawned_node = bunker
 
 	# 施工反馈：音效、扬尘与弹性弹出动效
 	SoundManager.play_build(get_tree())
@@ -1544,5 +1698,306 @@ func _start_spider_leap(target_landing_pos: Vector2) -> void:
 	var tree = get_tree()
 	if tree and tree.current_scene and tree.current_scene.has_method("add_trauma"):
 		tree.current_scene.add_trauma(0.16)
+
+func _drop_firewall_hazard() -> void:
+	if not is_inside_tree() or is_dying:
+		return
+	var hazard_scene = load("res://scenes/buildings/firewall_hazard.tscn")
+	if not hazard_scene:
+		return
+
+	var fire = hazard_scene.instantiate() as Node2D
+	var drop_pos = global_position - facing_direction * 22.0
+	fire.global_position = drop_pos
+
+	var parent_container = get_parent()
+	if parent_container:
+		parent_container.add_child(fire)
+		firewall_trail_queue.append(fire)
+		last_firewall_drop_pos = global_position
+
+		# 维护最多 10 格火墙队列 (FIFO)，超过时最老的一格自然熄灭
+		if firewall_trail_queue.size() > MAX_FIREWALL_TRAIL_LENGTH:
+			var oldest_fire = firewall_trail_queue.pop_front()
+			if is_instance_valid(oldest_fire) and oldest_fire.has_method("fade_out_and_destroy"):
+				oldest_fire.fade_out_and_destroy()
+
+func _process_hunter_ambush_behavior(delta: float) -> void:
+	if is_dying:
+		return
+
+	if ambush_cooldown > 0.0:
+		ambush_cooldown -= delta
+
+	# 1. 如果正在草丛潜伏中
+	if is_in_ambush:
+		# 保持草丛半透明伪装
+		sprite.modulate = Color(0.85, 1.15, 0.85, 0.35)
+
+		# 伏击触发判定：检测附近路过的玩家
+		var target_player = _get_closest_player()
+		if is_instance_valid(target_player):
+			var to_player = target_player.global_position - global_position
+			var dist = to_player.length()
+
+			# 玩家进入伏击警戒圈 (<= 200px) 且在十字视线内 (横向或纵向对齐 <= 28px) 或近身 (<= 48px)
+			if dist <= 200.0 and (absf(to_player.x) <= 28.0 or absf(to_player.y) <= 28.0 or dist <= 48.0):
+				_trigger_hunter_ambush_strike(target_player)
+		return
+
+	# 2. 尚未潜伏：定期搜寻最近草丛
+	ambush_check_timer -= delta
+	if ambush_check_timer <= 0.0:
+		ambush_check_timer = 0.5
+		if ambush_cooldown <= 0.0:
+			hunter_target_bush_pos = _find_nearest_jungle_tile()
+
+	# 3. 若找到草丛目标且不在冷却中，导航朝草丛移动
+	if hunter_target_bush_pos != Vector2.INF and ambush_cooldown <= 0.0:
+		var diff = hunter_target_bush_pos - global_position
+		if diff.length() <= 16.0:
+			# 进驻草丛！
+			is_in_ambush = true
+			global_position = hunter_target_bush_pos
+			sprite.modulate = Color(0.85, 1.15, 0.85, 0.35)
+		else:
+			# 选择朝向草丛的主轴方向 (4 向移动)
+			if absf(diff.x) > absf(diff.y):
+				facing_direction = Vector2.RIGHT if diff.x > 0 else Vector2.LEFT
+			else:
+				facing_direction = Vector2.DOWN if diff.y > 0 else Vector2.UP
+			rotation = facing_direction.angle() - PI / 2.0
+	else:
+		# 没有草丛或处于冷却，完全恢复为普通坦克逻辑与完全不透明度
+		is_in_ambush = false
+		sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
+
+func _trigger_hunter_ambush_strike(target_player: Node2D) -> void:
+	if not is_instance_valid(target_player):
+		return
+
+	# 瞄准玩家
+	var diff = target_player.global_position - global_position
+	if absf(diff.x) > absf(diff.y):
+		facing_direction = Vector2.RIGHT if diff.x > 0 else Vector2.LEFT
+	else:
+		facing_direction = Vector2.DOWN if diff.y > 0 else Vector2.UP
+	rotation = facing_direction.angle() - PI / 2.0
+
+	# 破隐高亮与声光警示
+	is_in_ambush = false
+	ambush_cooldown = 3.5 # 伏击后冷却
+	sprite.modulate = Color(2.5, 0.5, 0.5, 1.0)
+	var tw = create_tween()
+	tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.30)
+
+	# 立即开火
+	_shoot()
+	SoundManager.play_hit_steel(get_tree())
+	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+
+func _find_nearest_jungle_tile() -> Vector2:
+	var tree_nodes = get_tree().get_nodes_in_group("trees")
+	if tree_nodes.is_empty():
+		return Vector2.INF
+
+	var nearest_pos: Vector2 = Vector2.INF
+	var min_dist: float = INF
+
+	for node in tree_nodes:
+		if is_instance_valid(node) and node is Node2D:
+			var d = global_position.distance_to(node.global_position)
+			if d < min_dist:
+				min_dist = d
+				nearest_pos = node.global_position
+
+	return nearest_pos
+
+func _get_closest_player() -> Node2D:
+	var players: Array[Node2D] = []
+	for p in get_tree().get_nodes_in_group("player"):
+		if is_instance_valid(p) and p is Node2D:
+			players.append(p)
+	if players.is_empty():
+		return null
+	players.sort_custom(func(a, b): return global_position.distance_squared_to(a.global_position) < global_position.distance_squared_to(b.global_position))
+	return players[0]
+
+func _start_sandworm_burrow() -> void:
+	if not is_inside_tree() or is_dying or is_burrowing or is_burrowed:
+		return
+
+	is_burrowing = true
+
+	# 1. 钻地前兆：沙尘碎屑扬起、车身收缩下潜入地表
+	SoundManager.play_hit_steel(get_tree())
+	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+
+	var burrow_tw = create_tween().set_parallel(true)
+	burrow_tw.tween_property(sprite, "scale:y", 0.05, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	burrow_tw.tween_property(sprite, "modulate:a", 0.0, 0.35)
+
+	await burrow_tw.finished
+
+	if not is_instance_valid(self) or is_dying:
+		return
+
+	# 完全潜入地下：关闭碰撞层（避弹无敌）
+	is_burrowed = true
+	is_burrowing = false
+	set_collision_layer_value(2, false)
+	set_collision_mask_value(1, false)
+
+	# 2. 在地下潜行等待 (1.2 秒)，计算目标破土空地
+	await get_tree().create_timer(1.2).timeout
+
+	if not is_instance_valid(self) or is_dying:
+		return
+
+	var target_pos = _find_valid_burrow_target_pos()
+
+	# 3. 目标地点沙尘翻滚预警 (0.35 秒)
+	VFXAnimator.spawn_dust_puff(get_parent(), target_pos)
+	await get_tree().create_timer(0.35).timeout
+
+	if not is_instance_valid(self) or is_dying:
+		return
+
+	# 4. 破土而出！(Breach Emerge)
+	global_position = target_pos
+	set_collision_layer_value(2, true)
+	set_collision_mask_value(1, true)
+	is_burrowed = false
+	burrow_timer = BURROW_INTERVAL
+
+	# 恢复朝向面对玩家
+	var player = _get_closest_player()
+	if is_instance_valid(player):
+		var diff = player.global_position - global_position
+		if absf(diff.x) > absf(diff.y):
+			facing_direction = Vector2.RIGHT if diff.x > 0 else Vector2.LEFT
+		else:
+			facing_direction = Vector2.DOWN if diff.y > 0 else Vector2.UP
+		rotation = facing_direction.angle() - PI / 2.0
+
+	# 破土弹出动画
+	sprite.scale = Vector2(0.2, 0.2)
+	sprite.modulate = Color(2.2, 1.6, 0.6, 1.0)
+	var emerge_tw = create_tween().set_parallel(true)
+	emerge_tw.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.30).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	emerge_tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.30)
+
+	# 破土声光与震波
+	SoundManager.play_hit_steel(get_tree())
+	VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+
+	var tree = get_tree()
+	if tree and tree.current_scene and tree.current_scene.has_method("add_trauma"):
+		tree.current_scene.add_trauma(0.18)
+
+	# 破土瞬间突袭发射子弹！
+	_shoot()
+
+func _find_valid_burrow_target_pos() -> Vector2:
+	var space_state = get_world_2d().direct_space_state if (is_inside_tree() and get_world_2d()) else null
+	var player = _get_closest_player()
+
+	# 候选网格尝试（在 13x13 范围或玩家周围 3~6 格内随机挑选）
+	for _attempt in range(12):
+		var candidate_col: int
+		var candidate_row: int
+
+		if is_instance_valid(player) and randf() < 0.7:
+			# 围绕玩家周围 3~5 格探测
+			var p_col = int(player.global_position.x / 48.0)
+			var p_row = int(player.global_position.y / 48.0)
+			candidate_col = clampi(p_col + randi_range(-4, 4), 1, 11)
+			candidate_row = clampi(p_row + randi_range(-4, 4), 1, 10)
+		else:
+			# 全图随机合法空地
+			candidate_col = randi_range(1, 11)
+			candidate_row = randi_range(1, 10)
+
+		# 避开老鹰基地保护区 (row 11..12, col 5..7)
+		if candidate_row >= 11 and candidate_col >= 5 and candidate_col <= 7:
+			continue
+
+		var candidate_pos = Vector2((candidate_col + 0.5) * 48.0, (candidate_row + 0.5) * 48.0)
+
+		# 碰撞检测确认空格无障碍阻挡
+		if space_state:
+			var query = PhysicsPointQueryParameters2D.new()
+			query.position = candidate_pos
+			query.collision_mask = 1 | 2 | 16
+			query.collide_with_bodies = true
+			var hits = space_state.intersect_point(query, 1)
+			if hits.is_empty():
+				return candidate_pos
+		else:
+			return candidate_pos
+
+	return global_position + Vector2(randf_range(-96, 96), randf_range(-96, 96))
+
+# =========================================================================
+# 15. 巨炮坦克变形要塞固定炮机制 (Colossus Siege Cannon Deployed Mode)
+# =========================================================================
+func _process_cannon_siege_behavior(delta: float) -> void:
+	var player = _find_player_target()
+	if not is_instance_valid(player):
+		return
+
+	var dist = global_position.distance_to(player.global_position)
+	if not is_cannon_deployed:
+		# 离玩家接近（4格内）主动变形驻扎为固定要塞炮
+		if dist <= CANNON_DEPLOY_DIST:
+			_deploy_cannon_siege_mode()
+	else:
+		# 驻扎固定炮形态：炮口紧密瞄准锁定玩家方位
+		var diff = player.global_position - global_position
+		if absf(diff.x) > absf(diff.y):
+			facing_direction = Vector2.RIGHT if diff.x > 0 else Vector2.LEFT
+		else:
+			facing_direction = Vector2.DOWN if diff.y > 0 else Vector2.UP
+		rotation = facing_direction.angle() + PI / 2.0
+
+		# 玩家远遁脱离射程时延时收起驻扎恢复巡航
+		if dist > CANNON_UNDEPLOY_DIST:
+			cannon_undeploy_timer += delta
+			if cannon_undeploy_timer >= CANNON_UNDEPLOY_DELAY:
+				_undeploy_cannon_siege_mode()
+		else:
+			cannon_undeploy_timer = 0.0
+
+func _deploy_cannon_siege_mode() -> void:
+	if is_cannon_deployed:
+		return
+	is_cannon_deployed = true
+	cannon_undeploy_timer = 0.0
+	tank_frames = cannon_deploy_frames
+	fire_interval = 1.6 # 驻扎后攻城重炮速射压制
+	fire_timer = 0.3 # 变形完成迅速进入射击准备
+	SoundManager.play_build(get_tree())
+	SoundManager.play_hit_steel(get_tree())
+	VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+	var tw = create_tween()
+	tw.tween_property(sprite, "scale", Vector2(0.24, 0.24), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _undeploy_cannon_siege_mode() -> void:
+	if not is_cannon_deployed:
+		return
+	is_cannon_deployed = false
+	tank_frames = cannon_mobile_frames
+	fire_interval = 2.4
+	SoundManager.play_hit_steel(get_tree())
+	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+	var tw = create_tween()
+	tw.tween_property(sprite, "scale", Vector2(0.20, 0.20), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+
 
 

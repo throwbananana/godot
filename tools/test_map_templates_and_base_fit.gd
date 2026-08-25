@@ -87,9 +87,9 @@ func _run() -> void:
 			for r in range(13):
 				for c in range(13):
 					var v = int(g[r][c])
-					# 合法上界跟着 map_templates.gd 顶上那份图例走 (0..39)
-					if v < 0 or v > 39:
-						errs.append("(%d,%d) 地形号 %d 越界 (合法 0-39)" % [r, c, v])
+					# 合法上界跟着 map_templates.gd 顶上那份图例走 (0..44)
+					if v < 0 or v > 44:
+						errs.append("(%d,%d) 地形号 %d 越界 (合法 0-44)" % [r, c, v])
 			# 鹰巢与围墙由 main.gd::_spawn_base_and_walls() 自己生成在
 			# row11 col5-7 / row12 col5,7, 模板必须把这几格留空, 否则会和
 			# 自动生成的围墙叠在一起

@@ -446,6 +446,14 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
 
+	# Handle pushing physical contact structures (e.g. Wooden Wall)
+	if input_vec != Vector2.ZERO:
+		for i in range(get_slide_collision_count()):
+			var collision = get_slide_collision(i)
+			var collider = collision.get_collider()
+			if is_instance_valid(collider) and collider.has_method("take_push"):
+				collider.take_push(facing_direction, self)
+
 	# Hitting a solid obstacle stops ice sliding
 	if is_on_ice and get_slide_collision_count() > 0:
 		slide_direction = Vector2.ZERO

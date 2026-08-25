@@ -3,8 +3,9 @@ extends Node2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const BunkerScript = preload("res://scripts/buildings/bunker.gd")
 
-enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL, PIPE }
+enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL, PIPE, BUNKER, WOODEN_WALL }
 
 ## Battle-placement no longer spends gold directly (see GameState.structure_inventory) --
 ## these structures are shop-only stock now: buy N in shop_dialog.gd's Building
@@ -24,7 +25,9 @@ var structure_ids = {
 	StructureType.MISSILE_STRIKE: "missile_strike",
 	StructureType.TIMED_BOMB: "timed_bomb",
 	StructureType.ROLLER_WALL: "roller_wall",
-	StructureType.PIPE: "pipe_conduit"
+	StructureType.PIPE: "pipe_conduit",
+	StructureType.BUNKER: "bunker",
+	StructureType.WOODEN_WALL: "wooden_wall"
 }
 
 @onready var preview_sprite_p1: Sprite2D = get_node_or_null("PreviewSprite")
@@ -43,6 +46,8 @@ var missile_strike_scene: PackedScene
 var timed_bomb_scene: PackedScene
 var roller_wall_scene: PackedScene
 var pipe_scene: PackedScene
+var bunker_scene: PackedScene
+var wooden_wall_scene: PackedScene
 
 # Per-player hotbar state so P1 and P2 never clobber each other's selection.
 var selection_by_pid: Dictionary = {1: StructureType.NONE, 2: StructureType.NONE}
@@ -60,7 +65,9 @@ var structure_list: Array[StructureType] = [
 	StructureType.MISSILE_STRIKE,
 	StructureType.TIMED_BOMB,
 	StructureType.ROLLER_WALL,
-	StructureType.PIPE
+	StructureType.PIPE,
+	StructureType.BUNKER,
+	StructureType.WOODEN_WALL
 ]
 
 var structure_names = {
@@ -76,7 +83,9 @@ var structure_names = {
 	StructureType.MISSILE_STRIKE: "TACTICAL MISSILE",
 	StructureType.TIMED_BOMB: "TIMED BOMB",
 	StructureType.ROLLER_WALL: "ROLLER WALL",
-	StructureType.PIPE: "CONDUIT PIPE"
+	StructureType.PIPE: "CONDUIT PIPE",
+	StructureType.BUNKER: "TACTICAL BUNKER",
+	StructureType.WOODEN_WALL: "WOODEN WALL"
 }
 
 func _ready() -> void:
@@ -93,6 +102,8 @@ func _ready() -> void:
 	timed_bomb_scene = load("res://scenes/timed_bomb.tscn")
 	roller_wall_scene = load("res://scenes/buildings/roller_wall.tscn")
 	pipe_scene = load("res://scenes/buildings/pipe_conduit.tscn")
+	bunker_scene = load("res://scenes/buildings/bunker.tscn")
+	wooden_wall_scene = load("res://scenes/buildings/wooden_wall.tscn")
 
 	if not preview_sprite_p1:
 		preview_sprite_p1 = Sprite2D.new()
@@ -192,6 +203,8 @@ func select_structure(type: StructureType, pid: int = 1) -> void:
 		StructureType.TIMED_BOMB: tex_path = "res://assets/sprites/buildings/prop_timed_bomb.png"
 		StructureType.ROLLER_WALL: tex_path = "res://assets/sprites/buildings/roller_wall.png"
 		StructureType.PIPE: tex_path = "res://assets/sprites/buildings/pipe_conduit.png"
+		StructureType.BUNKER: tex_path = "res://assets/sprites/buildings/bunker.png"
+		StructureType.WOODEN_WALL: tex_path = "res://assets/sprites/buildings/wooden_wall.png"
 
 	var tex = TextureHelper.get_tex(tex_path)
 	if tex:
@@ -416,6 +429,28 @@ func _try_place_current(pid: int) -> void:
 						new_struct.set_orientation(PipeConduit.Orientation.UP_TO_RIGHT)
 					else:
 						new_struct.set_orientation(PipeConduit.Orientation.DOWN_TO_LEFT)
+
+		StructureType.BUNKER:
+			new_struct = bunker_scene.instantiate()
+			name_str = "TACTICAL BUNKER"
+			var players = get_tree().get_nodes_in_group("p%d" % pid)
+			if players.size() > 0 and is_instance_valid(players[0]):
+				var p = players[0]
+				var f_dir = p.facing_direction
+				if absf(f_dir.x) > absf(f_dir.y):
+					if f_dir.x > 0:
+						new_struct.set_facing(BunkerScript.FacingDirection.RIGHT)
+					else:
+						new_struct.set_facing(BunkerScript.FacingDirection.LEFT)
+				else:
+					if f_dir.y > 0:
+						new_struct.set_facing(BunkerScript.FacingDirection.DOWN)
+					else:
+						new_struct.set_facing(BunkerScript.FacingDirection.UP)
+
+		StructureType.WOODEN_WALL:
+			new_struct = wooden_wall_scene.instantiate()
+			name_str = "WOODEN WALL"
 
 	if new_struct:
 		main.actors_container.add_child(new_struct)
