@@ -7,6 +7,9 @@ extends SceneTree
 ## 种子过了: 房间摆放本身是掷硬币, 一次采样看不出"某类种子会生成断路的图"。
 
 const FloorMap = preload("res://scripts/floor_map.gd")
+const GameState = preload("res://scripts/game_state.gd")
+const MainGame = preload("res://scripts/main.gd")
+const EnemyTank = preload("res://scripts/enemy.gd")
 
 const SEEDS := 200
 
@@ -30,6 +33,7 @@ func _run() -> void:
 	_test_special_rooms_unique_and_placed()
 	_test_secret_room_rules()
 	_test_determinism()
+	_test_full_roster_unlocks_across_run()
 
 	if failures > 0:
 		print("\n>>> FLOOR MAP: %d FAILURE(S) <<<" % failures)
@@ -231,3 +235,77 @@ func _test_determinism() -> void:
 				_fail("seed %d: 房间 %s 类型不同 (%s vs %s)" % [s, k, ra[k]["type"], rb[k]["type"]])
 				break
 	print("  [PASS] 生成是确定性的")
+
+
+## 整局走下来, 带楼层门槛的内容必须全部解锁得到。
+##
+## 这是这套"更多更小的层"结构最容易静默坏掉的地方, 所以单独设闸门。
+##
+## 背景: current_floor 曾经是"本层已清房间数"且**每层归零**。实测每幕的峰值只有
+## 4/6/7/9 —— 而 ENEMY_MIN_FLOOR 里 AIRCRAFT/MIRAGE/BATTLESHIP/LASER/CRUSHER/
+## SPLITTER 要 floor 5、MISSILE/WARP 要 floor 8、第三层装甲要 floor 9。也就是
+## **第一幕永远刷不出那六种"真正需要新对策"的敌人**, 前三幕永远见不到
+## MISSILE/WARP。不报错、不崩溃、编译也过, 玩家只会觉得敌人种类少。
+##
+## 房间数越少锁得越死, 而"房间少一点、幕数多一点"正是当前的方向 —— 所以只要
+## 有人再动 ROOM_MAX / max_acts / ACT_DIFFICULTY_STRIDE 里任何一个, 这条就得
+## 重新验一遍。断言的是**结果**(内容解锁得到), 不是任何一个常数的具体取值。
+func _test_full_roster_unlocks_across_run() -> void:
+	print("\n[STEP 7] 整局走完必须解锁全部带门槛的内容...")
+
+	var act_before := GameState.current_act
+	var rooms_before := GameState.rooms_cleared
+	var floor_before := GameState.current_floor
+
+	var peak := -1
+	var per_act: Array = []
+	for act in range(1, GameState.max_acts + 1):
+		# 用这一幕**实际**能摆出多少战斗房来算峰值, 不是拿 ROOM_MAX 拍脑袋。
+		var combat := _avg_combat_rooms(act)
+		GameState.current_act = act
+		GameState.rooms_cleared = maxi(0, combat - 1)
+		GameState._recompute_current_floor()
+		peak = maxi(peak, GameState.current_floor)
+		per_act.append("a%d:%d" % [act, GameState.current_floor])
+
+	var missing: Array[String] = []
+	for t in MainGame.ENEMY_MIN_FLOOR:
+		if int(MainGame.ENEMY_MIN_FLOOR[t]) > peak:
+			missing.append("%s(需要 floor %d)" % [_enemy_name(t), int(MainGame.ENEMY_MIN_FLOOR[t])])
+
+	# 第三层装甲板的门槛表在 enemy.gd 里。
+	var armor_gate: Array = EnemyTank.ARMOR_PLATE_FLOOR_GATE
+	var top_armor_gate := int(armor_gate[armor_gate.size() - 1])
+	if top_armor_gate > peak:
+		missing.append("第 %d 层装甲板(需要 floor %d)" % [armor_gate.size(), top_armor_gate])
+
+	GameState.current_act = act_before
+	GameState.rooms_cleared = rooms_before
+	GameState.current_floor = floor_before
+
+	if not missing.is_empty():
+		_fail("整局 current_floor 峰值只有 %d, 这些内容永远解锁不到: %s —— "
+			% [peak, ", ".join(missing)]
+			+ "检查 GameState.ACT_DIFFICULTY_STRIDE / max_acts 与 FloorMap.ROOM_MAX 的配比")
+	else:
+		print("  [PASS] current_floor 峰值 %d, 全部 %d 种带门槛敌人 + 满级装甲均可解锁 (%s)"
+			% [peak, MainGame.ENEMY_MIN_FLOOR.size(), ", ".join(per_act)])
+
+
+func _avg_combat_rooms(act: int) -> int:
+	var tot := 0
+	var n := 20
+	for s in range(n):
+		var d := FloorMap.generate(act, 31337 + s * 17)
+		var rooms: Dictionary = d["rooms"]
+		for k in rooms.keys():
+			if str(rooms[k]["type"]) in ["normal", "elite", "challenge", "boss"]:
+				tot += 1
+	return int(round(float(tot) / float(n)))
+
+
+func _enemy_name(t) -> String:
+	for k in EnemyTank.EnemyType.keys():
+		if EnemyTank.EnemyType[k] == t:
+			return str(k)
+	return "?"

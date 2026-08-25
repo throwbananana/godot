@@ -308,10 +308,28 @@ func _max_of(stats: Dictionary, key: String, from_floor: int) -> float:
 ##
 ## 改成等"入树数量连续若干帧不再增长"。上限 240 帧 (~4 秒) 兜底, 真卡住时
 ## 不至于死等。
+## 等到坦克真的都入树了 —— 等增长停下来, 不是睡固定时长。
+##
+## _request_spawn_enemy() 不直接造车: 它先放一颗出生星星, 坦克要等星星动画
+## 播完的 finished 回调才出现。帧预算从 240 提到 600: 实测 6 次里会有 1-3 次
+## 在 240 帧内一只都没接到, 于是返回 "均HP 0.00"。
 func _await_spawns() -> void:
 	var stable := 0
 	var last := -1
-	for _i in range(240):
+	for _i in range(600):
+		# **每帧强制解除暂停。**
+		#
+		# spawn_star 靠 _process(delta) 走计时, 而整棵树一旦 paused 它就永远
+		# 发不出 finished, 坦克也永远不会出现。采样时场上有 140 只敌人互相
+		# 残杀, 杀够了就会给 XP -> 升级 -> main.gd::_on_rpg_level_up() 弹升级选择
+		# 框 -> upgrade_selection_dialog.gd 里的 get_tree().paused = true。无头测试里
+		# 没人去选, 于是树就一直暂停着。
+		#
+		# 而 paused 是 **SceneTree 上的状态**, _main.free() 清不掉 —— 所以一旦踩中,
+		# 后面每一次采样都是零, 重采也没用。实测就是"连续三次重采全部零捕获,
+		# 140 颗星星一颗没开"。采样器不关心升级, 直接按住不让它暂停。
+		if paused:
+			paused = false
 		await process_frame
 		if _pending.size() == last:
 			stable += 1
@@ -322,7 +340,29 @@ func _await_spawns() -> void:
 			last = _pending.size()
 
 
+## 采一组样本。采到**零只**就重采。
+##
+## 零捕获是一个**测量**故障 (出生星星的 finished 回调没在帧预算内赶到),
+## 不是平衡故障。不重采的话它会以 "均HP 0.00" 的形式流进断言,
+## 报成"难度圈没有比前一圈更难" —— 把采样失败伪装成平衡崩溃,
+## 而那会把人往完全错误的方向引 (去查 armor_plate_range 和 encounter_size)。
+## 实测未修前 6 次里有 1-3 次会踩到。
+##
+## 重采三次仍然为零就**明确报采样失败**, 而不是返回 0 让断言去猜。
 func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
+	for attempt in range(3):
+		var r = await _sample_once(bt, floor_idx, act)
+		if int(r.get("n", 0)) > 0:
+			return r
+		print("  [retry] floor %d / %s / act %d 一只坦克都没采到, 重采 (第 %d 次) [diag %s]"
+			% [floor_idx, bt, act, attempt + 1, str(r.get("diag", "?"))])
+	fail("floor %d / %s / act %d 连续三次一只坦克都没采到 —— 这是**采样**失败不是平衡失败, "
+		% [floor_idx, bt, act]
+		+ "检查 _await_spawns() 的帧预算与 spawn_star 的动画时长")
+	return {"avg_hp": 0.0, "avg_xp": 0.0, "hp_list": [], "cheap_pct": 0.0, "train_pct": 0.0, "n": 0}
+
+
+func _sample_once(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 	GameState.reset_campaign(1)
 	GameState.mode = GameState.GameMode.CAMPAIGN
 	GameState.current_act = act
@@ -372,6 +412,9 @@ func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 			train += 1
 		n += 1
 
+	var _diag := "over=%s vic=%s spawned=%d alive=%d total=%d stars=%d actors=%d" % [
+		_main.is_game_over, _main.is_victory, _main.enemies_spawned, _main.enemies_alive,
+		_main.total_enemies, _star_count(), _main.actors_container.get_child_count()]
 	var m := _main
 	_main = null
 	current_scene = null
@@ -384,6 +427,8 @@ func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 		"hp_list": hp_list,
 		"cheap_pct": 100.0 * float(cheap) / fn,
 		"train_pct": 100.0 * float(train) / fn,
+		"n": n,
+		"diag": _diag,
 	}
 
 
@@ -408,3 +453,11 @@ func _force_room_battle_type(bt: String) -> void:
 	GameState.floor_rooms[rk]["cleared"] = false
 	GameState.floor_rooms[rk]["challenge_mode"] = "vault" if bt == "challenge" else ""
 	_main.enter_room(rk, -1)
+
+
+func _star_count() -> int:
+	var n := 0
+	for c in _main.actors_container.get_children():
+		if c.get_script() and str(c.get_script().resource_path).ends_with("spawn_star.gd"):
+			n += 1
+	return n

@@ -15,6 +15,17 @@ func _validate_all() -> void:
 		if not script_res:
 			print("❌ Error loading script: ", s_path)
 			errors += 1
+		# load() 对一个**有语法错误**的脚本仍然会返回一个 GDScript 对象
+		# (只是打一堆 Parse Error 到控制台), 所以只判 `if not script_res`
+		# 是拦不住的 —— 实测过: pipe_conduit.gd 报了 10 条 Parse Error,
+		# 而这个闸门输出 "Total Errors: 0"。一个叫"验证全部脚本能编译"的
+		# 闸门放行编译不过的脚本, 比没有闸门更危险。
+		#
+		# 解析失败的脚本: can_instantiate() 为 false 且 get_instance_base_type()
+		# 为空串; 正常脚本两者都有值。
+		elif script_res is GDScript and str(script_res.get_instance_base_type()).is_empty():
+			print("❌ 脚本有语法错误 (上面的 Parse Error 就是它的): ", s_path)
+			errors += 1
 		else:
 			print("✓ Script OK: ", s_path)
 

@@ -54,7 +54,14 @@ func _ready() -> void:
 	btn_tab_buildings.pressed.connect(func(): switch_category("BUILDINGS"))
 	btn_tab_terrain.pressed.connect(func(): switch_category("TERRAIN"))
 
-	switch_category("UPGRADES")
+	# call_deferred: switch_category() 会播一声点击音, 而 SoundManager 是靠
+	# add_child() 挂一个一次性 AudioStreamPlayer 到场景根上的。在 _ready() 里
+	# 直接调等于"父节点还在建子节点的时候又往里加子节点", Godot 会拒绝并打
+	# "Parent node is busy setting up children, add_child() failed", 紧跟着
+	# 再来一条 "Playback can only happen when a node is inside the scene tree"
+	# —— 每次进标题屏都会刷这两条错误, 而且那一声音效根本没播出来。
+	# 延到本帧调用栈退完再切分类, 此时父节点已经完成建树。
+	switch_category.call_deferred("UPGRADES")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
@@ -160,7 +167,12 @@ func _select_entry(entry: Dictionary, selected_btn: Button = null) -> void:
 	var stats: Dictionary = entry.get("stats", {})
 	for k in stats.keys():
 		var row = HBoxContainer.new()
-		row.theme_override_constants.separation = 8
+		# add_theme_constant_override() 而不是 row.theme_override_constants.separation。
+		# 后者是 .tscn 里的伪属性路径 (theme_override_constants/separation), 代码里
+		# 访问不到 —— 每建一行属性都会抛
+		# "Invalid access to property or key 'theme_override_constants'",
+		# 而且间距压根没生效。图鉴每显示一条词条就刷一串这种错误。
+		row.add_theme_constant_override("separation", 8)
 
 		var lbl_k = Label.new()
 		lbl_k.text = "• " + str(k) + ":"

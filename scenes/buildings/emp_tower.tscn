@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://bldemptower001"]
+
+[ext_resource type="Script" path="res://scripts/buildings/emp_tower.gd" id="1_emp"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_emp"]
+size = Vector2(44, 44)
+
+[node name="EMPTower" type="StaticBody2D" groups=["building", "buildings", "destructible", "emp_tower"]]
+script = ExtResource("1_emp")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_emp")

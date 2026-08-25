@@ -11,7 +11,7 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -89,6 +89,14 @@ var is_suicide_detonated: bool = false
 var plane_shadow: Sprite2D = null
 var wake_timer: float = 0.0
 var warp_blink_timer: float = 0.0
+var build_timer: float = 0.0
+const BUILD_COOLDOWN: float = 10.0
+const BUILD_PREPARE_TIME: float = 1.5
+
+var is_leaping: bool = false
+var jump_cooldown_timer: float = 0.0
+const JUMP_COOLDOWN: float = 3.5
+var leap_shadow: Sprite2D = null
 
 # 敌方护盾塔增益与护盾气泡
 var shield_sources: Array = []
@@ -404,6 +412,24 @@ func _setup_tank_type() -> void:
 			xp_value = 30
 			gold_value = 15
 			fire_interval = 1.8
+		EnemyType.ENGINEER:
+			prefix = "enemy_engineer"
+			speed = 70.0 # 重型工程车速度平稳
+			max_health = 4 # 坚固工程外壳
+			score_value = 550
+			xp_value = 110
+			gold_value = 65
+			fire_interval = 2.4 # 辅助自卫性开火
+			build_timer = BUILD_COOLDOWN
+		EnemyType.SPIDER:
+			prefix = "enemy_spider"
+			speed = 92.0 # 仿生机械8足敏捷高速移动
+			max_health = 3 # 坚固几丁质仿生甲
+			score_value = 600
+			xp_value = 120
+			gold_value = 70
+			fire_interval = 1.6 # 头部双联毒针速射炮
+			jump_cooldown_timer = 1.0 # 入场 1 秒后即可发动首次越障跳跃
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
@@ -611,7 +637,29 @@ func _physics_process(delta: float) -> void:
 			var charge_flash = int(Time.get_ticks_msec() / 75) % 2 == 0
 			sprite.modulate = Color(1.2, 2.4, 3.0) if charge_flash else Color(1.0, 1.0, 1.0)
 
-	# 9. 护盾发生气泡动画更新
+	# 9. 工程坦克: 10 秒周期内在周围随机建造地形或建筑
+	elif enemy_type == EnemyType.ENGINEER:
+		build_timer -= delta
+		if build_timer <= 0.0:
+			_perform_engineer_build()
+			build_timer = BUILD_COOLDOWN
+		elif build_timer <= BUILD_PREPARE_TIME:
+			# 施工预备提示：琥珀警示闪烁 + 施工蓄力高亮
+			var prep_flash = int(Time.get_ticks_msec() / 100) % 2 == 0
+			sprite.modulate = Color(1.8, 1.4, 0.4) if prep_flash else Color(1.0, 1.0, 1.0)
+		else:
+			sprite.modulate = Color(1.0, 1.0, 1.0)
+
+	# 10. 跳蛛坦克: 越障跳跃判定与冷却处理
+	elif enemy_type == EnemyType.SPIDER:
+		if is_leaping:
+			return # 滞空中由 Tween 驱动移动与演出，不执行常规地面碰撞
+		if jump_cooldown_timer > 0.0:
+			jump_cooldown_timer -= delta
+		else:
+			_check_and_trigger_spider_jump()
+
+	# 11. 护盾发生气泡动画更新
 	if is_shielded():
 		shield_anim_timer += delta * 8.0
 		if is_instance_valid(shield_bubble_sprite) and shield_bubble_textures.size() > 0:
@@ -1255,3 +1303,246 @@ func on_enter_ice() -> void:
 func on_exit_ice() -> void:
 	ice_overlap_count = max(0, ice_overlap_count - 1)
 	is_on_ice = (ice_overlap_count > 0)
+
+func _perform_engineer_build() -> void:
+	if not is_inside_tree() or get_parent() == null:
+		return
+
+	# 获取游戏主场景与容器
+	var tree = get_tree()
+	if tree == null or tree.current_scene == null:
+		return
+	var main_node = tree.current_scene
+	var actors_container = main_node.get_node_or_null("GameArea/ActorsContainer")
+	if actors_container == null:
+		actors_container = get_parent()
+
+	# 在周围寻找合法的 48x48 格子 (8 方向随机选空格)
+	var offsets = [
+		Vector2(-48, 0), Vector2(48, 0), Vector2(0, -48), Vector2(0, 48),
+		Vector2(-48, -48), Vector2(48, -48), Vector2(-48, 48), Vector2(48, 48)
+	]
+	offsets.shuffle()
+
+	var target_pos: Vector2 = Vector2.ZERO
+	var found_pos := false
+
+	var space_state = get_world_2d().direct_space_state
+	for off in offsets:
+		var check_p = global_position + off
+		# 约束在游戏区网格范围 [48, 576]
+		if check_p.x < 48.0 or check_p.x > 576.0 or check_p.y < 48.0 or check_p.y > 576.0:
+			continue
+		# 避开鹰巢核心区 (底部中心)
+		if check_p.y > 520.0 and check_p.x >= 240.0 and check_p.x <= 384.0:
+			continue
+
+		# 检测是否有物理碰撞体占用
+		var query = PhysicsPointQueryParameters2D.new()
+		query.position = check_p
+		query.collide_with_bodies = true
+		query.collide_with_areas = true
+		query.collision_mask = 1 | 2 | 16
+		var result = space_state.intersect_point(query, 1)
+		if result.is_empty():
+			target_pos = check_p
+			found_pos = true
+			break
+
+	if not found_pos:
+		return
+
+	# 随机建造地形或建筑 (0..8)
+	var choice = randi() % 9
+	var spawned_node: Node2D = null
+
+	match choice:
+		0: # 砖墙
+			if main_node.has_method("_spawn_tile"):
+				main_node._spawn_tile("brick", target_pos)
+		1: # 钢墙
+			if main_node.has_method("_spawn_tile"):
+				main_node._spawn_tile("steel", target_pos)
+		2: # 硬黏土
+			if main_node.has_method("_spawn_tile"):
+				main_node._spawn_tile("hard_clay", target_pos)
+		3: # 反坦克地雷
+			if main_node.has_method("_spawn_tile"):
+				main_node._spawn_tile("landmine", target_pos)
+		4: # 导流管道
+			var pipe_scene = load("res://scenes/buildings/pipe_conduit.tscn")
+			if pipe_scene:
+				var pipe = pipe_scene.instantiate()
+				pipe.position = target_pos
+				if pipe.has_method("set_orientation"):
+					pipe.set_orientation(randi() % 4)
+				actors_container.add_child(pipe)
+				spawned_node = pipe
+		5: # 爆破油桶
+			var barrel_scene = load("res://scenes/buildings/oil_barrel.tscn")
+			if barrel_scene:
+				var barrel = barrel_scene.instantiate()
+				barrel.position = target_pos
+				actors_container.add_child(barrel)
+				spawned_node = barrel
+		6: # 敌方护盾塔
+			var shield_scene = load("res://scenes/buildings/enemy_shield_tower.tscn")
+			if shield_scene:
+				var tower = shield_scene.instantiate()
+				tower.position = target_pos
+				actors_container.add_child(tower)
+				spawned_node = tower
+		7: # EMP电磁塔
+			var emp_scene = load("res://scenes/buildings/emp_tower.tscn")
+			if emp_scene:
+				var emp = emp_scene.instantiate()
+				emp.position = target_pos
+				actors_container.add_child(emp)
+				spawned_node = emp
+		8: # 简易狙击碉堡
+			var nest_scene = load("res://scenes/buildings/sniper_nest.tscn")
+			if nest_scene:
+				var nest = nest_scene.instantiate()
+				nest.position = target_pos
+				if nest.has_method("set_fire_direction"):
+					var dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+					nest.set_fire_direction(dirs[randi() % dirs.size()])
+				actors_container.add_child(nest)
+				spawned_node = nest
+
+	# 施工反馈：音效、扬尘与弹性弹出动效
+	SoundManager.play_build(get_tree())
+	VFXAnimator.spawn_dust_puff(actors_container, target_pos)
+	if is_instance_valid(spawned_node):
+		spawned_node.scale = Vector2(0.1, 0.1)
+		var tw = spawned_node.create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(spawned_node, "scale", Vector2(1.0, 1.0), 0.35)
+
+func _check_and_trigger_spider_jump() -> void:
+	if not is_inside_tree() or get_world_2d() == null or is_leaping or is_dying:
+		return
+
+	var space_state = get_world_2d().direct_space_state
+	var forward_dir = facing_direction
+	if forward_dir == Vector2.ZERO:
+		forward_dir = Vector2.DOWN
+
+	var pos_obstacle = global_position + forward_dir * 48.0 # 前方第 1 格 (阻挡物)
+	var pos_landing  = global_position + forward_dir * 96.0 # 前方第 2 格 (落地空地)
+
+	# 1. 落地范围必须在游戏区边界内 [48, 576]
+	if pos_landing.x < 48.0 or pos_landing.x > 576.0 or pos_landing.y < 48.0 or pos_landing.y > 576.0:
+		return
+
+	# 2. 检测前方第 1 格是否有阻挡物 (墙体/水/建筑/静态阻挡)
+	var q_obs = PhysicsPointQueryParameters2D.new()
+	q_obs.position = pos_obstacle
+	q_obs.collide_with_bodies = true
+	q_obs.collide_with_areas = true
+	q_obs.collision_mask = 1 | 2 | 16
+	var obs_hits = space_state.intersect_point(q_obs, 2)
+	if obs_hits.is_empty():
+		return # 前方无阻挡物，直接正常行走即可
+
+	# 3. 检测前方第 2 格是否是合法落脚空地
+	var q_land = PhysicsPointQueryParameters2D.new()
+	q_land.position = pos_landing
+	q_land.collide_with_bodies = true
+	q_land.collide_with_areas = true
+	q_land.collision_mask = 1 | 2 | 16
+	var land_hits = space_state.intersect_point(q_land, 2)
+	var is_blocked = false
+	for h in land_hits:
+		var col = h.collider
+		if col and (col.is_in_group("brick") or col.is_in_group("steel") or col.is_in_group("buildings") or col.is_in_group("water") or col.is_in_group("base_eagle")):
+			is_blocked = true
+			break
+
+	if is_blocked:
+		return # 落地格也是死路，不可跳
+
+	# 触发跳跃！
+	_start_spider_leap(pos_landing)
+
+func _start_spider_leap(target_landing_pos: Vector2) -> void:
+	is_leaping = true
+	jump_cooldown_timer = JUMP_COOLDOWN
+
+	# 1. 蓄力蹲伏阶段 (0.12s)
+	SoundManager.play_shot(get_tree())
+	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+
+	var crouch_tw = create_tween().set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	crouch_tw.tween_property(sprite, "scale", Vector2(1.25, 0.75), 0.10)
+	crouch_tw.tween_property(sprite, "modulate", Color(2.0, 1.2, 2.4), 0.10)
+
+	await crouch_tw.finished
+	if not is_instance_valid(self) or is_dying:
+		return
+
+	# 2. 腾空飞跃阶段 (0.45s 滞空)
+	set_collision_layer_value(2, false)
+	set_collision_mask_value(1, false)
+	set_collision_mask_value(2, false)
+	set_collision_mask_value(5, false)
+
+	# 创建地面投影阴影
+	if not is_instance_valid(leap_shadow):
+		leap_shadow = Sprite2D.new()
+		leap_shadow.texture = sprite.texture
+		leap_shadow.modulate = Color(0, 0, 0, 0.45)
+		leap_shadow.z_index = -1
+		get_parent().add_child(leap_shadow)
+		leap_shadow.global_position = global_position
+		leap_shadow.rotation = rotation
+
+	var leap_duration = 0.45
+
+	# 抛物线位移 + 缩放放大模拟 3D 腾空
+	var leap_tw = create_tween().set_parallel(true)
+	leap_tw.tween_property(self, "global_position", target_landing_pos, leap_duration).set_trans(Tween.TRANS_LINEAR)
+
+	if is_instance_valid(leap_shadow):
+		leap_tw.tween_property(leap_shadow, "global_position", target_landing_pos, leap_duration).set_trans(Tween.TRANS_LINEAR)
+		leap_tw.tween_property(leap_shadow, "scale", Vector2(0.65, 0.65), leap_duration * 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		leap_tw.tween_property(leap_shadow, "scale", Vector2(1.0, 1.0), leap_duration * 0.5).set_delay(leap_duration * 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+	# 高空缩放 (1.0 -> 1.45 -> 1.0) 呈现离地跃向镜头的立体视觉！
+	leap_tw.tween_property(sprite, "scale", Vector2(1.45, 1.45), leap_duration * 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	leap_tw.tween_property(sprite, "scale", Vector2(1.0, 1.0), leap_duration * 0.5).set_delay(leap_duration * 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	leap_tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), leap_duration * 0.3)
+
+	await leap_tw.finished
+
+	if is_instance_valid(leap_shadow):
+		leap_shadow.queue_free()
+		leap_shadow = null
+
+	if not is_instance_valid(self) or is_dying:
+		return
+
+	# 3. 落地重踏与震撼演出
+	global_position = target_landing_pos
+	set_collision_layer_value(2, true)
+	set_collision_mask_value(1, true)
+	set_collision_mask_value(2, true)
+	set_collision_mask_value(5, true)
+
+	is_leaping = false
+
+	# 落地弹性回弹 (Elastic Bounce)
+	sprite.scale = Vector2(1.3, 0.7)
+	var land_tw = create_tween().set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	land_tw.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.35)
+
+	# 落地冲击波、扬尘、黏土破片与屏幕微震
+	SoundManager.play_hit_steel(get_tree())
+	VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+
+	var tree = get_tree()
+	if tree and tree.current_scene and tree.current_scene.has_method("add_trauma"):
+		tree.current_scene.add_trauma(0.16)
+
+

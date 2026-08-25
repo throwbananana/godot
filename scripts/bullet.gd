@@ -221,6 +221,10 @@ func _on_body_entered(body: Node2D) -> void:
 				queue_free()
 		return
 	elif body.is_in_group("buildings") or body.is_in_group("building"):
+		if body.has_method("handle_bullet_hit"):
+			var redirected = body.handle_bullet_hit(self, global_position, direction)
+			if redirected:
+				return
 		if not is_destroyed:
 			is_destroyed = true
 			if is_aoe:

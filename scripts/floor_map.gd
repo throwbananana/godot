@@ -56,12 +56,22 @@ static func in_bounds(c: Vector2i) -> bool:
 	return c.x >= 0 and c.x < GRID_COLS and c.y >= 0 and c.y < GRID_ROWS
 
 
-## 一层楼有多少房间。以撒是按 stage 线性涨, 这里按 act 涨并夹上限 ——
-## 上限不是怕网格装不下 (9x8=72), 是怕一层走太久: 一个房间平均 25-40 秒,
-## 22 间已经是十来分钟, 再长就该分层而不是加房间了。
+## 一层楼有多少房间。
+##
+## 刻意压得又小又平 (8-11), 因为**这个游戏的一个房间不是以撒的一个房间**:
+## 每个战斗房是一整场完整的坦克大战遭遇 (12-24 辆车, 同屏上限 4-6, 出怪间隔
+## 2-3 秒), 打完一间要一到两分钟, 是以撒那种十几秒一间的四到六倍。
+##
+## 之前是 8 + (act-1)*2 封顶 22。实测 (60 个种子/幕) 一层的战斗房从第 1 幕的
+## 5.0 间涨到第 8 幕的 16.3 间 —— 也就是第 1 幕五分钟、第 8 幕半小时, 而这两层
+## 是同一个存档节奏单位。封在 11 之后每层稳定在 5-7 个战斗房 (8-12 分钟),
+## 单层长度不再随幕数漂移。
+##
+## 想要更长的战役, 加的是**幕数** (GameState.max_acts) —— 每幕一个 boss、一个
+## 存档点、一次整层重生成, 而不是把单层撑长。
 const ROOM_BASE := 8
-const ROOM_PER_ACT := 2
-const ROOM_MAX := 22
+const ROOM_PER_ACT := 1
+const ROOM_MAX := 11
 
 static func target_room_count(act: int) -> int:
 	return mini(ROOM_MAX, ROOM_BASE + maxi(0, act - 1) * ROOM_PER_ACT)

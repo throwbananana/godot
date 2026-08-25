@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://dblfyq2q677ak"
+path="res://.godot/imported/enemy_sniper_f0.png-55cf343d820bbb65e8e537359cf9c9f6.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_sniper_f0.png"
+dest_files=["res://.godot/imported/enemy_sniper_f0.png-55cf343d820bbb65e8e537359cf9c9f6.ctex"]
 
 [params]
 

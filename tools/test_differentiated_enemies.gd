@@ -37,10 +37,10 @@ func _test_sniper_properties_and_firing() -> void:
 	assert(enemy.velocity == Vector2.ZERO, "Sniper must stop moving while aiming and charging shot")
 
 	# Test sniper bullet properties
-	var prev_bullet_count = get_tree().get_nodes_in_group("bullet").size()
+	var prev_bullet_count = get_nodes_in_group("bullet").size()
 	enemy.facing_direction = Vector2.UP
 	enemy._shoot()
-	var bullets = get_tree().get_nodes_in_group("bullet")
+	var bullets = get_nodes_in_group("bullet")
 	assert(bullets.size() > prev_bullet_count, "Sniper must spawn a bullet")
 	var spawned_b = bullets[-1]
 	assert(spawned_b.speed >= 600.0, "Sniper bullet must be ultra-high speed (>=600, got %f)" % spawned_b.speed)
@@ -64,10 +64,10 @@ func _test_gatling_properties_and_firing() -> void:
 	assert(enemy.fire_interval <= 0.50, "Gatling fire interval must be rapid (<=0.5s, got %f)" % enemy.fire_interval)
 	assert(enemy.max_health >= 5, "Gatling must be sturdy (>=5 hp, got %d)" % enemy.max_health)
 
-	var prev_bullet_count = get_tree().get_nodes_in_group("bullet").size()
+	var prev_bullet_count = get_nodes_in_group("bullet").size()
 	enemy.facing_direction = Vector2.DOWN
 	enemy._shoot()
-	var bullets = get_tree().get_nodes_in_group("bullet")
+	var bullets = get_nodes_in_group("bullet")
 	assert(bullets.size() > prev_bullet_count, "Gatling must spawn bullet")
 	var spawned_b = bullets[-1]
 	assert(spawned_b.damage == 1, "Gatling bullet deals rapid 1 damage")
@@ -89,10 +89,10 @@ func _test_shotgun_properties_and_firing() -> void:
 	assert(enemy.max_health == 3, "Shotgun health should be 3")
 
 	# Test 3-way spread firing
-	var prev_bullet_count = get_tree().get_nodes_in_group("bullet").size()
+	var prev_bullet_count = get_nodes_in_group("bullet").size()
 	enemy.facing_direction = Vector2.RIGHT
 	enemy._shoot()
-	var bullets = get_tree().get_nodes_in_group("bullet")
+	var bullets = get_nodes_in_group("bullet")
 	var new_bullets = bullets.size() - prev_bullet_count
 	assert(new_bullets == 3, "Shotgun must fire 3 spread pellets per volley (got %d)" % new_bullets)
 

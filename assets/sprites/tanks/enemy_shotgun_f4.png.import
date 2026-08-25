@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://dfjt8rc4vng6h"
+path="res://.godot/imported/enemy_shotgun_f4.png-6b345d7359eaa6e45a00102c4c439b71.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_shotgun_f4.png"
+dest_files=["res://.godot/imported/enemy_shotgun_f4.png-6b345d7359eaa6e45a00102c4c439b71.ctex"]
 
 [params]
 

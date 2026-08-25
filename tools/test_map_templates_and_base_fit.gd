@@ -87,11 +87,9 @@ func _run() -> void:
 			for r in range(13):
 				for c in range(13):
 					var v = int(g[r][c])
-					# 合法上界跟着 map_templates.gd 顶上那份图例走。加了 30
-					# (敌方护盾塔) 之后这里一直卡在 29, 于是唯一用到 30 的
-					# TEMPLATE_ENEMY_SHIELD_BASTION 从落地起就在报越界。
-					if v < 0 or v > 30:
-						errs.append("(%d,%d) 地形号 %d 越界 (合法 0-30)" % [r, c, v])
+					# 合法上界跟着 map_templates.gd 顶上那份图例走 (0..39)
+					if v < 0 or v > 39:
+						errs.append("(%d,%d) 地形号 %d 越界 (合法 0-39)" % [r, c, v])
 			# 鹰巢与围墙由 main.gd::_spawn_base_and_walls() 自己生成在
 			# row11 col5-7 / row12 col5,7, 模板必须把这几格留空, 否则会和
 			# 自动生成的围墙叠在一起

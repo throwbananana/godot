@@ -6,24 +6,61 @@ enum GameMode { CAMPAIGN, ARCADE, DAILY_CHALLENGE }
 static var mode: GameMode = GameMode.CAMPAIGN
 static var player_count: int = 1 # 1=单人, 2=本地双人
 static var current_act: int = 1   # 1..max_acts
-static var max_acts: int = 8      # 8 Major Acts -- only 3 unique visual themes exist
-                                   # (Plains/Desert/Glacial), so acts beyond 3 cycle back
-                                   # through them at escalating difficulty. See
-                                   # get_visual_act() / get_difficulty_cycle().
+## 一整局有几幕。**一幕 = 一层以撒式楼层**, 打掉那层的 boss 进下一幕。
+##
+## 8 -> 12: 单层的房间数封在 11 之后 (FloorMap.ROOM_MAX), 每层稳定 8-12 分钟,
+## 靠加幕数而不是撑长单层来拉长战役。12 也是 ACT_DIFFICULTY_STRIDE=1 正好把
+## current_floor 走满 0..14 的幕数。
+##
+## 只有 3 套视觉主题 (平原/沙漠/极地), 所以第 4 幕起循环复用 —— 12 幕就是走
+## 4 圈。get_visual_act() 给主题 (1-3), get_difficulty_cycle() 给圈数 (0-3)。
+##
+## 再往上加收益递减: 遭遇规模 +4/圈, 但 main.gd::max_alive_for() 同屏封顶 6、
+## enemy.gd::armor_plate_range() 装甲下界封顶 3, 所以大约第 4 圈之后就不再变难。
+## 要做 16 幕以上得先给后段准备新的施压手段, 而不是继续调这个常数。
+static var max_acts: int = 12
 ## 难度进度。以撒化之后一个 Act 就是一层楼, 不再有"第几层"这个走廊概念 ——
 ## 但 current_floor 被整套难度曲线读着 (main.gd::ENEMY_MIN_FLOOR 的解锁门槛、
 ## enemy.gd 的 FLOOR_SCALE_SLOPE 与 ARMOR_PLATE_FLOOR_GATE、
-## MapTemplates.TEMPLATE_MIN_FLOOR 的模板分档), 全部推倒重来没有意义。
+## MapTemplates.TEMPLATE_MIN_FLOOR 的模板分档), 全部推倒重来没有意义, 所以它
+## 保留 0..max_floors-1 的取值范围, 只换算法。
 ##
-## 所以它的**语义**改成"本层已清空的房间数", 数值范围 (0..max_floors-1) 和
-## 原来一层一层爬的时候一致, 于是那些曲线一行不用改就继续成立: 一层楼里越
-## 往后打, 敌人种类越多、装甲越厚、模板机制越密。
+##     current_floor = (幕数-1) * ACT_DIFFICULTY_STRIDE + 本层已清房间数/2
 ##
-## 用"已清房间数"而不是"房间到起点的 BFS 深度": 深度最多只到 6-8, 把 0..14
-## 设计的曲线压掉一半, 后段的敌人种类根本解锁不出来; 而且深度在玩家回头走
-## 已清房间时会**倒退**, 难度跟着忽上忽下。已清房间数是单调的。
+## **跨幕累积, 不是每层归零。** 这一条是必须的, 不是风格选择:
+##
+## 归零版本 (current_floor = 本层已清房间数) 曾经上线过, 而它会把游戏后半段
+## 的内容**静默锁死**。实测每幕的 current_floor 峰值只有 4 / 6 / 7 / 9 / ...
+## (第 1 幕只有 5 个战斗房), 而门槛表要的是:
+##   - floor 5  AIRCRAFT / MIRAGE / BATTLESHIP / LASER / CRUSHER / SPLITTER
+##   - floor 8  MISSILE / WARP
+##   - floor 9  第 3 层装甲板 (ARMOR_PLATE_FLOOR_GATE)
+## 也就是说**第一幕永远刷不出那六种"真正需要新对策"的敌人**, 前三幕永远见不到
+## MISSILE/WARP 和三层装甲。不报错、不崩溃, 玩家只会觉得敌人种类少。
+## 房间数越少锁得越死 —— 而"房间少一点、幕数多一点"正是当前的设计方向。
+##
+## 房间进度**除以 2** 是为了让幕数占主导。不除的话, 一层之内的爬升幅度 (0..7)
+## 和整个战役的爬升幅度一样大, 于是第 1 幕最后一间的难度约等于第 8 幕第一间,
+## 曲线变成锯齿。除 2 之后层内只有 +0..3 的缓坡, 大方向由幕数决定。
+##
+## 顺带说明为什么不用"房间到起点的 BFS 深度": 深度最多只到 6-8, 同样够不到
+## 后段门槛; 而且玩家回头走已清房间时深度会**倒退**, 难度忽上忽下。
+## 已清房间数是单调的。
 static var current_floor: int = 0
 static var max_floors: int = 15
+
+## 每推进一幕, 难度基线抬多少。
+##
+## 1 是按"12 幕走完 0..14"配的: 第 12 幕的基线是 11, 加上层内 +0..3 正好压到
+## 上限 14。全部敌人种类在第 6 幕解锁完 (基线 5 + 层内 3 = 8), 第 7 幕见到三层
+## 装甲, 之后交给难度圈 (get_difficulty_cycle 的遭遇规模 +4/圈 与装甲下界)。
+const ACT_DIFFICULTY_STRIDE := 1
+
+## 按当前幕数与本层进度重算 current_floor。mark_room_cleared() 与
+## generate_floor() 各调一次 —— 这是它唯一的写入点。
+static func _recompute_current_floor() -> void:
+	var base := (current_act - 1) * ACT_DIFFICULTY_STRIDE
+	current_floor = mini(max_floors - 1, base + rooms_cleared / 2)
 
 # RPG Persistent Stats
 static var gold: int = 150
@@ -266,8 +303,7 @@ static func reset_campaign(p_count: int = 1) -> void:
 
 static func advance_to_next_act() -> void:
 	current_act = mini(current_act + 1, max_acts)
-	current_floor = 0
-	generate_floor()
+	generate_floor()  # 内部会 _recompute_current_floor(), 不要在这里把 current_floor 清零
 
 # ==================== 楼层房间图 (FloorMap) ====================
 #
@@ -307,8 +343,10 @@ static func generate_floor() -> void:
 	current_room = floor_start_room
 	secret_room_found = false
 	rooms_cleared = 0
-	current_floor = 0
 	shop_reroll_cost = SHOP_REROLL_BASE
+	# 新一层的起始难度不是 0, 而是这一幕的基线 —— 不这么做就退回到
+	# 每层归零, 后段内容重新被锁死 (见 current_floor 那段注释)。
+	_recompute_current_floor()
 	battle_type = "battle"
 	challenge_mode = ""
 
@@ -364,7 +402,7 @@ static func mark_room_cleared(room_key: String, count_progress: bool = true) -> 
 	room["cleared"] = true
 	if count_progress:
 		rooms_cleared += 1
-		current_floor = mini(rooms_cleared, max_floors - 1)
+		_recompute_current_floor()
 	save_campaign()
 
 

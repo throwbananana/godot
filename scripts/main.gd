@@ -61,6 +61,12 @@ var signal_jammer_tower_scene: PackedScene
 var factory_scene: PackedScene
 var drifting_supplies_scene: PackedScene
 var enemy_shield_tower_scene: PackedScene
+var pipe_conduit_scene: PackedScene
+var radar_station_scene: PackedScene
+var ammo_depot_scene: PackedScene
+var command_post_scene: PackedScene
+var sniper_nest_scene: PackedScene
+var emp_tower_scene: PackedScene
 var factory_instances: Array[Node] = [] # tracked for the battle-end gold/XP reward multiplier
 var battle_gold_earned: int = 0 # reset in start_game(), read by the Factory reward multiplier at _game_over()
 var battle_start_msec: int = 0 # reset in start_game(), read by the balance log at _game_over()
@@ -235,6 +241,12 @@ func _ready() -> void:
 	factory_scene = load("res://scenes/buildings/factory.tscn")
 	drifting_supplies_scene = load("res://scenes/drifting_supplies.tscn")
 	enemy_shield_tower_scene = load("res://scenes/buildings/enemy_shield_tower.tscn")
+	pipe_conduit_scene = load("res://scenes/buildings/pipe_conduit.tscn")
+	radar_station_scene = load("res://scenes/buildings/radar_station.tscn")
+	ammo_depot_scene = load("res://scenes/buildings/ammo_depot.tscn")
+	command_post_scene = load("res://scenes/buildings/command_post.tscn")
+	sniper_nest_scene = load("res://scenes/buildings/sniper_nest.tscn")
+	emp_tower_scene = load("res://scenes/buildings/emp_tower.tscn")
 
 	var upg_scene = load("res://scenes/upgrade_selection_dialog.tscn")
 	if upg_scene:
@@ -1200,6 +1212,24 @@ func _build_map() -> void:
 				_spawn_drifting_supplies(pos)
 			elif tile_type == 30:
 				_spawn_enemy_shield_tower(pos)
+			elif tile_type == 31:
+				_spawn_pipe_conduit(pos, 0)
+			elif tile_type == 32:
+				_spawn_pipe_conduit(pos, 1)
+			elif tile_type == 33:
+				_spawn_pipe_conduit(pos, 2)
+			elif tile_type == 34:
+				_spawn_pipe_conduit(pos, 3)
+			elif tile_type == 35:
+				_spawn_radar_station(pos)
+			elif tile_type == 36:
+				_spawn_ammo_depot(pos)
+			elif tile_type == 37:
+				_spawn_command_post(pos)
+			elif tile_type == 38:
+				_spawn_sniper_nest(pos)
+			elif tile_type == 39:
+				_spawn_emp_tower(pos)
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters)
 	if (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
@@ -1571,6 +1601,58 @@ func _spawn_enemy_shield_tower(pos: Vector2) -> void:
 		var tower = enemy_shield_tower_scene.instantiate()
 		tower.position = pos
 		actors_container.add_child(tower)
+
+func _spawn_pipe_conduit(pos: Vector2, orient: int) -> void:
+	if not pipe_conduit_scene:
+		pipe_conduit_scene = load("res://scenes/buildings/pipe_conduit.tscn")
+	if pipe_conduit_scene:
+		var pipe = pipe_conduit_scene.instantiate()
+		pipe.position = pos
+		if pipe.has_method("set_orientation"):
+			pipe.set_orientation(orient)
+		actors_container.add_child(pipe)
+
+func _spawn_radar_station(pos: Vector2) -> void:
+	if not radar_station_scene:
+		radar_station_scene = load("res://scenes/buildings/radar_station.tscn")
+	if radar_station_scene:
+		var radar = radar_station_scene.instantiate()
+		radar.position = pos
+		actors_container.add_child(radar)
+
+func _spawn_ammo_depot(pos: Vector2) -> void:
+	if not ammo_depot_scene:
+		ammo_depot_scene = load("res://scenes/buildings/ammo_depot.tscn")
+	if ammo_depot_scene:
+		var depot = ammo_depot_scene.instantiate()
+		depot.position = pos
+		actors_container.add_child(depot)
+
+func _spawn_command_post(pos: Vector2) -> void:
+	if not command_post_scene:
+		command_post_scene = load("res://scenes/buildings/command_post.tscn")
+	if command_post_scene:
+		var cp = command_post_scene.instantiate()
+		cp.position = pos
+		actors_container.add_child(cp)
+
+func _spawn_sniper_nest(pos: Vector2, fire_dir: Vector2 = Vector2.UP) -> void:
+	if not sniper_nest_scene:
+		sniper_nest_scene = load("res://scenes/buildings/sniper_nest.tscn")
+	if sniper_nest_scene:
+		var nest = sniper_nest_scene.instantiate()
+		nest.position = pos
+		if nest.has_method("set_fire_direction"):
+			nest.set_fire_direction(fire_dir)
+		actors_container.add_child(nest)
+
+func _spawn_emp_tower(pos: Vector2) -> void:
+	if not emp_tower_scene:
+		emp_tower_scene = load("res://scenes/buildings/emp_tower.tscn")
+	if emp_tower_scene:
+		var emp = emp_tower_scene.instantiate()
+		emp.position = pos
+		actors_container.add_child(emp)
 
 func _setup_challenge_treasure() -> void:
 	has_treasure_key = false
@@ -2034,12 +2116,14 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.ARMOR: 1,
 	EnemyTank.EnemyType.SHOTGUN: 2,
 	EnemyTank.EnemyType.BOMBER: 3,
+	EnemyTank.EnemyType.ENGINEER: 3,
 	# 喷火兵和 BOMBER 同档 (延时/持续的范围压制), 而不是和 LASER 那档 (5 层)。
 	# 它的射程只有 2.75 格, 绕侧面就能解 —— 属于"逼你换位"而不是"逼你换装备",
 	# 早点出现反而能教会玩家侧向机动, 为 5 层以后真正的远程威胁做铺垫。
 	EnemyTank.EnemyType.FLAMETHROWER: 3,
 	EnemyTank.EnemyType.SNIPER: 4,
 	EnemyTank.EnemyType.GATLING: 4,
+	EnemyTank.EnemyType.SPIDER: 4,
 	EnemyTank.EnemyType.AIRCRAFT: 5,
 	EnemyTank.EnemyType.MIRAGE: 5,
 	EnemyTank.EnemyType.BATTLESHIP: 5,
@@ -2058,8 +2142,8 @@ const GATE_FALLBACK_POOL: Array = [
 	EnemyTank.EnemyType.BASIC, EnemyTank.EnemyType.FAST,
 	EnemyTank.EnemyType.POWER, EnemyTank.EnemyType.SUICIDE, EnemyTank.EnemyType.ARMOR,
 	EnemyTank.EnemyType.SHOTGUN,
-	EnemyTank.EnemyType.BOMBER, EnemyTank.EnemyType.FLAMETHROWER,
-	EnemyTank.EnemyType.SNIPER, EnemyTank.EnemyType.GATLING,
+	EnemyTank.EnemyType.BOMBER, EnemyTank.EnemyType.ENGINEER, EnemyTank.EnemyType.FLAMETHROWER,
+	EnemyTank.EnemyType.SNIPER, EnemyTank.EnemyType.GATLING, EnemyTank.EnemyType.SPIDER,
 	EnemyTank.EnemyType.AIRCRAFT, EnemyTank.EnemyType.MIRAGE,
 	EnemyTank.EnemyType.BATTLESHIP, EnemyTank.EnemyType.LASER,
 	EnemyTank.EnemyType.CRUSHER, EnemyTank.EnemyType.SPLITTER,
@@ -2173,50 +2257,42 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.90: type = EnemyTank.EnemyType.AIRCRAFT
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.ARMOR
 			3:
-				# 这一档以前是 TRAIN_BOSS。它是 14 血、会点亮 HUD boss 血条、
-				# 会占用 active_boss_instance 的遭遇 boss —— 实测常规战里它占
-				# 17-21%, 是 floor 5 之后**出现最多的单一类型**, 而精英战和
-				# boss 战里的填充位反而 0% (那两处只有开场固定一只)。也就是说
-				# boss 单位在常规层比在 boss 层常见三到四倍, boss 血条几乎常驻
-				# 并被每只新火车反复顶掉, "boss"这个框架被消解了。
-				# 现在把这份权重给 ARMOR (4 血的重甲填充兵), 保住"这一格该有个
-				# 硬骨头"的手感, 但不再拿遭遇身份当杂兵。
 				if r < 0.12: type = EnemyTank.EnemyType.ARMOR
-				elif r < 0.22: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.32: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.42: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.50: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.62: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.74: type = EnemyTank.EnemyType.MISSILE
-				elif r < 0.86: type = EnemyTank.EnemyType.BOMBER
+				elif r < 0.20: type = EnemyTank.EnemyType.ENGINEER
+				elif r < 0.30: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.40: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.50: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.60: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.72: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.84: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			4:
-				# 同 floor 3: TRAIN_BOSS 不再当常规填充兵, 见上。
-				# Floor 4 加入狙击手 SNIPER 与加特林 GATLING 的初期特征。
 				if r < 0.10: type = EnemyTank.EnemyType.ARMOR
-				elif r < 0.20: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.30: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.40: type = EnemyTank.EnemyType.GATLING
-				elif r < 0.50: type = EnemyTank.EnemyType.SNIPER
-				elif r < 0.60: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.70: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.80: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.90: type = EnemyTank.EnemyType.BOMBER
+				elif r < 0.18: type = EnemyTank.EnemyType.ENGINEER
+				elif r < 0.26: type = EnemyTank.EnemyType.SPIDER
+				elif r < 0.35: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.44: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.53: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.62: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.71: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.80: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.90: type = EnemyTank.EnemyType.SUICIDE
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			_:
-				# floor 5 以后全阵容展开: SPLITTER, CRUSHER, GATLING, SNIPER, SHOTGUN 与重装 BATTLESHIP 等。
-				if r < 0.08: type = EnemyTank.EnemyType.SPLITTER
-				elif r < 0.15: type = EnemyTank.EnemyType.CRUSHER
-				elif r < 0.23: type = EnemyTank.EnemyType.GATLING
-				elif r < 0.31: type = EnemyTank.EnemyType.SNIPER
-				elif r < 0.39: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.47: type = EnemyTank.EnemyType.BATTLESHIP
-				elif r < 0.55: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.63: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.71: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.79: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.87: type = EnemyTank.EnemyType.MISSILE
-				elif r < 0.94: type = EnemyTank.EnemyType.BOMBER
+				# floor 5 以后全阵容展开: SPLITTER, CRUSHER, ENGINEER, SPIDER, GATLING, SNIPER 等。
+				if r < 0.07: type = EnemyTank.EnemyType.SPLITTER
+				elif r < 0.13: type = EnemyTank.EnemyType.CRUSHER
+				elif r < 0.19: type = EnemyTank.EnemyType.ENGINEER
+				elif r < 0.26: type = EnemyTank.EnemyType.SPIDER
+				elif r < 0.33: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.40: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.47: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.54: type = EnemyTank.EnemyType.BATTLESHIP
+				elif r < 0.62: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.70: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.78: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.86: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.93: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 
 	# Floor-gate the roll above -- the boss/elite tables (unlike the plain

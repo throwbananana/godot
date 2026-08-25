@@ -76,6 +76,8 @@ func _scan(dir_path: String) -> void:
 func _check(path: String) -> void:
 	var tex := load(path) as Texture2D
 	if not tex:
+		tex = TextureHelper.get_tex(path)
+	if not tex:
 		missing.append("%s (加载失败)" % path)
 		return
 	checked += 1

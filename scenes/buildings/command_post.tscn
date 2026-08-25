@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://bldcommand001post"]
+
+[ext_resource type="Script" path="res://scripts/buildings/command_post.gd" id="1_command"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_command"]
+size = Vector2(44, 44)
+
+[node name="CommandPost" type="StaticBody2D" groups=["building", "buildings", "command_post", "destructible"]]
+script = ExtResource("1_command")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_command")

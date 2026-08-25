@@ -539,6 +539,37 @@ const ENTRIES: Array[Dictionary] = [
 		"tactics": "利用普通主炮或霰弹扇形散射一网打尽。切勿放任其溜向基地。"
 	},
 	{
+		"id": "enemy_engineer",
+		"category": "TANKS",
+		"name": "工程施工坦克 (Combat Engineer Tank)",
+		"tag": "战场改造 / 战术工事建造",
+		"icon": "res://assets/sprites/tanks/enemy_engineer_f0.png",
+		"stats": {
+			"生命值": "4 HP (工程重甲)",
+			"移速": "70 px/s (平稳机动)",
+			"特殊能力": "10s 施工周期 (随机建造地形/建筑)",
+			"威胁等级": "★★★★☆"
+		},
+		"desc": "配备多轴重型工程吊臂、排障铲与琥珀警示灯的战场工事车。每隔 10 秒在周围空地快速搭建掩体墙、导流管道、爆破油桶、护盾塔或简易狙击碉堡，持续重塑战区地形与战术格局。",
+		"tactics": "优先击毁！若任由其在战区长时间停留，其布置的防线与战略建筑将极大压缩我方机动与射击空间。"
+	},
+	{
+		"id": "enemy_spider",
+		"category": "TANKS",
+		"name": "跳蛛仿生坦克 (Jumping Spider Tank)",
+		"tag": "越障突袭 / 仿生机动",
+		"icon": "res://assets/sprites/tanks/enemy_spider_f0.png",
+		"stats": {
+			"生命值": "3 HP (几丁质仿生甲)",
+			"移速": "92 px/s (高机动爬行)",
+			"特殊能力": "越障高空跳跃 (隔物飞跃+震地)",
+			"主武器": "双联毒针速射炮 (1.6s 射速)",
+			"威胁等级": "★★★★☆"
+		},
+		"desc": "搭载 4 对液压仿生机械足与背部跳跃高压储能推进囊的特战蛛形坦克。当面对掩体阻挡且后方有落脚点时，能发动高空抛物线越障跳跃，瞬间跨越单格掩体/建筑并在落地时引发震地冲击波。",
+		"tactics": "切勿以为躲在单层掩体后就安全无虞！保持机动拉开距离，在其起跳蓄力与落地硬直瞬间集中火力将其消灭。"
+	},
+	{
 		"id": "enemy_boss",
 		"category": "TANKS",
 		"name": "巅峰要塞巨神 (Summit Colossus)",
@@ -746,6 +777,19 @@ const ENTRIES: Array[Dictionary] = [
 		},
 		"desc": "底部装有滚轮与撞击卡齿的机动防线墙。玩家射击墙体可将其像保龄球一样向前推移，撞毁沿途障碍与敌人。",
 		"tactics": "站在滑轮墙后方向前射击推进，利用墙体充当移动掩体直推敌方阵线。"
+	},
+	{
+		"id": "bld_pipe_conduit",
+		"category": "BUILDINGS",
+		"name": "导流管道 (Conduit Pipe)",
+		"tag": "弹道重定向 / 侧翼可破坏",
+		"icon": "res://assets/sprites/buildings/pipe_conduit.png",
+		"stats": {
+			"导流机制": "从管道入口射入子弹将改变弹道从出口高速射出",
+			"弱点防御": "非入口方向受击会承受伤害 (4 HP)，生命耗尽即被破坏"
+		},
+		"desc": "特殊设计的导流管道。能够吸收顺着入口方向射入的炮弹并将其从出口 90° 重定向射出；如果在非入口方向受击，管道会被打伤乃至摧毁。",
+		"tactics": "放置在角落或掩体旁进行拐角射击，或者引导敌军火力绕过核心阵地，小心保护管道的侧翼外壁。"
 	},
 	{
 		"id": "bld_oil_barrel",

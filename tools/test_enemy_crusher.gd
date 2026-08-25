@@ -35,7 +35,11 @@ func _test_crusher_properties_and_frames() -> void:
 	assert(enemy.speed == 40.0, "Crusher must be slow (speed=40.0, got %f)" % enemy.speed)
 	assert(enemy.max_health >= 10, "Crusher must have high health (>=10, got %d)" % enemy.max_health)
 	assert(enemy.fire_interval >= 900.0, "Crusher must not shoot (fire_interval>=900, got %f)" % enemy.fire_interval)
-	assert(enemy.sprite.scale.x == 0.24 and enemy.sprite.scale.y == 0.24, "Crusher must have large sprite scale (0.24, 0.24)")
+	# is_equal_approx 而不是 == : Vector2 存的是 float32, Vector2(0.24, 0.24).x
+	# 实际是 0.2399999946, 而字面量 0.24 是 float64 —— == 恒为假。
+	# 这条断言一直在失败, 只是整个文件因为别处的解析错误从来没跑起来过。
+	assert(is_equal_approx(enemy.sprite.scale.x, 0.24) and is_equal_approx(enemy.sprite.scale.y, 0.24),
+		"Crusher must have large sprite scale (0.24, 0.24), got %s" % str(enemy.sprite.scale))
 	assert(enemy.tank_frames.size() == 6, "Crusher must have 6 rendered frames loaded, got %d" % enemy.tank_frames.size())
 
 	for i in range(6):
@@ -145,10 +149,26 @@ func _test_crusher_crushes_buildings() -> void:
 		root.add_child(b_inst)
 		b_inst.global_position = Vector2(250, 250)
 
-		var result = enemy._crush_target(b_inst)
+		# 不能直接把场景根节点交给 _crush_target。有些建筑 (fortified_wall)
+		# 根节点是个纯容器 Node2D, 真正带碰撞体并挂 buildings/steel 组的是
+		# 它拆成四块的 Piece 子节点 —— 根节点本身不在任何组里。游戏里碰撞
+		# 查询返回的也是 Piece, 所以拿根节点去试是测试错了对象, 不是粉碎者坏了。
+		# (tools/test_roller_wall_and_stage2_destruction.gd 早就是这么处理的。)
+		var target: Node2D = b_inst
+		if not (b_inst is CollisionObject2D):
+			for child in b_inst.get_children():
+				if child is CollisionObject2D:
+					target = child
+					break
+
+		var result = enemy._crush_target(target)
 		assert(result == true, "Crusher must crush building: %s" % b_path)
 		await process_frame
-		assert(b_inst.is_queued_for_deletion() or b_inst.get_child_count() == 0 or not is_instance_valid(b_inst), "Building %s must be destroyed/queued for deletion" % b_path)
+		# 验的是 **target** 而不是 b_inst: 容器型建筑被撞掉一块 Piece 之后,
+		# 容器本身当然还在 (它还有另外三块)。
+		assert(target.is_queued_for_deletion() or not is_instance_valid(target)
+			or (target == b_inst and b_inst.get_child_count() == 0),
+			"Building %s must be destroyed/queued for deletion" % b_path)
 		if is_instance_valid(b_inst):
 			b_inst.queue_free()
 
@@ -211,7 +231,7 @@ func _test_crusher_no_bullet_firing() -> void:
 	for i in range(10):
 		enemy._physics_process(0.016)
 
-	var bullets = get_tree().get_nodes_in_group("bullet")
+	var bullets = get_nodes_in_group("bullet")
 	for b in bullets:
 		if is_instance_valid(b) and ("shooter" in b) and b.shooter == enemy:
 			assert(false, "Crusher must NEVER fire bullets!")

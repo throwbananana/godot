@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://bu2is8lxki8v8"
+path="res://.godot/imported/enemy_split_mini_f3.png-d64906706d8e5a04d811dec7a1973acd.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_split_mini_f3.png"
+dest_files=["res://.godot/imported/enemy_split_mini_f3.png-d64906706d8e5a04d811dec7a1973acd.ctex"]
 
 [params]
 

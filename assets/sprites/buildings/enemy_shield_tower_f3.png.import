@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://bvvlhub7tqy8w"
+path="res://.godot/imported/enemy_shield_tower_f3.png-21a56f8fadae91dfd15467ed35352c7c.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/enemy_shield_tower_f3.png"
+dest_files=["res://.godot/imported/enemy_shield_tower_f3.png-21a56f8fadae91dfd15467ed35352c7c.ctex"]
 
 [params]
 

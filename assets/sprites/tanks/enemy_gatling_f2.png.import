@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://cw8xu053x512h"
+path="res://.godot/imported/enemy_gatling_f2.png-60d1ebd08ccdded3ad7f4cc8e294b1a4.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_gatling_f2.png"
+dest_files=["res://.godot/imported/enemy_gatling_f2.png-60d1ebd08ccdded3ad7f4cc8e294b1a4.ctex"]
 
 [params]
 
