@@ -10,10 +10,20 @@ static var max_acts: int = 8      # 8 Major Acts -- only 3 unique visual themes 
                                    # (Plains/Desert/Glacial), so acts beyond 3 cycle back
                                    # through them at escalating difficulty. See
                                    # get_visual_act() / get_difficulty_cycle().
+## 难度进度。以撒化之后一个 Act 就是一层楼, 不再有"第几层"这个走廊概念 ——
+## 但 current_floor 被整套难度曲线读着 (main.gd::ENEMY_MIN_FLOOR 的解锁门槛、
+## enemy.gd 的 FLOOR_SCALE_SLOPE 与 ARMOR_PLATE_FLOOR_GATE、
+## MapTemplates.TEMPLATE_MIN_FLOOR 的模板分档), 全部推倒重来没有意义。
+##
+## 所以它的**语义**改成"本层已清空的房间数", 数值范围 (0..max_floors-1) 和
+## 原来一层一层爬的时候一致, 于是那些曲线一行不用改就继续成立: 一层楼里越
+## 往后打, 敌人种类越多、装甲越厚、模板机制越密。
+##
+## 用"已清房间数"而不是"房间到起点的 BFS 深度": 深度最多只到 6-8, 把 0..14
+## 设计的曲线压掉一半, 后段的敌人种类根本解锁不出来; 而且深度在玩家回头走
+## 已清房间时会**倒退**, 难度跟着忽上忽下。已清房间数是单调的。
 static var current_floor: int = 0
 static var max_floors: int = 15
-static var current_node_id: String = ""
-static var visited_node_ids: Array[String] = []
 
 # RPG Persistent Stats
 static var gold: int = 150
@@ -156,8 +166,37 @@ static var challenge_mode: String = "" # "", "bomb_rain", "night_ops", "vault", 
 ## 纯 floor_idx 取模行为, 不会炸。
 static var run_seed: int = 0
 
-static var spire_nodes: Dictionary = {}
-static var spire_connections: Array = []
+## 本层楼的房间图。key 是 FloorMap.key() 给的 "col,row" 字符串, value 是
+## FloorMap._new_room() 那个字典 (type/depth/doors/secret_doors/cleared/
+## visited/challenge_mode)。取代了原来的 spire_nodes + spire_connections ——
+## 连接关系现在内含在每个房间的 doors 里, 不需要单独一张边表。
+static var floor_rooms: Dictionary = {}
+static var current_room: String = ""
+static var floor_start_room: String = ""
+static var floor_boss_room: String = ""
+static var floor_secret_room: String = ""
+
+## 秘密房是否已被炸开。一层只有一个秘密房, 所以一个布尔就够, 不需要按门记。
+static var secret_room_found: bool = false
+
+## 本层已清空的房间数。current_floor 跟着它走 (见上面那段), 单独留一个字段是
+## 因为 current_floor 会被夹到 max_floors-1, 而进度显示要的是真实值。
+static var rooms_cleared: int = 0
+
+## 换货费用。跨房间存活, 存进存档。
+##
+## 原来这是 shop_dialog 的实例变量, 每次 setup_shop() 重置成 REROLL_BASE ——
+## 那在尖塔时代是对的: 进一次商店节点就是一次性的, "涨价只在同一次进店内累积"
+## 是刻意的设计。房间制下商店房可以自由进出, 实例变量会在每次进门时重置,
+## 于是走出去再进来费用就回到 20 G, 递增彻底失效。提到 GameState 上按**楼层**
+## 累积。
+static var shop_reroll_cost: int = 20
+const SHOP_REROLL_BASE := 20
+const SHOP_REROLL_STEP := 25
+
+static func bump_shop_reroll_cost() -> void:
+	shop_reroll_cost += SHOP_REROLL_STEP
+	save_campaign()
 
 ## Which of the 3 unique visual themes (Plains/Desert/Glacial) an act reuses.
 ## Acts 1-3 map 1:1; acts 4-8 cycle back through the same 3 themes.
@@ -197,8 +236,6 @@ static func reset_campaign(p_count: int = 1) -> void:
 	player_count = p_count
 	current_act = 1
 	current_floor = 0
-	current_node_id = ""
-	visited_node_ids.clear()
 	gold = 150
 	player_level = 1
 	player_xp = 0
@@ -225,289 +262,153 @@ static func reset_campaign(p_count: int = 1) -> void:
 	# 每局换一批地图。maxi(1, ...) 是因为 0 被 _pick_from_pool() 当作
 	# "没有种子"的哨兵值。
 	run_seed = maxi(1, randi())
-	_generate_spire_map()
+	generate_floor()
 
 static func advance_to_next_act() -> void:
 	current_act = mini(current_act + 1, max_acts)
 	current_floor = 0
-	current_node_id = ""
-	visited_node_ids.clear()
-	_generate_spire_map()
+	generate_floor()
 
-## 每层归到一个"节奏带"上，而不是给每个楼层号单独写一份池子——15 层的话手写
-## 15×3 幕的池子既难维护又容易漏改。带边界之外的具体楼层号不重要，重要的是
-## 相对位置（早期/中期/后期/Boss 前）在整个 max_floors 长度上等比例展开，
-## 这样以后调整 max_floors 也不用跟着改这份表。
-static func _floor_band(f_idx: int) -> String:
-	if f_idx == 0:
-		return "start"
-	if f_idx == max_floors - 1:
-		return "boss"
-	if f_idx == max_floors - 2:
-		return "pre_boss"
-	var p = float(f_idx - 1) / float(maxi(1, max_floors - 3)) # 0..1 across the middle floors
-	if p < 0.25:
-		return "early"
-	elif p < 0.5:
-		return "early_mid"
-	elif p < 0.75:
-		return "mid"
-	else:
-		return "late"
+# ==================== 楼层房间图 (FloorMap) ====================
+#
+# 这里原本是杀戮尖塔那套分支节点图: _floor_band() 把 15 层归进节奏带、
+# _band_pool() 给每带一份候选行、_generate_spire_map() 摇出节点和不交叉的
+# 连线、_ensure_shop_coverage() 用 DAG 上的 DP 保证一条路线上有 3 个商店。
+#
+# 全部被以撒式楼层取代 (scripts/floor_map.gd)。两者的结构差别决定了这些函数
+# 没有一个能平移过来:
+#
+#   - 尖塔图是**有向无环图**, 按 floor 分层、单向向上, 所以"最优路线"是一个
+#     可以 DP 的东西, _ensure_shop_coverage() 才有意义。房间图是**无向连通
+#     图**, 玩家可以回头, 不存在"一条路线"—— 商店保底因此变成"这一层有没有
+#     商店房", 由 FloorMap.MIN_SHOPS_PER_FLOOR 在生成时保证。
+#   - 尖塔的节点类型按楼层节奏带摇; 房间类型按**死胡同**分配 (以撒的规矩:
+#     特殊房放在要多走一趟才能到的地方, 于是"绕不绕"成为决策)。
+#
+# best_shop_route() 一并删掉了 —— 它的调用方 (tools/test_shop_pricing.gd 和
+# tools/probe_balance_report.gd) 改成按楼层统计商店房。
 
-static func _band_pool(band: String, act: int) -> Array:
-	match band:
-		"early":
-			if act == 3:
-				return [["battle", "challenge", "elite"], ["elite", "battle", "challenge"], ["battle", "shop", "elite"]]
-			return [["battle", "challenge", "battle"], ["event", "battle", "challenge"], ["battle", "shop", "battle"]]
-		"early_mid":
-			if act == 2:
-				return [["elite", "challenge", "shop"], ["battle", "elite", "shop"], ["challenge", "elite", "rest"]]
-			elif act == 3:
-				return [["elite", "challenge", "shop"], ["elite", "event", "rest"], ["shop", "elite", "challenge"]]
-			return [["elite", "challenge", "shop"], ["battle", "elite", "rest"], ["challenge", "elite", "event"]]
-		"mid":
-			if act == 2:
-				return [["elite", "shop", "challenge"], ["challenge", "elite", "elite"], ["event", "elite", "shop"]]
-			elif act == 3:
-				return [["elite", "shop", "challenge"], ["challenge", "elite", "elite"], ["elite", "event", "shop"]]
-			return [["battle", "elite", "challenge"], ["elite", "shop", "battle"], ["challenge", "elite", "rest"]]
-		"late":
-			# 比 mid 更压迫: 双 elite 行出现的概率更高，为 Boss 前的强度爬升铺垫
-			if act >= 2:
-				return [["elite", "elite", "shop"], ["challenge", "elite", "challenge"], ["elite", "event", "elite"]]
-			return [["elite", "challenge", "elite"], ["challenge", "elite", "shop"], ["elite", "battle", "challenge"]]
-		"pre_boss":
-			return [["rest", "shop"], ["shop", "rest"], ["rest", "event"]]
-		_:
-			return [["battle", "battle", "battle"]]
+const FloorMapCls = preload("res://scripts/floor_map.gd")
 
-static func _generate_spire_map() -> void:
-	spire_nodes.clear()
-	spire_connections.clear()
-
-	var floor_types: Array = []
-	for f_idx in range(max_floors):
-		var band = _floor_band(f_idx)
-		match band:
-			"start":
-				floor_types.append(["battle", "battle", "battle"])
-			"boss":
-				floor_types.append(["boss"])
-			_:
-				var pool = _band_pool(band, get_visual_act())
-				pool.shuffle()
-				floor_types.append(pool[0])
-
-	for f_idx in range(floor_types.size()):
-		var types = floor_types[f_idx]
-		var count = types.size()
-		for c_idx in range(count):
-			var node_id = "f%d_n%d" % [f_idx, c_idx]
-			var x_ratio = (c_idx + 1.0) / (count + 1.0)
-			var y_ratio = 1.0 - (f_idx / float(floor_types.size() - 1)) * 0.78 - 0.11
-			
-			var c_mode = ""
-			if types[c_idx] == "challenge":
-				var c_modes = ["bomb_rain", "night_ops", "vault", "night_bombs"]
-				match get_visual_act():
-					1: c_modes = ["bomb_rain", "night_ops", "vault"]
-					2: c_modes = ["night_ops", "bomb_rain", "night_bombs"]
-					_: c_modes = ["night_bombs", "bomb_rain", "night_ops"]
-				c_mode = c_modes[randi() % c_modes.size()]
-
-			spire_nodes[node_id] = {
-				"id": node_id,
-				"floor": f_idx,
-				"col": c_idx,
-				"type": types[c_idx],
-				"challenge_mode": c_mode,
-				"pos_ratio": Vector2(x_ratio, y_ratio),
-				"status": "locked"
-			}
-
-	# Connector-line generation. The old version let every node reach
-	# c_idx-1/c_idx/c_idx+1 independently, which for same-width floor pairs
-	# (the common case) always produced a literal X: node i's edge to i+1
-	# and node i+1's edge to i cross in the middle, and stacked across many
-	# floors that reads as a tangled mess rather than clean branching paths.
-	#
-	# Fix: assign each current-floor node a contiguous, ordered *interval*
-	# of next-floor columns (a stable partition of next_count columns into
-	# curr_count buckets). Interval i is always entirely at-or-left-of
-	# interval i+1, so no two connector lines can ever cross, and every
-	# next-floor column falls in exactly one interval so nothing is
-	# orphaned. Equal-width transitions degenerate to pure verticals under
-	# this scheme, so a capped one-column rightward "merge" edge is added
-	# back in on top for visual variety -- it only ever reaches into the
-	# *next* node's own interval start, never past it, so it still can't
-	# cross that node's edges.
-	for f_idx in range(floor_types.size() - 1):
-		var curr_count = floor_types[f_idx].size()
-		var next_count = floor_types[f_idx + 1].size()
-
-		for c_idx in range(curr_count):
-			var from_id = "f%d_n%d" % [f_idx, c_idx]
-			var lo = int(floor(float(c_idx) * next_count / curr_count))
-			var hi = int(floor(float(c_idx + 1) * next_count / curr_count)) - 1
-			if hi < lo:
-				hi = lo
-			lo = clampi(lo, 0, next_count - 1)
-			hi = clampi(hi, 0, next_count - 1)
-			for t_idx in range(lo, hi + 1):
-				spire_connections.append({"from": from_id, "to": "f%d_n%d" % [f_idx + 1, t_idx]})
-
-			if hi == lo and c_idx + 1 < curr_count:
-				var next_lo = int(floor(float(c_idx + 1) * next_count / curr_count))
-				if next_lo > hi and randf() < 0.5:
-					spire_connections.append({"from": from_id, "to": "f%d_n%d" % [f_idx + 1, next_lo]})
-
-	_ensure_shop_coverage()
-
-	for c_idx in range(floor_types[0].size()):
-		var n_id = "f0_n%d" % c_idx
-		if spire_nodes.has(n_id):
-			spire_nodes[n_id]["status"] = "available"
-
-
-## 一条路线上至少能走到 MIN_SHOPS_PER_ACT 个商店。
+## 生成当前 act 的楼层。
 ##
-## 以前的保底只管"整幅图里存在一个 shop 节点", 而玩家走的是**一条路径**, 不是
-## 整张图 —— 两回事。用 DAG 上的 DP 实测 (tools/probe_balance_report.gd) 最优
-## 路线上的商店数从 1 到 7 都有, 而金币的盈余倍率几乎完全由这个数字决定:
-##
-##     路线商店数   1     2     3     4     5     6     7
-##     盈余倍率   3.82  1.80  1.12  0.75  0.58  0.39  0.29
-##
-## 也就是说抽到 1-2 个商店的那 19.3% 的局, 玩家手里揣着两到四倍花不掉的金币,
-## 整幕的战利品有一多半是废纸; 而这跟他打得好不好毫无关系, 纯粹是发图时摇出来
-## 的。这不是"运气差一点", 是一整套资源系统在这些局里不工作。保底到 3 之后
-## 实测盈余倍率均值 1.07 -> 0.76, p90 1.94 -> 1.22, 3.8 倍那条尾巴整个消失。
-##
-## 顺带一提, 强行插商店**会**压低收入 —— 那一层的战斗节点被换掉了, 上表里
-## 商店多的路线收入反而更低 (7555 -> 3929)。这是设计内的代价, 不是副作用:
-## "多逛店还是多刷钱"本来就该是玩家自己权衡的事。
-const MIN_SHOPS_PER_ACT := 3
+## 种子由 run_seed 和 current_act 混合而成, 而不是直接用 run_seed: 直接用的
+## 话 8 个 act 会拿到同一个种子, 也就是同一张房间图, 整个 run 走 8 遍一模一样
+## 的楼层。混入 act 之后每层不同, 但仍然完全由 run_seed 决定 —— 存档读回来
+## 还是同一层楼, 这正是 run_seed 当初被持久化的理由。
+static func generate_floor() -> void:
+	var floor_seed := hash("%d::floor::%d" % [run_seed, current_act])
+	var data: Dictionary = FloorMapCls.generate(current_act, floor_seed, get_visual_act())
 
-## 可以被改成商店的节点类型。boss 不能动 (它是幕的终点), floor 0 也不动
-## (开局三个都是 battle, 换掉会让新手第一步就进商店而身上只有起始金)。
-const SHOP_CONVERTIBLE := ["battle", "elite", "challenge", "event", "rest"]
-
-static func _ensure_shop_coverage() -> void:
-	# 每补一个就要重算路径 —— 补进去之后"最优路线"本身会变。上限防死循环。
-	for _guard in range(MIN_SHOPS_PER_ACT * 4):
-		var path := best_shop_route()
-		var have := 0
-		for nid in path:
-			if str(spire_nodes[nid]["type"]) == "shop":
-				have += 1
-		if have >= MIN_SHOPS_PER_ACT:
-			return
-
-		# 插在幕长度的 30% / 55% / 80% 附近: 建材和强化要早点拿到才有得用,
-		# 全堆在 pre_boss 等于没给。且不与已有商店相邻 —— 连着两层商店的话,
-		# 第二个货架基本上是空手看橱窗。
-		var want: float = [0.30, 0.55, 0.80][mini(have, 2)] * float(max_floors)
-		var target := ""
-		var best_score := -1.0
-		for i in range(path.size()):
-			var nid: String = path[i]
-			var fl := int(spire_nodes[nid]["floor"])
-			if fl == 0 or fl >= max_floors - 1:
-				continue
-			if not (str(spire_nodes[nid]["type"]) in SHOP_CONVERTIBLE):
-				continue
-			if i > 0 and str(spire_nodes[path[i - 1]]["type"]) == "shop":
-				continue
-			if i + 1 < path.size() and str(spire_nodes[path[i + 1]]["type"]) == "shop":
-				continue
-			var score := 1.0 / (1.0 + absf(float(fl) - want))
-			if score > best_score:
-				best_score = score
-				target = nid
-		if target == "":
-			return # 这条路径实在插不进去, 不硬塞 (硬塞只会塞出连着两层的商店)
-		spire_nodes[target]["type"] = "shop"
-		spire_nodes[target]["challenge_mode"] = ""
+	floor_rooms = data["rooms"]
+	floor_start_room = str(data["start"])
+	floor_boss_room = str(data["boss"])
+	floor_secret_room = str(data["secret"])
+	current_room = floor_start_room
+	secret_room_found = false
+	rooms_cleared = 0
+	current_floor = 0
+	shop_reroll_cost = SHOP_REROLL_BASE
+	battle_type = "battle"
+	challenge_mode = ""
 
 
-## DAG 上求"商店最多"的一条路径, 返回 node_id 数组 (floor 0 到顶层)。
-##
-## 必须是 DP, 不能用随机漫步近似: 真实玩家是**冲着商店走**的。早先用随机漫步
-## 量"整幕无商店"的比例, 报出来 8%, 换成 DP 之后真实值是 0.3% —— 差一个数量级,
-## 而且方向是把问题夸大, 会引出错误的补救。
-static func best_shop_route() -> Array:
-	var succ := {}
-	for c in spire_connections:
-		var f := str(c["from"])
-		if not succ.has(f):
-			succ[f] = []
-		succ[f].append(str(c["to"]))
-
-	var by_floor := {}
-	for nid in spire_nodes:
-		var fl := int(spire_nodes[nid]["floor"])
-		if not by_floor.has(fl):
-			by_floor[fl] = []
-		by_floor[fl].append(str(nid))
-
-	var floors: Array = by_floor.keys()
-	floors.sort()
-	floors.reverse()
-
-	var best := {} # nid -> 从这里往上最多能碰到几个商店
-	var step := {} # nid -> 走哪个后继
-	for fl in floors:
-		for nid in by_floor[fl]:
-			var s := 1 if str(spire_nodes[nid]["type"]) == "shop" else 0
-			var pick := ""
-			var pick_s := -1
-			for t in succ.get(nid, []):
-				if best.has(t) and int(best[t]) > pick_s:
-					pick_s = int(best[t])
-					pick = str(t)
-			if pick != "":
-				s += pick_s
-			best[nid] = s
-			step[nid] = pick
-
-	var head := ""
-	var head_s := -1
-	for nid in by_floor.get(0, []):
-		if int(best.get(nid, -1)) > head_s:
-			head_s = int(best[nid])
-			head = str(nid)
-
-	var path: Array = []
-	var cur := head
-	while cur != "":
-		path.append(cur)
-		cur = str(step.get(cur, ""))
-	return path
+static func has_floor() -> bool:
+	return not floor_rooms.is_empty() and floor_rooms.has(current_room)
 
 
-static func is_node_available(node_id: String) -> bool:
-	if not spire_nodes.has(node_id):
-		return false
-	if visited_node_ids.has(node_id):
-		return false
-	if current_node_id == "":
-		return spire_nodes[node_id]["floor"] == 0
-	
-	for conn in spire_connections:
-		if conn["from"] == current_node_id and conn["to"] == node_id:
-			return true
-	return false
+static func get_room(room_key: String) -> Dictionary:
+	return floor_rooms.get(room_key, {})
 
-static func visit_node(node_id: String) -> void:
-	current_node_id = node_id
-	visited_node_ids.append(node_id)
-	if spire_nodes.has(node_id):
-		spire_nodes[node_id]["status"] = "visited"
-		current_floor = spire_nodes[node_id]["floor"]
-		challenge_mode = str(spire_nodes[node_id].get("challenge_mode", ""))
+
+static func current_room_data() -> Dictionary:
+	return get_room(current_room)
+
+
+## 房间类型 -> main.gd 认识的 battle_type。以撒的房型和原来的节点类型不是
+## 一一对应: 普通房打的是原来的 "battle", boss 房是 "boss", 挑战房是
+## "challenge"; 商店/宝物/事件/休息房不打仗, 但仍然要给一个合法值, 否则
+## main.gd::encounter_size() 会拿 ENCOUNTER_BASE 的默认分支去算遭遇规模。
+static func battle_type_for_room(room: Dictionary) -> String:
+	match str(room.get("type", "normal")):
+		"boss": return "boss"
+		"challenge": return "challenge"
+		"elite": return "elite"
+		_: return "battle"
+
+
+## 走进一个房间。只更新状态, 不负责建地图 —— 那是 main.gd::enter_room() 的事。
+static func visit_room(room_key: String) -> void:
+	if not floor_rooms.has(room_key):
+		return
+	current_room = room_key
+	var room: Dictionary = floor_rooms[room_key]
+	room["visited"] = true
+	battle_type = battle_type_for_room(room)
+	challenge_mode = str(room.get("challenge_mode", ""))
 	save_campaign()
+
+
+## 清空一个房间。这是 current_floor 唯一的增长点 —— 难度按"打赢了多少间"爬,
+## 而不是按"走进了多少间", 否则玩家一路跑过去不打, 难度照样涨。
+##
+## count_progress=false 给商店/宝物/事件这些非战斗房用: 它们一进门就算清空
+## (好让门开着), 但它们不是一场仗, 不该推高难度。把这个参数漏掉的话, 一层
+## 楼里逛几个商店就能把敌人档位顶上去, 而玩家一枪没开。
+static func mark_room_cleared(room_key: String, count_progress: bool = true) -> void:
+	if not floor_rooms.has(room_key):
+		return
+	var room: Dictionary = floor_rooms[room_key]
+	if bool(room.get("cleared", false)):
+		return
+	room["cleared"] = true
+	if count_progress:
+		rooms_cleared += 1
+		current_floor = mini(rooms_cleared, max_floors - 1)
+	save_campaign()
+
+
+## 秘密房被炸开。存进存档, 否则读档之后裂缝墙又长回来了。
+static func mark_secret_found() -> void:
+	if secret_room_found:
+		return
+	secret_room_found = true
+	save_campaign()
+
+
+## 这一层是不是打通了 = boss 房清空了没有。
+static func is_floor_complete() -> bool:
+	if floor_boss_room == "" or not floor_rooms.has(floor_boss_room):
+		return false
+	return bool(floor_rooms[floor_boss_room].get("cleared", false))
+
+
+## 从 room_key 往 d 方向能不能走过去。把"门存在""不是没炸开的秘密门"
+## "本房已清空"三条合到一处 —— 门画成开着但走不过去 (或者反过来) 全都是
+## 这三条在两个地方各写一遍写歪的。
+static func can_exit(room_key: String, d: int) -> bool:
+	var room := get_room(room_key)
+	if room.is_empty():
+		return false
+	return FloorMapCls.is_door_passable(room, d, secret_room_found)
+
+
+## room_key 往 d 方向的邻居 key, 没有就返回 ""。
+static func neighbor_key(room_key: String, d: int) -> String:
+	var c := FloorMapCls.parse_key(room_key)
+	var nk := FloorMapCls.key(c + FloorMapCls.DIR_VECTORS[d])
+	return nk if floor_rooms.has(nk) else ""
+
+
+## 一层楼里还剩几间没清空的战斗房 —— 给 HUD 显示进度用。
+static func combat_rooms_left() -> int:
+	var n := 0
+	for k in floor_rooms.keys():
+		if FloorMapCls.is_combat_room(floor_rooms[k]):
+			n += 1
+	return n
+
+
 
 # ==================== DAILY CHALLENGE ====================
 # One seeded, single-life run per calendar day: same map + same enemy
@@ -582,21 +483,21 @@ static func has_saved_game() -> bool:
 	return FileAccess.file_exists(SAVE_PATH)
 
 static func save_campaign() -> void:
-	# Serialize spire_nodes ensuring pos_ratio is saved as dict
-	var nodes_copy = {}
-	for k in spire_nodes.keys():
-		var node = spire_nodes[k].duplicate()
-		if node.has("pos_ratio") and node["pos_ratio"] is Vector2:
-			node["pos_ratio"] = {"x": node["pos_ratio"].x, "y": node["pos_ratio"].y}
-		nodes_copy[k] = node
+	# floor_rooms 是"字典套字典, 里面还有数组", JSON 能原样吞下去, 不需要像
+	# 原来的 spire_nodes 那样先把 Vector2 拆成 {x, y} —— FloorMap 的房间字典
+	# 刻意只用 int/bool/String/Array, 就是为了免掉那一层手工序列化 (以及它
+	# 对应的、只要漏一个字段就静默丢数据的还原代码)。
+	#
+	# 深拷贝: 直接塞引用的话, 存档写完之后游戏里再改房间状态会连带改掉这个
+	# 字典 —— 虽然此处写完就丢, 但 duplicate(true) 让"存下来的是当时的快照"
+	# 这件事在代码上是显然的。
+	var rooms_copy: Dictionary = floor_rooms.duplicate(true)
 
 	var save_dict = {
 		"mode": int(mode),
 		"player_count": player_count,
 		"current_act": current_act,
 		"current_floor": current_floor,
-		"current_node_id": current_node_id,
-		"visited_node_ids": visited_node_ids,
 		"gold": gold,
 		"player_level": player_level,
 		"player_xp": player_xp,
@@ -621,8 +522,14 @@ static func save_campaign() -> void:
 		"battle_type": battle_type,
 		"challenge_mode": challenge_mode,
 		"run_seed": run_seed,
-		"spire_nodes": nodes_copy,
-		"spire_connections": spire_connections
+		"floor_rooms": rooms_copy,
+		"current_room": current_room,
+		"floor_start_room": floor_start_room,
+		"floor_boss_room": floor_boss_room,
+		"floor_secret_room": floor_secret_room,
+		"secret_room_found": secret_room_found,
+		"rooms_cleared": rooms_cleared,
+		"shop_reroll_cost": shop_reroll_cost,
 	}
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
@@ -646,10 +553,6 @@ static func load_campaign() -> bool:
 	player_count = int(d.get("player_count", 1))
 	current_act = int(d.get("current_act", 1))
 	current_floor = int(d.get("current_floor", 0))
-	current_node_id = str(d.get("current_node_id", ""))
-	visited_node_ids.clear()
-	for v in d.get("visited_node_ids", []):
-		visited_node_ids.append(str(v))
 	gold = int(d.get("gold", 150))
 	player_level = int(d.get("player_level", 1))
 	player_xp = int(d.get("player_xp", 0))
@@ -676,17 +579,77 @@ static func load_campaign() -> bool:
 	# 老存档没有这个字段 -> 0 -> _pick_from_pool() 退回旧的取模行为。
 	# 存档里已经打过的楼层因此和存档时看到的一致, 不会因为升级而变脸。
 	run_seed = int(d.get("run_seed", 0))
-	spire_nodes = d.get("spire_nodes", {})
-	for k in spire_nodes.keys():
-		var n_data = spire_nodes[k]
-		if n_data.has("pos_ratio") and n_data["pos_ratio"] is Dictionary:
-			n_data["pos_ratio"] = Vector2(float(n_data["pos_ratio"].get("x", 0.0)), float(n_data["pos_ratio"].get("y", 0.0)))
-		if n_data.has("floor"):
-			n_data["floor"] = int(n_data["floor"])
-		if n_data.has("col"):
-			n_data["col"] = int(n_data["col"])
-	spire_connections = d.get("spire_connections", [])
+
+	floor_rooms = _load_floor_rooms(d.get("floor_rooms", {}))
+	current_room = str(d.get("current_room", ""))
+	floor_start_room = str(d.get("floor_start_room", ""))
+	floor_boss_room = str(d.get("floor_boss_room", ""))
+	floor_secret_room = str(d.get("floor_secret_room", ""))
+	secret_room_found = bool(d.get("secret_room_found", false))
+	rooms_cleared = int(d.get("rooms_cleared", 0))
+	shop_reroll_cost = int(d.get("shop_reroll_cost", SHOP_REROLL_BASE))
+
 	return true
+
+
+## 保证有一层可以进的楼。**故意不放在 load_campaign() 里** —— 那个函数必须是
+## 纯反序列化。
+##
+## 之前这段兜底写在 load_campaign() 末尾, 于是"读出来的 current_room 不在
+## floor_rooms 里"会触发 generate_floor(), 而它会顺手重置 current_floor /
+## battle_type / challenge_mode / floor_*_room 五个刚刚才读进来的字段。
+## tools/test_persistence_roundtrip.gd 一次点名了全部六个 —— 反射式的往返测试
+## 正是为了逮这种"存进去了、也读出来了、然后被同一个函数覆盖掉"的情况。
+##
+## 另一处修正: 房间图非空但 current_room 对不上时, 只把玩家挪回起始房, **不**
+## 重新生成整层。重新生成会连带抹掉所有已清房间的记录 —— 读个档把打过的进度
+## 清零, 比"位置不对"严重得多。
+static func ensure_floor_ready() -> void:
+	if floor_rooms.is_empty():
+		generate_floor()
+		return
+	if floor_rooms.has(current_room):
+		return
+	if floor_rooms.has(floor_start_room):
+		current_room = floor_start_room
+	else:
+		current_room = str(floor_rooms.keys()[0])
+
+
+## JSON 把所有数字读成 float, 把 doors 读成无类型 Array。房间字典里的
+## col/row/depth 要是留着 float, FloorMap.key() 的 "%d,%d" 会把 3.0 格式化成
+## "3" 看起来没事, 但任何 int 比较 (深度排序、邻居查找) 都会在 float 上做,
+## 而 doors[d] 留着 Variant 会让 `bool(...)` 之外的用法静默出错。统一收敛。
+static func _load_floor_rooms(raw) -> Dictionary:
+	var result: Dictionary = {}
+	if not (raw is Dictionary):
+		return result
+	for k in raw.keys():
+		var r = raw[k]
+		if not (r is Dictionary):
+			continue
+		var room: Dictionary = {
+			"col": int(r.get("col", 0)),
+			"row": int(r.get("row", 0)),
+			"type": str(r.get("type", "normal")),
+			"depth": int(r.get("depth", 0)),
+			"cleared": bool(r.get("cleared", false)),
+			"visited": bool(r.get("visited", false)),
+			"secret": bool(r.get("secret", false)),
+			"challenge_mode": str(r.get("challenge_mode", "")),
+			"doors": _load_bool4(r.get("doors", [])),
+			"secret_doors": _load_bool4(r.get("secret_doors", [])),
+		}
+		result[str(k)] = room
+	return result
+
+
+static func _load_bool4(raw) -> Array:
+	var out: Array = [false, false, false, false]
+	if raw is Array:
+		for i in range(mini(4, raw.size())):
+			out[i] = bool(raw[i])
+	return out
 
 ## Reads either the new {perk_id: stack_count} format or an old save's
 ## Array[String] of unique perk ids (each implicitly 1 stack), so existing

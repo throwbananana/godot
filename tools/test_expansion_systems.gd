@@ -4,11 +4,10 @@ const LandmineHazard = preload("res://scripts/landmine_hazard.gd")
 const LaserPiercer = preload("res://scripts/laser_piercer.gd")
 const EnemyTank = preload("res://scripts/enemy.gd")
 const Bullet = preload("res://scripts/bullet.gd")
-const StagePreviewDialog = preload("res://scripts/stage_preview_dialog.gd")
 const GameState = preload("res://scripts/game_state.gd")
 
 func _init() -> void:
-	print("=== Running Expansion Systems Test (Landmines, Laser, Homing Missiles, Enemy Types, Stage Preview UI) ===")
+	print("=== Running Expansion Systems Test (Landmines, Laser, Homing Missiles, Enemy Types) ===")
 	call_deferred("_run_tests")
 
 func _run_tests() -> void:
@@ -87,15 +86,10 @@ func _run_tests() -> void:
 	assert(enemy_laser.max_health >= 3, "Laser tank should have >= 3 max HP")
 	print("✓ Laser enemy tank verified.")
 
-	# 5. Test Stage Preview Dialog (UI Briefing)
-	print(">>> 5. Testing Stage Preview Dialog UI...")
-	var preview_scene = load("res://scenes/stage_preview_dialog.tscn")
-	var preview_inst = preview_scene.instantiate()
-	root.add_child(preview_inst)
-	GameState.reset_campaign()
-	preview_inst.setup_preview("f0_n0")
-	assert(preview_inst.visible == true, "StagePreviewDialog should be visible after setup")
-	print("✓ StagePreviewDialog UI generation verified.")
+	# 5. 关卡预览对话框已随尖塔路线图一同退役。
+	#    以撒式房间没有"进入战斗前先看一个简报"这一步 —— 玩家是直接走进
+	#    房间的, 房型靠小地图上的颜色点和进门时的 toast 告知。
+	#    楼层生成本身改由 tools/test_floor_map.gd 验收。
 
 	print("\n🎉 ALL EXPANSION SYSTEMS AUTOMATED TESTS PASSED SUCCESSFULLY! 🎉\n")
 	quit(0)

@@ -17,6 +17,13 @@ func _run_tests() -> void:
 	var main_node = main_scene.instantiate()
 	root.add_child(main_node)
 
+	# 以撒式房间: main.tscn 一启动进的是**起始房**, 没有敌人也没有鹰巢
+	# (基地只在没打完的战斗房里存在, 一清空就被 _despawn_base() 撤掉)。
+	# 铲子作用于基地, 所以得先挪进一间战斗房 —— 否则测到的是一间空房,
+	# 报出来的是"20 块钢砖实际 0 块"这种看起来像功能坏了、实际只是站错
+	# 房间的结论。
+	_enter_first_combat_room(main_node)
+
 	var map_container = main_node.get_node_or_null("GameArea/MapContainer")
 	var base_wall_container = main_node.get_node_or_null("GameArea/BaseWallContainer")
 	if not map_container or not base_wall_container:
@@ -140,3 +147,15 @@ func _run_tests() -> void:
 
 	print("\n>>> ALL 4/4 SUBDIVISION & PARTIAL DESTRUCTION TESTS PASSED! <<<\n")
 	quit(0)
+
+
+const GameStateT = preload("res://scripts/game_state.gd")
+const FloorMapT = preload("res://scripts/floor_map.gd")
+
+func _enter_first_combat_room(main_node) -> void:
+	if GameStateT.mode != GameStateT.GameMode.CAMPAIGN:
+		return
+	for k in GameStateT.floor_rooms.keys():
+		if FloorMapT.is_combat_room(GameStateT.floor_rooms[k]):
+			main_node.enter_room(str(k), -1)
+			return

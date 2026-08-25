@@ -335,6 +335,17 @@ func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 	current_scene = _main
 	await process_frame
 
+	# main.tscn 一启动进的是**起始房**, 而起始房不是战斗房: enter_room() 会把
+	# GameState.battle_type 按房型改写回 "battle", 并把 total_enemies 清零。
+	# 也就是说上面那几行在实例化之前设的 battle_type 到这里已经没了 ——
+	# 采 boss/elite 表会静默采成 battle 表, 而遭遇规模会变成 0 (采不到任何车,
+	# 报出来是"均HP 0.00", 看起来像平衡崩了)。
+	#
+	# 所以把当前房间改造成目标类型再走一次真实的 enter_room()。不是绕过房间
+	# 系统, 而是让采样站在正确的房间里。
+	_force_room_battle_type(bt)
+	await process_frame
+
 	_pending = []
 	_main.actors_container.child_entered_tree.connect(_on_child)
 	_main.total_enemies = 100000
@@ -374,3 +385,26 @@ func _sample(bt: String, floor_idx: int, act: int = 1) -> Dictionary:
 		"cheap_pct": 100.0 * float(cheap) / fn,
 		"train_pct": 100.0 * float(train) / fn,
 	}
+
+
+## 把当前房间改造成能产出指定 battle_type 的房型, 再重进一次。
+##
+## 房型 -> battle_type 的映射由 GameState.battle_type_for_room() 定义, 这里是
+## 它的反向表。写成显式反表而不是"直接赋 GameState.battle_type": 后者会在下一次
+## enter_room() 时被再次覆盖, 而且 total_enemies 也不会跟着算出来 ——
+## 遭遇规模必须由真实的 _begin_room_encounter() 产出, 不能在测试里手抄。
+const BT_TO_ROOM_TYPE := {
+	"battle": "normal",
+	"elite": "elite",
+	"challenge": "challenge",
+	"boss": "boss",
+}
+
+func _force_room_battle_type(bt: String) -> void:
+	var rk: String = GameState.current_room
+	if not GameState.floor_rooms.has(rk):
+		return
+	GameState.floor_rooms[rk]["type"] = str(BT_TO_ROOM_TYPE.get(bt, "normal"))
+	GameState.floor_rooms[rk]["cleared"] = false
+	GameState.floor_rooms[rk]["challenge_mode"] = "vault" if bt == "challenge" else ""
+	_main.enter_room(rk, -1)

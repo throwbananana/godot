@@ -57,17 +57,23 @@ func _process(_delta: float) -> void:
 		var float_y = 70.0 + sin(Time.get_ticks_msec() * 0.003) * 4.0
 		banner_sprite.position.y = float_y
 
+## 战役直接进 main.tscn。
+##
+## 以前中间隔着一个 spire_map.tscn (分支路线图, 点节点才进战斗,
+## 打完又退回来)。以撒化之后整层楼都在 main.tscn 里跑 —— 房间之间
+## 是原地重建而不是换场景, 路线图被 HUD 上的小地图取代, 那个中间
+## 场景就没有存在的必要了。
 func _on_continue_pressed() -> void:
 	SoundManager.play_shot(get_tree())
 	if GameState.load_campaign():
-		get_tree().change_scene_to_file("res://scenes/spire_map.tscn")
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
 	else:
 		_start_campaign(1)
 
 func _start_campaign(p_count: int) -> void:
 	SoundManager.play_shot(get_tree())
 	GameState.reset_campaign(p_count)
-	get_tree().change_scene_to_file("res://scenes/spire_map.tscn")
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 func _start_arcade_2p() -> void:
 	SoundManager.play_shot(get_tree())

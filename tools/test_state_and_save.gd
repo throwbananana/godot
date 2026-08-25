@@ -115,8 +115,13 @@ func test_save_load_roundtrip() -> bool:
 	GameState.max_hp_lvl = 3
 	GameState.speed_lvl = 2
 	GameState.current_floor = 3
-	GameState.current_node_id = "f2_n1"
-	GameState.visited_node_ids = ["f0_n0", "f1_n1", "f2_n1"]
+	# 楼层房间图的一些可观测状态: 当前在哪间房、清了几间、秘密房炸开了没。
+	var probe_room := str(GameState.floor_boss_room)
+	GameState.current_room = probe_room
+	GameState.rooms_cleared = 5
+	GameState.secret_room_found = true
+	GameState.floor_rooms[probe_room]["cleared"] = true
+	GameState.floor_rooms[probe_room]["visited"] = true
 	# run_seed 决定这一局抽到哪批手搓地图 (MapTemplates._pick_from_pool)。
 	# 它必须跟着存档走: 存了不读回来的话, 同一个存档每次读进来都会换一批
 	# 地形 —— 已经打过的楼层也会跟着变脸。
@@ -144,21 +149,39 @@ func test_save_load_roundtrip() -> bool:
 	if GameState.max_hp_lvl != 3: return false
 	if GameState.speed_lvl != 2: return false
 	if GameState.current_floor != 3: return false
-	if GameState.current_node_id != "f2_n1": return false
-	if GameState.visited_node_ids != ["f0_n0", "f1_n1", "f2_n1"]: return false
+	if GameState.current_room != probe_room:
+		print("    Error: current_room 没存回来 (存 %s, 读 %s)" % [probe_room, GameState.current_room])
+		return false
+	if GameState.rooms_cleared != 5: return false
+	if not GameState.secret_room_found:
+		print("    Error: secret_room_found 没存回来 —— 读档后裂缝墙会重新长回去")
+		return false
 	if GameState.run_seed != saved_seed:
 		print("    Error: run_seed 没存回来 (存 %d, 读 %d) —— 地图会每次读档都变"
 			% [saved_seed, GameState.run_seed])
 		return false
 
-	for k in GameState.spire_nodes.keys():
-		var node = GameState.spire_nodes[k]
-		if not (node["pos_ratio"] is Vector2):
-			print("    Error: pos_ratio is not Vector2")
+	# 嵌套结构的还原。floor_rooms 在 test_persistence_roundtrip.gd 里是被
+	# EXEMPT 掉的 (那份测试用 str() 比字段, 比不了字典套字典), 所以它的
+	# 类型还原必须在这里盯。JSON 把所有数字读成 float —— col/row/depth
+	# 要是留着 float, FloorMap 里所有整数比较和键拼接都会在 float 上做。
+	if GameState.floor_rooms.is_empty():
+		print("    Error: floor_rooms 读回来是空的")
+		return false
+	for k in GameState.floor_rooms.keys():
+		var room = GameState.floor_rooms[k]
+		if typeof(room["col"]) != TYPE_INT or typeof(room["row"]) != TYPE_INT:
+			print("    Error: 房间 %s 的 col/row 不是 int" % k)
 			return false
-		if typeof(node["floor"]) != TYPE_INT:
-			print("    Error: floor is not int")
+		if typeof(room["depth"]) != TYPE_INT:
+			print("    Error: 房间 %s 的 depth 不是 int" % k)
 			return false
+		if not (room["doors"] is Array) or room["doors"].size() != 4:
+			print("    Error: 房间 %s 的 doors 不是长度 4 的数组" % k)
+			return false
+	if not bool(GameState.floor_rooms[probe_room]["cleared"]):
+		print("    Error: 房间的 cleared 标记没穿过存档")
+		return false
 	
 	GameState.delete_saved_game()
 	return true

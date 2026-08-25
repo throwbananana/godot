@@ -2,14 +2,17 @@ extends SceneTree
 
 ## 商店经济结构的回归测试 —— 锁住三条"不会报错但会让资源失去意义"的性质。
 ##
-## 1. 一条路线上至少能走到 GameState.MIN_SHOPS_PER_ACT 个商店。商店是
+## 1. 每一层楼至少有 FloorMap.MIN_SHOPS_PER_FLOOR 个**可达的**商店房。商店是
 ##    GameState.structure_inventory 的**唯一**来源 (add_structure_stock 全项目
 ##    只被 shop_dialog.gd 调用), 所以商店不够 = 这一幕的建造系统半瘫, 热键栏
 ##    大半是空的, 而玩家无从分辨这是运气还是功能坏了。
 ##
-##    注意断言的是**路线**而不是整幅图: 最早的版本只查"图里存在 shop 节点",
-##    可玩家走的是一条路径, 分散在互不相通的支路上的商店对他毫无意义。实测
-##    路线商店数从 1 到 7 都有, 而它几乎单独决定了金币的盈余倍率。
+##    尖塔时代这条断言的是"**一条路线上**能走到几个商店" —— 那张图是有向无环
+##    的, 玩家单向向上爬, 分散在互不相通的支路上的商店等于不存在。以撒式房间图
+##    是**无向连通图**, 玩家可以回头, "一条路线"这个概念不再成立: 只要商店房
+##    在图上且连通, 玩家就走得到。所以断言换成"这一层有商店房"+"它从起始房可达"。
+##    可达性单独查是因为商店是分给死胡同的, 而死胡同由门的邻接关系算出 —— 门
+##    的生成一旦出错, 商店房会"存在"但四面无门, 只数数量的话这种图能蒙混过关。
 ##
 ## 2. 售价要随楼层缩放。表里的价格是"第 1 层的价格", 而收入侧一路在涨 ——
 ##    实测一层的期望金币从 91 G 涨到 678 G。价格不动的话, 金币在中后期就
@@ -21,6 +24,7 @@ extends SceneTree
 
 const GameState = preload("res://scripts/game_state.gd")
 const BalanceLog = preload("res://scripts/balance_log.gd")
+const FloorMap = preload("res://scripts/floor_map.gd")
 
 var failures: int = 0
 
@@ -57,31 +61,30 @@ func _run() -> void:
 		quit(0)
 
 
-## 保底管的是"**一条路线上**能走到几个商店", 不是"整幅图里存在几个"。
+## 每一层楼都要有商店房, 而且它得能从起始房走到。
 ##
-## 玩家走的是一条路径。整幅图有五个商店但分散在互不相通的三条支路上, 对玩家
-## 来说和只有一个没区别。实测 (tools/probe_balance_report.gd) 最优路线上的
-## 商店数直接决定金币的盈余倍率:
-##
-##     路线商店数   1     2     3     4     5     6     7
-##     盈余倍率   3.82  1.80  1.12  0.75  0.58  0.39  0.29
-##
-## 保底之前 21.6% 的局最优路线只有 1-2 个商店, 那些局玩家揣着两到四倍花不掉的
-## 金币, 而这跟他打得好不好毫无关系。
+## 数量和可达性分开查是有意的: 商店是分给**死胡同**的 (FloorMap._assign_types),
+## 而死胡同是从门的邻接关系算出来的 —— 门的生成一旦出错, 商店房会"存在"但四面
+## 无门, 只数数量的话这种图能完美蒙混过关。
 func _check_shop_guaranteed() -> void:
-	print("\n--- 一条路线上至少能走到 %d 个商店 ---" % GameState.MIN_SHOPS_PER_ACT)
+	print("\n--- 每层至少 %d 个可达的商店房 ---" % FloorMap.MIN_SHOPS_PER_FLOOR)
 	var runs := 400
 	var bad := 0
+	var unreachable := 0
 	var min_shops := 999
 	var hist := {}
 	var rows: Array = []
 	for i in range(runs):
 		GameState.reset_campaign(1)
 		var count := 0
-		for nid in GameState.best_shop_route():
-			if str(GameState.spire_nodes[nid]["type"]) == "shop":
-				count += 1
-		if count < GameState.MIN_SHOPS_PER_ACT:
+		var reachable := _reachable_room_keys()
+		for k in GameState.floor_rooms.keys():
+			if str(GameState.floor_rooms[k]["type"]) != "shop":
+				continue
+			count += 1
+			if not reachable.has(str(k)):
+				unreachable += 1
+		if count < FloorMap.MIN_SHOPS_PER_FLOOR:
 			bad += 1
 		min_shops = mini(min_shops, count)
 		hist[count] = int(hist.get(count, 0)) + 1
@@ -96,13 +99,38 @@ func _check_shop_guaranteed() -> void:
 	for k in keys:
 		parts.append("%d:%.1f%%" % [k, 100.0 * float(hist[k]) / float(runs)])
 
+	if unreachable > 0:
+		fail("%d 个商店房从起始房走不到 —— 门的生成有问题" % unreachable)
+
 	if bad == 0:
-		ok("%d 局的最优路线全部 >= %d 个商店 (最少 %d, 分布 %s)"
-			% [runs, GameState.MIN_SHOPS_PER_ACT, min_shops, " ".join(parts)])
+		ok("%d 层全部 >= %d 个商店房且均可达 (最少 %d, 分布 %s)"
+			% [runs, FloorMap.MIN_SHOPS_PER_FLOOR, min_shops, " ".join(parts)])
 	else:
-		fail("%d/%d 局的最优路线不足 %d 个商店 (最少只有 %d, 分布 %s) —— "
-			% [bad, runs, GameState.MIN_SHOPS_PER_ACT, min_shops, " ".join(parts)]
+		fail("%d/%d 层不足 %d 个商店房 (最少只有 %d, 分布 %s) —— "
+			% [bad, runs, FloorMap.MIN_SHOPS_PER_FLOOR, min_shops, " ".join(parts)]
 			+ "这些局的金币有一大半没有地方花, 而且建材也拿不够")
+
+
+## 从起始房沿**门**做无向 BFS。走门而不是走格子邻接 —— 要验收的正是门。
+func _reachable_room_keys() -> Dictionary:
+	var seen := {}
+	var start := str(GameState.floor_start_room)
+	if not GameState.floor_rooms.has(start):
+		return seen
+	seen[start] = true
+	var queue: Array = [start]
+	while not queue.is_empty():
+		var k: String = queue.pop_front()
+		var c := FloorMap.parse_key(k)
+		var doors: Array = GameState.floor_rooms[k]["doors"]
+		for d in range(4):
+			if not bool(doors[d]):
+				continue
+			var nk := FloorMap.key(c + FloorMap.DIR_VECTORS[d])
+			if GameState.floor_rooms.has(nk) and not seen.has(nk):
+				seen[nk] = true
+				queue.append(nk)
+	return seen
 
 
 func _check_price_scales_with_floor() -> void:

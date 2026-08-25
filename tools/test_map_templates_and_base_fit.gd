@@ -13,6 +13,7 @@ extends SceneTree
 const MapTemplates = preload("res://scripts/map_templates.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const MapDirector = preload("res://scripts/map_director.gd")
+const FloorMap = preload("res://scripts/floor_map.gd")
 
 # 连通性判定统一走 MapDirector.reachable_from_base()。
 #
@@ -86,8 +87,11 @@ func _run() -> void:
 			for r in range(13):
 				for c in range(13):
 					var v = int(g[r][c])
-					if v < 0 or v > 29:
-						errs.append("(%d,%d) 地形号 %d 越界 (合法 0-29)" % [r, c, v])
+					# 合法上界跟着 map_templates.gd 顶上那份图例走。加了 30
+					# (敌方护盾塔) 之后这里一直卡在 29, 于是唯一用到 30 的
+					# TEMPLATE_ENEMY_SHIELD_BASTION 从落地起就在报越界。
+					if v < 0 or v > 30:
+						errs.append("(%d,%d) 地形号 %d 越界 (合法 0-30)" % [r, c, v])
 			# 鹰巢与围墙由 main.gd::_spawn_base_and_walls() 自己生成在
 			# row11 col5-7 / row12 col5,7, 模板必须把这几格留空, 否则会和
 			# 自动生成的围墙叠在一起
@@ -274,6 +278,12 @@ func _check_base_alignment() -> void:
 	root.add_child(main_inst)
 	await process_frame
 
+	# 以撒式房间下, 起始房既没有敌人也**没有鹰巢** —— 基地只在还没打完的战斗房
+	# 里存在, 而且清空之后会被 _despawn_base() 撤掉 (否则它那一坨会永久堵住底边
+	# 中段)。所以要先走进一间战斗房再验。
+	_enter_first_combat_room(main_inst)
+	await process_frame
+
 	var tile_size := 48.0
 	var base_inst = main_inst.get("base_instance")
 	if base_inst == null:
@@ -287,11 +297,20 @@ func _check_base_alignment() -> void:
 		ok("鹰巢位置 %s" % str(base_inst.position))
 
 	var map_container = main_inst.get_node("GameArea/MapContainer")
+	# border 组的成员现在有两类: 边墙本身, 以及关着的门 (RoomDoor 内部那个
+	# blocker 也挂 border —— 否则一颗地雷就能在没清空的房间里炸出个出口)。
+	# 门是 RoomDoor 的子节点, 不是 MapContainer 的直接子节点, 所以这里只数到墙。
 	var borders = map_container.get_children().filter(func(c): return c.is_in_group("border"))
-	if borders.size() != 4:
-		fail("边界墙应有 4 面, 实际 %d" % borders.size())
+	# 每条边: 没门 = 1 段整墙, 有门 = 正中缺一格, 拆成 2 段。所以总数 = 4 + 门数。
+	# 这一条同时验收了"门确实在墙上开了个洞"—— 段数不对就说明缺口没切出来,
+	# 而那种情况在画面上看起来完全正常 (门画在那儿), 只是走不过去。
+	var door_count: int = main_inst.doors.size()
+	var expected_borders: int = 4 + door_count
+	if borders.size() != expected_borders:
+		fail("边界墙应有 %d 段 (4 条边 + %d 扇门各多切一段), 实际 %d"
+			% [expected_borders, door_count, borders.size()])
 	else:
-		ok("四面边界墙齐全")
+		ok("边界墙 %d 段, 对应 %d 扇门" % [borders.size(), door_count])
 
 	var bottom_border: StaticBody2D = null
 	for b in borders:
@@ -309,3 +328,18 @@ func _check_base_alignment() -> void:
 
 	main_inst.queue_free()
 	await process_frame
+
+
+## 走进本层第一间还没打完的战斗房。
+##
+## 以撒式房间下, main.tscn 一启动进的是**起始房** —— 没有敌人, 也没有鹰巢
+## (基地只在战斗房里生成, 而且一清空就被撤掉)。任何要验鹰巢/铲子/敌人的测试
+## 都得先挪进一间战斗房, 否则测到的是一间空房, 报出来的是"鹰巢没有生成"这种
+## 看起来像功能坏了、实际只是站错房间的结论。
+func _enter_first_combat_room(main_node) -> void:
+	if GameState.mode != GameState.GameMode.CAMPAIGN:
+		return
+	for k in GameState.floor_rooms.keys():
+		if FloorMap.is_combat_room(GameState.floor_rooms[k]):
+			main_node.enter_room(str(k), -1)
+			return

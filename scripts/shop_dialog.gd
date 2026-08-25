@@ -89,8 +89,52 @@ func _update_ui() -> void:
 	UIThemeHelper.focus_first(self)
 
 func _generate_shop_inventory() -> void:
-	current_shop_items.clear()
-	var all_items: Array[Dictionary] = [
+	current_shop_items = build_inventory()
+
+
+## 货架生成。static 且不碰任何 UI —— 以撒式的物理底座
+## (scripts/shop_stand.gd) 和这个对话框要用**同一份**货源与定价。
+## 抄一份到底座那边的话, 两张表会在下一次调价时分叉, 而平衡探针
+## (tools/probe_balance_report.gd) 只盯得住其中一份。
+static func build_inventory() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var all_items: Array[Dictionary] = _upgrade_pool()
+	all_items.shuffle()
+	for i in range(min(6, all_items.size())):
+		var it = all_items[i].duplicate()
+		it["cost"] = _price_for(int(it["cost"]))
+		it["sold_out"] = false
+		out.append(it)
+
+	# Building supplies are appended in full, every visit -- not part of the
+	# shuffle-and-pick-6 above.
+	for b in BUILDING_ITEMS:
+		var it2 = b.duplicate()
+		it2["cost"] = _price_for(int(it2["cost"]))
+		it2["sold_out"] = false
+		out.append(it2)
+	return out
+
+
+## 按 id 取一件商品的完整定义 (含图标/描述/**基础**价, 未经楼层缩放)。
+##
+## 房间里的货架只把 **id 和成交价** 存进存档 (见 main.gd::_ensure_shop_stock),
+## 图标和长描述每次从这里现查 —— 把整个商品字典序列化进 JSON 会让存档
+## 肿上好几 KB, 而且改一句描述文案就会和老存档对不上。
+static func item_by_id(item_id: String) -> Dictionary:
+	for b in BUILDING_ITEMS:
+		if str(b["id"]) == item_id:
+			return b.duplicate()
+	for it in _upgrade_pool():
+		if str(it["id"]) == item_id:
+			return it.duplicate()
+	return {}
+
+
+## 非建材的强化池, 11 种全在。这里是它们的**唯一**定义 ——
+## build_inventory() 从这里抽 6 种上架, item_by_id() 从这里回查。
+static func _upgrade_pool() -> Array[Dictionary]:
+	return [
 		{
 			"id": "star_tier",
 			"name": "战车升阶模块 (Star Upgrade)",
@@ -181,21 +225,6 @@ func _generate_shop_inventory() -> void:
 		}
 	]
 
-	all_items.shuffle()
-	for i in range(min(6, all_items.size())):
-		var it = all_items[i].duplicate()
-		it["cost"] = _price_for(int(it["cost"]))
-		it["sold_out"] = false
-		current_shop_items.append(it)
-
-	# Building supplies are appended in full, every visit -- not part of the
-	# shuffle-and-pick-6 above.
-	for b in BUILDING_ITEMS:
-		var it = b.duplicate()
-		it["cost"] = _price_for(int(it["cost"]))
-		it["sold_out"] = false
-		current_shop_items.append(it)
-
 
 ## 售价随楼层缩放。表里写死的价格是"第 1 层的价格"。
 ##
@@ -241,7 +270,7 @@ static func _reward_targets() -> Array:
 	return [1, 2] if GameState.player_count == 2 else [1]
 
 
-func _can_buy_item(item_id: String) -> bool:
+static func can_buy_item(item_id: String) -> bool:
 	if item_id == "star_tier":
 		# Only default-branch players actually cap at tier 3 (multi-shot/plasma
 		# progression). Once a branch is picked, this item redirects to a
@@ -285,17 +314,19 @@ static func _fire_rate_capped_for(player_id: int, extra_rate: float) -> bool:
 	m.sync_from_game_state()
 	return m.is_fire_rate_capped(player_id, extra_rate)
 
-func _grant_perk_to_team(perk_id: String) -> void:
+static func _grant_perk_to_team(perk_id: String) -> void:
 	for pid in _reward_targets():
 		GameState.grant_perk_stack(perk_id, pid)
 
 
-func _apply_item_purchase(item_id: String) -> void:
+## 执行一笔购买。**不扣金币**(调用方负责), 也不碰 UI —— 返回一句提示文案,
+## 由调用方决定是弹对话框 toast 还是在战场 HUD 上显示。
+## 对话框和以撒式底座共用这一份发放逻辑。
+static func apply_item_purchase(item_id: String) -> String:
 	for b in BUILDING_ITEMS:
 		if b["id"] == item_id:
 			GameState.add_structure_stock(item_id, 1)
-			_show_toast("%s 已入库！当前库存 x%d，可在热键栏放置。" % [b["name"], GameState.get_structure_stock(item_id)])
-			return
+			return "%s 已入库！当前库存 x%d，可在热键栏放置。" % [b["name"], GameState.get_structure_stock(item_id)]
 
 	match item_id:
 		"star_tier":
@@ -303,44 +334,46 @@ func _apply_item_purchase(item_id: String) -> void:
 			for pid in _reward_targets():
 				GameState.grant_star_tier_reward(pid)
 			if was_default:
-				_show_toast("战车成功升级至阶级 %d !" % (GameState.player_tier + 1))
+				return "战车成功升级至阶级 %d !" % (GameState.player_tier + 1)
 			else:
-				_show_toast("已选定专属流派，武器模块转化为永久攻击力 +1！")
+				return "已选定专属流派，武器模块转化为永久攻击力 +1！"
 		"heavy_armor":
 			GameState.max_hp_lvl += 1
-			_show_toast("装甲升级！最大生命值 +1")
+			return "装甲升级！最大生命值 +1"
 		"autoloader":
 			GameState.fire_rate_lvl += 1
-			_show_toast("装填速度大幅提升！")
+			return "装填速度大幅提升！"
 		"turbo_engine":
 			GameState.speed_lvl += 1
-			_show_toast("战车引擎输出功率强化！")
+			return "战车引擎输出功率强化！"
 		"extra_life":
 			# player_lives 和 p2_lives 是分开的两个字段 —— 只加前者的话双人
 			# 模式下 2P 买了命也没命。event_dialog._grant_life() 同理。
 			GameState.player_lives += 1
 			if GameState.player_count == 2:
 				GameState.p2_lives += 1
-			_show_toast("呼叫近卫坦克增援，备用生命 +1！")
+			return "呼叫近卫坦克增援，备用生命 +1！"
 		"steel_shovel":
 			GameState.builder_lvl += 1
-			_show_toast("基地防御掩体强度大幅提升！")
+			return "基地防御掩体强度大幅提升！"
 		"plasma_mod":
 			GameState.atk_bonus += 1
-			_show_toast("主炮口径扩容，攻击力 +1！")
+			return "主炮口径扩容，攻击力 +1！"
 		"landmine_crate":
 			GameState.player_xp += 50
-			_show_toast("获得地雷战术补给，经验 +50！")
+			return "获得地雷战术补给，经验 +50！"
 		"ricochet_rounds":
 			_grant_perk_to_team("ricochet_rounds")
 			var bounces = int(GameState.unlocked_perks.get("ricochet_rounds", 0))
-			_show_toast("反射炮弹改装完成！当前可反弹 %d 次 —— 小心别被自己的流弹打中！" % bounces)
+			return "反射炮弹改装完成！当前可反弹 %d 次 —— 小心别被自己的流弹打中！" % bounces
 		"amphibious_hull":
 			_grant_perk_to_team("amphibious_hull")
-			_show_toast("两栖化改装完成！可以下水了，但陆地机动力永久 -50%！")
+			return "两栖化改装完成！可以下水了，但陆地机动力永久 -50%！"
 		"armor_piercing_rounds":
 			_grant_perk_to_team("armor_piercing_rounds")
-			_show_toast("贯穿装甲弹装填完毕！可洞穿墙体，但再也无法拦截敌方炮弹！")
+			return "贯穿装甲弹装填完毕！可洞穿墙体，但再也无法拦截敌方炮弹！"
+	return ""
+
 
 func _render_item_cards() -> void:
 	for child in items_grid.get_children():
@@ -401,7 +434,7 @@ func _render_item_cards() -> void:
 			btn_buy.modulate = Color(0.5, 0.5, 0.5, 0.6)
 		else:
 			var can_afford = (GameState.gold >= item["cost"])
-			var can_buy_cond = _can_buy_item(item["id"])
+			var can_buy_cond = can_buy_item(item["id"])
 			btn_buy.text = "💰 %d G - 购买" % item["cost"]
 			btn_buy.disabled = not (can_afford and can_buy_cond)
 			if not can_buy_cond:
@@ -423,13 +456,13 @@ func _on_buy_item(item: Dictionary) -> void:
 	# pressed, 所以今天走 UI 点不出问题 —— 但"扣了钱、grant_perk_stack()
 	# 返回 false、什么都没给, 还弹一句购买成功"离得只有一个新调用点那么远,
 	# 而且真出了也不会报错。
-	if not _can_buy_item(item["id"]):
+	if not can_buy_item(item["id"]):
 		_show_toast("已达上限，无法再购买！")
 		return
 
 	GameState.gold -= item["cost"]
 	item["sold_out"] = true
-	_apply_item_purchase(item["id"])
+	_show_toast(apply_item_purchase(str(item["id"])))
 	SoundManager.play_level_up(get_tree())
 	_update_ui()
 

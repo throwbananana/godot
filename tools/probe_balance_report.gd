@@ -41,7 +41,12 @@ const BATTLE_TYPES := ["battle", "elite", "challenge", "boss"]
 ## 节点类型 -> 战斗类型。shop/rest/event 不打仗, 不产金。
 const NODE_TO_BATTLE := {
 	"battle": "battle", "elite": "elite", "challenge": "challenge", "boss": "boss",
+	# 以撒式房间图里普通战斗房的 type 是 "normal" (FloorMap._new_room 的默认值),
+	# 而它打的是 battle_type == "battle" 的那张遭遇表。
+	"normal": "battle",
 }
+
+const FloorMap = preload("res://scripts/floor_map.gd")
 
 var _main: Node = null
 var _pending: Array = []
@@ -228,8 +233,15 @@ func _sample_floor(bt: String, floor_idx: int) -> Dictionary:
 	current_scene = _main
 	await process_frame
 
-	# start_game() 已经按 battle_type 定好了真实遭遇规模, 先读下来再覆盖 ——
-	# 这个数字不能在探针里复刻 (main.gd::start_game 改了这里就悄悄错了)。
+	# main.tscn 一启动进的是**起始房**, 而起始房不是战斗房: enter_room() 会把
+	# GameState.battle_type 按房型改写回 "battle", 并把 total_enemies 清零。
+	# 不先把当前房间改造成目标房型的话, 下面读到的遭遇规模是 0, 而 roll 表也会
+	# 一律采成 battle 表。改完重进一次走的仍然是真实的 enter_room() 路径。
+	_force_room_battle_type(bt)
+	await process_frame
+
+	# _begin_room_encounter() 已经按 battle_type 定好了真实遭遇规模, 先读下来
+	# 再覆盖 —— 这个数字不能在探针里复刻 (改了那边这里就悄悄错了)。
 	var encounter := int(_main.total_enemies)
 
 	_pending = []
@@ -303,11 +315,15 @@ func _sample_floor(bt: String, floor_idx: int) -> Dictionary:
 
 # ---------------------------------------------------------------- 幕经济
 
-## 每一局: 生成真实的 spire 图, 用 DP 找"商店最多"的那条路线, 沿路累加收入。
+## 每一局: 生成真实的楼层房间图, 沿 BFS 序走完整层, 累加收入与可花上限。
 ##
-## 为什么必须 DP 而不是随机漫步: 真实玩家是**冲着商店走**的。早先用随机漫步
-## 测出"8% 的局整幕无商店", 换成 DP 之后真实值是 0.3% —— 差了一个数量级,
-## 而且方向是把问题夸大, 会引出错误的补救。
+## 尖塔时代这里是一个 DP ("找商店最多的那条路线"), 因为那张图是有向无环、
+## 玩家单向向上爬, "走哪条路"是一个会漏掉大半张图的真实选择。房间图是
+## 无向连通的, 玩家可以回头把整层逛完 —— "最优路线"不再存在, 上限就是全图。
+##
+## ⚠️ 这一改使得旧的盈余倍率基准线 (均值 0.68 / p90 1.01) **不再可比** ——
+##    收入侧从"一条路线上的十几场"变成"整层十几个房间", 支出侧从"路线上
+##    保底 3 个商店"变成"整层 1-2 个商店"。需要重新采样定基准。
 func _report_acts() -> void:
 	print("\n--- 幕经济 (%d 局, 最优路线) ---" % acts)
 	var rows: Array = []
@@ -318,7 +334,7 @@ func _report_acts() -> void:
 
 	for i in range(acts):
 		GameState.reset_campaign(1)
-		var res := _best_route()
+		var res := _floor_econ()
 		var shops := int(res["shops"])
 		var income := float(res["income"])
 		# 能花掉的上限 = 每到一个商店把货架买光 (含该层价格缩放)
@@ -352,74 +368,69 @@ func _report_acts() -> void:
 		print("  [注意] 盈余倍率 > 1.35 —— 金币在中后期没有东西可买, 不再是需要权衡的资源")
 
 
-## 在 DAG 上求"商店最多"的路线, 同时带出这条路线上的收入与可花上限。
-func _best_route() -> Dictionary:
-	var succ := {}
-	for c in GameState.spire_connections:
-		var f := str(c["from"])
-		if not succ.has(f):
-			succ[f] = []
-		succ[f].append(str(c["to"]))
-
-	# 按楼层从后往前推
-	var best := {}   # node_id -> {shops, income, spend, battles}
-	var by_floor := {}
-	for nid in GameState.spire_nodes:
-		var fl := int(GameState.spire_nodes[nid]["floor"])
-		if not by_floor.has(fl):
-			by_floor[fl] = []
-		by_floor[fl].append(str(nid))
-
-	var floors := by_floor.keys()
-	floors.sort()
-	floors.reverse()
-
-	for fl in floors:
-		for nid in by_floor[fl]:
-			var node = GameState.spire_nodes[nid]
-			var ntype := str(node["type"])
-			var self_shop := 1 if ntype == "shop" else 0
-			var self_income := 0.0
-			var self_battle := 0
-			if NODE_TO_BATTLE.has(ntype):
-				var key := "%d|%s" % [fl, NODE_TO_BATTLE[ntype]]
-				if _floor_table.has(key):
-					self_income = float(_floor_table[key]["income"])
-					self_battle = 1
-			# 在这一层的商店里能花掉多少 (价格随层缩放)
-			var self_spend := 0.0
-			if self_shop == 1:
-				self_spend = _shelf_at(fl)
-
-			var b := {"shops": self_shop, "income": self_income, "spend": self_spend, "battles": self_battle}
-			if succ.has(nid):
-				var pick = null
-				for nxt in succ[nid]:
-					if not best.has(nxt):
-						continue
-					var cand = best[nxt]
-					# 先比商店数, 再比收入 —— 玩家优先保证有地方花钱
-					if pick == null or int(cand["shops"]) > int(pick["shops"]) \
-							or (int(cand["shops"]) == int(pick["shops"]) and float(cand["income"]) > float(pick["income"])):
-						pick = cand
-				if pick != null:
-					b["shops"] += int(pick["shops"])
-					b["income"] += float(pick["income"])
-					b["spend"] += float(pick["spend"])
-					b["battles"] += int(pick["battles"])
-			best[nid] = b
-
-	var top = null
-	for nid in by_floor.get(0, []):
-		if not best.has(nid):
-			continue
-		var cand = best[nid]
-		if top == null or int(cand["shops"]) > int(top["shops"]) \
-				or (int(cand["shops"]) == int(top["shops"]) and float(cand["income"]) > float(top["income"])):
-			top = cand
-	if top == null:
+## 走一遍整层楼, 累加收入与可花上限。
+##
+## 这里原本是"在 DAG 上求商店最多的那条路线"的 DP —— 尖塔图是有向无环、玩家
+## 单向向上爬, 所以"走哪条路"是一个真实的、会漏掉大半张图的选择, 必须 DP。
+##
+## 以撒式房间图是**无向连通图**: 玩家清完一间房走出来还能回头, 没有任何东西
+## 阻止他把整层楼逛完。所以"最优路线"这个概念消失了 —— 上限就是**全图**。
+## DP 换成一次 BFS 遍历。
+##
+## 保留 BFS **顺序**而不是直接对全图求和, 是因为收入和售价都随 current_floor
+## 缩放, 而 current_floor 的新语义是"已清房间数" (见 game_state.gd)。也就是
+## 说同一间房, 早打和晚打的收益不一样, 顺序有影响。BFS 序是对"由近及远清图"
+## 这个真实走法的近似。
+func _floor_econ() -> Dictionary:
+	var start := str(GameState.floor_start_room)
+	if not GameState.floor_rooms.has(start):
 		return {"shops": 0, "income": 0.0, "spend": 1.0, "battles": 0}
-	return top
+
+	# 沿门做无向 BFS, 得到一个"由近及远"的房间序。
+	var order: Array = []
+	var seen := {start: true}
+	var queue: Array = [start]
+	while not queue.is_empty():
+		var k: String = queue.pop_front()
+		order.append(k)
+		var c := FloorMap.parse_key(k)
+		var doors: Array = GameState.floor_rooms[k]["doors"]
+		for d in range(4):
+			if not bool(doors[d]):
+				continue
+			var nk := FloorMap.key(c + FloorMap.DIR_VECTORS[d])
+			if GameState.floor_rooms.has(nk) and not seen.has(nk):
+				seen[nk] = true
+				queue.append(nk)
+
+	var shops := 0
+	var income := 0.0
+	var spend := 0.0
+	var battles := 0
+	var cleared := 0
+
+	for k in order:
+		var room: Dictionary = GameState.floor_rooms[k]
+		var rtype := str(room["type"])
+		if rtype == "start":
+			continue
+		# 秘密房要炸墙, 不能算进"必然拿得到"的收入上限里。
+		if bool(room.get("secret", false)):
+			continue
+
+		var fl: int = mini(cleared, GameState.max_floors - 1)
+
+		if rtype == "shop":
+			shops += 1
+			spend += _shelf_at(fl)
+		elif NODE_TO_BATTLE.has(rtype):
+			var key := "%d|%s" % [fl, NODE_TO_BATTLE[rtype]]
+			if _floor_table.has(key):
+				income += float(_floor_table[key]["income"])
+			battles += 1
+			cleared += 1
+
+	return {"shops": shops, "income": income, "spend": maxf(1.0, spend), "battles": battles}
 
 
 ## floor 0 的整货架价, 由 _shelf_prices() 在采样阶段填好
@@ -427,3 +438,19 @@ var _shelf_base: float = 0.0
 
 func _shelf_at(fl: int) -> float:
 	return _shelf_base * (1.0 + float(fl) * _price_slope())
+
+
+## 把当前房间改造成能产出指定 battle_type 的房型, 再重进一次。
+## 反向表对应 GameState.battle_type_for_room()。理由见 _sample_floor() 里的注释。
+const BT_TO_ROOM_TYPE := {
+	"battle": "normal", "elite": "elite", "challenge": "challenge", "boss": "boss",
+}
+
+func _force_room_battle_type(bt: String) -> void:
+	var rk: String = GameState.current_room
+	if not GameState.floor_rooms.has(rk):
+		return
+	GameState.floor_rooms[rk]["type"] = str(BT_TO_ROOM_TYPE.get(bt, "normal"))
+	GameState.floor_rooms[rk]["cleared"] = false
+	GameState.floor_rooms[rk]["challenge_mode"] = "vault" if bt == "challenge" else ""
+	_main.enter_room(rk, -1)

@@ -21,8 +21,7 @@ const EXEMPT := {
 	"_daily_best_score":   "每日挑战纪录, 存在独立的 daily_challenge_save.json 里",
 	"_daily_best_date":    "同上",
 	"_daily_record_loaded":"同上, 且是缓存标志而非数据",
-	"spire_nodes":         "有嵌套结构, 由 test_state_and_save.gd 单独验 (含 pos_ratio 的 Vector2 还原)",
-	"spire_connections":   "同上",
+	"floor_rooms":         "字典套字典还带数组, 本测试用 str() 比字段值, 比不了嵌套结构; 由 test_state_and_save.gd 单独验类型还原 (col/row/depth 必须是 int, doors 必须是长度 4 的数组)",
 	"max_acts":            "战役配置, 全项目无人赋值, 等同常量",
 	"max_floors":          "同上",
 }
