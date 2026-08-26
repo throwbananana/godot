@@ -11,6 +11,7 @@ extends Control
 
 const GameState = preload("res://scripts/game_state.gd")
 const FloorMap = preload("res://scripts/floor_map.gd")
+const TextureHelper = preload("res://scripts/texture_helper.gd")
 
 ## 每格边长。14px 下 9x9 的网格是 126px, 正好塞进棋盘右上角而不压到中央战场。
 const CELL := 14.0
@@ -29,8 +30,11 @@ const TYPE_DOTS := {
 	"secret": Color(0.90, 0.90, 0.95),
 }
 
+var _frame_tex: Texture2D
+
 
 func _ready() -> void:
+	_frame_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_minimap_frame.png")
 	position = ORIGIN
 	size = Vector2(FloorMap.GRID_COLS * CELL, FloorMap.GRID_ROWS * CELL)
 	# 小地图纯属显示, 不能吃掉鼠标事件 —— 它盖在战场上方。
@@ -67,7 +71,10 @@ func _draw() -> void:
 
 	var w := FloorMap.GRID_COLS * CELL
 	var h := FloorMap.GRID_ROWS * CELL
-	draw_rect(Rect2(Vector2(-4, -4), Vector2(w + 8, h + 8)), Color(0.06, 0.05, 0.08, 0.55), true)
+	if _frame_tex:
+		draw_texture_rect(_frame_tex, Rect2(Vector2(-14, -14), Vector2(w + 28, h + 28)), false)
+	else:
+		draw_rect(Rect2(Vector2(-4, -4), Vector2(w + 8, h + 8)), Color(0.06, 0.05, 0.08, 0.55), true)
 
 	for room_key in GameState.floor_rooms.keys():
 		var room: Dictionary = GameState.floor_rooms[room_key]

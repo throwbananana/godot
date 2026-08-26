@@ -38,7 +38,8 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 		var card_btn = Button.new()
 		card_btn.custom_minimum_size = Vector2(210, 240)
 		card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		UIThemeHelper.apply_clay_button(card_btn)
+		var is_branch: bool = str(opt.get("type", "")) == "branch"
+		UIThemeHelper.apply_clay_upgrade_card(card_btn, is_branch)
 
 		var vbox = VBoxContainer.new()
 		vbox.set_anchors_preset(Control.PRESET_FULL_RECT)

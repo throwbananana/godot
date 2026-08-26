@@ -8,6 +8,10 @@ static var style_btn_hover: StyleBoxTexture
 static var style_btn_pressed: StyleBoxTexture
 static var style_btn_disabled: StyleBoxTexture
 
+static var style_card_normal: StyleBoxTexture
+static var style_card_hover: StyleBoxTexture
+static var style_card_branch: StyleBoxTexture
+
 static func _init_styles() -> void:
 	if style_btn_normal != null:
 		return
@@ -64,6 +68,61 @@ static func _init_styles() -> void:
 		style_btn_disabled.content_margin_right = 12
 		style_btn_disabled.content_margin_top = 8
 		style_btn_disabled.content_margin_bottom = 8
+
+static func _init_card_styles() -> void:
+	if style_card_normal != null:
+		return
+	var tex_cn = TextureHelper.get_tex("res://assets/sprites/ui/ui_card_bg_normal.png")
+	var tex_ch = TextureHelper.get_tex("res://assets/sprites/ui/ui_card_bg_hover.png")
+	var tex_cb = TextureHelper.get_tex("res://assets/sprites/ui/ui_card_bg_branch.png")
+
+	if tex_cn:
+		style_card_normal = StyleBoxTexture.new()
+		style_card_normal.texture = tex_cn
+		style_card_normal.texture_margin_left = 20
+		style_card_normal.texture_margin_right = 20
+		style_card_normal.texture_margin_top = 20
+		style_card_normal.texture_margin_bottom = 20
+		style_card_normal.content_margin_left = 12
+		style_card_normal.content_margin_right = 12
+		style_card_normal.content_margin_top = 12
+		style_card_normal.content_margin_bottom = 12
+
+	if tex_ch:
+		style_card_hover = StyleBoxTexture.new()
+		style_card_hover.texture = tex_ch
+		style_card_hover.texture_margin_left = 20
+		style_card_hover.texture_margin_right = 20
+		style_card_hover.texture_margin_top = 20
+		style_card_hover.texture_margin_bottom = 20
+		style_card_hover.content_margin_left = 12
+		style_card_hover.content_margin_right = 12
+		style_card_hover.content_margin_top = 12
+		style_card_hover.content_margin_bottom = 12
+
+	if tex_cb:
+		style_card_branch = StyleBoxTexture.new()
+		style_card_branch.texture = tex_cb
+		style_card_branch.texture_margin_left = 20
+		style_card_branch.texture_margin_right = 20
+		style_card_branch.texture_margin_top = 20
+		style_card_branch.texture_margin_bottom = 20
+		style_card_branch.content_margin_left = 12
+		style_card_branch.content_margin_right = 12
+		style_card_branch.content_margin_top = 12
+		style_card_branch.content_margin_bottom = 12
+
+static func apply_clay_upgrade_card(btn: Button, is_branch: bool = false) -> void:
+	_init_card_styles()
+	if not btn: return
+	var normal_box = style_card_branch if is_branch and style_card_branch else style_card_normal
+	if normal_box:
+		btn.add_theme_stylebox_override("normal", normal_box)
+		btn.add_theme_stylebox_override("disabled", normal_box)
+	if style_card_hover:
+		btn.add_theme_stylebox_override("hover", style_card_hover)
+		btn.add_theme_stylebox_override("focus", style_card_hover)
+		btn.add_theme_stylebox_override("pressed", style_card_hover)
 
 static func apply_clay_button(btn: Button, dark_text: bool = true) -> void:
 	_init_styles()
@@ -396,10 +455,12 @@ static func get_perk_icon(opt: Dictionary) -> Texture2D:
 			"nano_repair": icon_name = "perk_regen"
 			"high_explosive": icon_name = "perk_bomb"
 			"warp_drive": icon_name = "perk_laser"
-			"frost_cleats": icon_name = "perk_speed"
-			"ferry_artillery": icon_name = "perk_atk"
+			"frost_cleats": icon_name = "perk_frost"
+			"ferry_artillery": icon_name = "perk_ferry"
 			"clay_crusher": icon_name = "perk_ricochet"
 			"magnetic_salvage": icon_name = "perk_gold"
+			"amphibious_hull": icon_name = "perk_amphibious"
+			"armor_piercing_rounds": icon_name = "perk_piercing"
 			_:
 				icon_name = "perk_tactical"
 
