@@ -3,6 +3,18 @@ extends SceneTree
 const BunkerScript = preload("res://scripts/buildings/bunker.gd")
 const EncyclopediaDataScript = preload("res://scripts/encyclopedia_data.gd")
 const ShopDialogScript = preload("res://scripts/shop_dialog.gd")
+const BulletScene = preload("res://scenes/bullet.tscn")
+
+var failures: int = 0
+
+func fail(msg: String) -> void:
+	failures += 1
+	print("[FAIL] %s" % msg)
+
+func check(cond: bool, msg: String) -> bool:
+	if not cond:
+		fail(msg)
+	return cond
 
 func _init() -> void:
 	call_deferred("_run_tests")
@@ -18,8 +30,27 @@ func _run_tests() -> void:
 	_test_flank_vulnerability_and_destruction()
 	_test_shop_and_builder_metadata()
 
-	print("\n>>> ALL TACTICAL BUNKER TESTS PASSED SUCCESSFULLY! <<<")
-	quit(0)
+	if failures > 0:
+		print("\n[FAIL] %d 项失败" % failures)
+		quit(1)
+	else:
+		print("\n>>> ALL TACTICAL BUNKER TESTS PASSED SUCCESSFULLY! <<<")
+		quit(0)
+
+## 造一颗真实的 bullet.tscn 实例作为测试子弹，而不是 Node2D.new() + set_script(bullet.gd)。
+## bullet.gd 是 `extends Area2D` 且用了 @onready var sprite = $Sprite2D，用错底层节点
+## 类型会导致 set_script() 被 Godot 静默拒绝（"Script inherits from native type 'Area2D'"），
+## 这样一来后续所有 .set(...) 调用都落在一个没有脚本的裸节点上，不会报错但也什么都不做，
+## 使得针对 bullet.damage / bullet.direction 等字段的断言测的其实是 handle_bullet_hit()
+## 里的兜底默认值分支，而不是真实的子弹行为。
+func _make_test_bullet(direction: Vector2, damage: int, shooter_type: String = "enemy", can_destroy_steel: bool = false) -> Area2D:
+	var bullet: Area2D = BulletScene.instantiate()
+	bullet.direction = direction
+	bullet.damage = damage
+	bullet.shooter_type = shooter_type
+	bullet.can_destroy_steel = can_destroy_steel
+	root.add_child(bullet)
+	return bullet
 
 func _test_bunker_assets_and_instantiation() -> void:
 	print("\n[STEP 1] 验证战术堡垒 3D 渲染资产与场景实例...")
@@ -33,17 +64,19 @@ func _test_bunker_assets_and_instantiation() -> void:
 	]
 	for path in required_textures:
 		var tex = load(path)
-		assert(tex != null, "堡垒贴图必须存在: %s" % path)
+		if not check(tex != null, "堡垒贴图必须存在: %s" % path):
+			continue
 
 	var bunker_scene = load("res://scenes/buildings/bunker.tscn")
-	assert(bunker_scene != null, "bunker.tscn 场景必须存在")
+	if not check(bunker_scene != null, "bunker.tscn 场景必须存在"):
+		return
 	var bunker = bunker_scene.instantiate()
 	root.add_child(bunker)
 
-	assert(bunker.is_in_group("building"), "必须属于 building 组")
-	assert(bunker.is_in_group("bunker"), "必须属于 bunker 组")
-	assert(bunker.max_health == 6, "堡垒基础生命值必须为 6")
-	assert(bunker.current_health == 6, "初始生命值必须为 6")
+	check(bunker.is_in_group("building"), "必须属于 building 组")
+	check(bunker.is_in_group("bunker"), "必须属于 bunker 组")
+	check(bunker.max_health == 6, "堡垒基础生命值必须为 6")
+	check(bunker.current_health == 6, "初始生命值必须为 6")
 
 	bunker.queue_free()
 	print("  [PASS] 资产加载与场景实例测试通过。")
@@ -57,17 +90,12 @@ func _test_rear_shooting_pass_through() -> void:
 	root.add_child(bunker)
 
 	# 模拟从后方飞向前方的玩家子弹 (dir = Vector2.UP, 与堡垒朝向一致)
-	var bullet = Node2D.new()
-	bullet.set_script(load("res://scripts/bullet.gd"))
-	bullet.set("direction", Vector2.UP)
-	bullet.set("shooter_type", "player")
-	bullet.set("damage", 1)
-	root.add_child(bullet)
+	var bullet = _make_test_bullet(Vector2.UP, 1, "player")
 
 	var handled = bunker.handle_bullet_hit(bullet, bunker.global_position, Vector2.UP)
-	assert(handled == true, "穿过射击孔必须由堡垒接管")
-	assert(bunker.current_health == 6, "穿过射击孔出膛的子弹不得扣除堡垒生命值")
-	assert(!bullet.is_queued_for_deletion(), "出膛子弹不得被销毁，必须允许继续飞行")
+	check(handled == true, "穿过射击孔必须由堡垒接管")
+	check(bunker.current_health == 6, "穿过射击孔出膛的子弹不得扣除堡垒生命值")
+	check(!bullet.is_queued_for_deletion(), "出膛子弹不得被销毁，必须允许继续飞行")
 
 	bullet.queue_free()
 	bunker.queue_free()
@@ -82,18 +110,12 @@ func _test_frontal_shield_block() -> void:
 	root.add_child(bunker)
 
 	# 模拟从正面迎头打来的敌方普通子弹 (dir = Vector2.DOWN, 与堡垒朝向相反)
-	var bullet = Node2D.new()
-	bullet.set_script(load("res://scripts/bullet.gd"))
-	bullet.set("direction", Vector2.DOWN)
-	bullet.set("shooter_type", "enemy")
-	bullet.set("damage", 1)
-	bullet.set("can_destroy_steel", false) # 低级炮弹
-	root.add_child(bullet)
+	var bullet = _make_test_bullet(Vector2.DOWN, 1, "enemy", false)
 
 	var handled = bunker.handle_bullet_hit(bullet, bunker.global_position, Vector2.DOWN)
-	assert(handled == true, "正面格挡必须由堡垒接管")
-	assert(bunker.current_health == 6, "正面低级炮弹命中时堡垒必须免伤")
-	assert(bullet.is_queued_for_deletion(), "被格挡的来袭子弹必须被销毁")
+	check(handled == true, "正面格挡必须由堡垒接管")
+	check(bunker.current_health == 6, "正面低级炮弹命中时堡垒必须免伤")
+	check(bullet.is_queued_for_deletion(), "被格挡的来袭子弹必须被销毁")
 
 	bunker.queue_free()
 	print("  [PASS] 正面重盾格挡免伤测试通过。")
@@ -107,28 +129,22 @@ func _test_flank_vulnerability_and_destruction() -> void:
 	root.add_child(bunker)
 
 	# 1. 从左侧射入 (dir = Vector2.RIGHT, 垂直于正面)
-	var bullet_left = Node2D.new()
-	bullet_left.set_script(load("res://scripts/bullet.gd"))
-	bullet_left.set("direction", Vector2.RIGHT)
-	bullet_left.set("damage", 2)
-	root.add_child(bullet_left)
+	var bullet_left = _make_test_bullet(Vector2.RIGHT, 2)
 
 	var handled1 = bunker.handle_bullet_hit(bullet_left, bunker.global_position, Vector2.RIGHT)
-	assert(handled1 == true, "侧面受击必须被处理")
-	assert(bunker.current_health == 4, "侧面受击必须正常扣血 (6 - 2 = 4), 实际为 %d" % bunker.current_health)
+	check(handled1 == true, "侧面受击必须被处理")
+	check(bunker.current_health == 4, "侧面受击必须正常扣血 (6 - 2 = 4), 实际为 %d" % bunker.current_health)
 
 	# 2. 从右侧射入 (dir = Vector2.LEFT)
-	var bullet_right = Node2D.new()
-	bullet_right.set_script(load("res://scripts/bullet.gd"))
-	bullet_right.set("direction", Vector2.LEFT)
-	bullet_right.set("damage", 4)
-	root.add_child(bullet_right)
+	var bullet_right = _make_test_bullet(Vector2.LEFT, 4)
 
 	var handled2 = bunker.handle_bullet_hit(bullet_right, bunker.global_position, Vector2.LEFT)
-	assert(handled2 == true, "右侧受击必须被处理")
-	assert(bunker.current_health <= 0, "生命归零必须被破坏")
-	assert(bunker.is_destroyed == true, "堡垒状态必须标记为 is_destroyed")
+	check(handled2 == true, "右侧受击必须被处理")
+	check(bunker.current_health <= 0, "生命归零必须被破坏")
+	check(bunker.is_destroyed == true, "堡垒状态必须标记为 is_destroyed")
 
+	bullet_left.queue_free()
+	bullet_right.queue_free()
 	print("  [PASS] 侧翼受击扣血与生命耗尽摧毁测试通过。")
 
 func _test_shop_and_builder_metadata() -> void:
@@ -139,19 +155,19 @@ func _test_shop_and_builder_metadata() -> void:
 	for entry in EncyclopediaDataScript.ENTRIES:
 		if entry.get("id") == "bld_bunker":
 			found_encyclopedia = true
-			assert(entry.get("category") == "BUILDINGS", "图鉴分类必须为 BUILDINGS")
-			assert("正面" in entry.get("stats", {}).get("正面防御", ""), "图鉴必须标明正面防御")
+			check(entry.get("category") == "BUILDINGS", "图鉴分类必须为 BUILDINGS")
+			check("正面" in entry.get("stats", {}).get("正面防御", ""), "图鉴必须标明正面防御")
 			break
-	assert(found_encyclopedia, "图鉴中必须包含 bld_bunker 条目")
+	check(found_encyclopedia, "图鉴中必须包含 bld_bunker 条目")
 
 	# 2. 商店条目
 	var found_shop := false
 	for item in ShopDialogScript.BUILDING_ITEMS:
 		if item.get("id") == "bunker":
 			found_shop = true
-			assert(item.get("category") == "BUILD", "商店分类必须为 BUILD")
-			assert(item.get("cost") > 0, "购买价格必须大于 0")
+			check(item.get("category") == "BUILD", "商店分类必须为 BUILD")
+			check(item.get("cost") > 0, "购买价格必须大于 0")
 			break
-	assert(found_shop, "商店物资必须包含 bunker 条目")
+	check(found_shop, "商店物资必须包含 bunker 条目")
 
 	print("  [PASS] 图鉴与商店元数据配置完整有效。")

@@ -3,6 +3,17 @@ extends SceneTree
 const EnemyTankScript = preload("res://scripts/enemy.gd")
 const EncyclopediaDataScript = preload("res://scripts/encyclopedia_data.gd")
 
+var failures: int = 0
+
+func fail(msg: String) -> void:
+	failures += 1
+	print("[FAIL] %s" % msg)
+
+func check(cond: bool, msg: String) -> bool:
+	if not cond:
+		fail(msg)
+	return cond
+
 func _init() -> void:
 	call_deferred("_run_tests")
 
@@ -18,8 +29,12 @@ func _run_tests() -> void:
 	_test_hunter_fallback_without_trees()
 	_test_encyclopedia_and_metadata()
 
-	print("\n>>> ALL HUNTER TANK TESTS PASSED SUCCESSFULLY! <<<")
-	quit(0)
+	if failures > 0:
+		print("\n[FAIL] %d 项失败" % failures)
+		quit(1)
+	else:
+		print("\n>>> ALL HUNTER TANK TESTS PASSED SUCCESSFULLY! <<<")
+		quit(0)
 
 func _test_hunter_tank_assets() -> void:
 	print("\n[STEP 1] 验证猎手坦克 3D 渲染动效与图鉴图标贴图...")
@@ -34,7 +49,7 @@ func _test_hunter_tank_assets() -> void:
 
 	for path in required_frames:
 		var tex = load(path)
-		assert(tex != null, "猎手坦克贴图必须存在: %s" % path)
+		check(tex != null, "猎手坦克贴图必须存在: %s" % path)
 
 	print("  [PASS] 6 帧坦克动效与图鉴图标全部加载正常。")
 
@@ -42,14 +57,15 @@ func _test_hunter_tank_stats() -> void:
 	print("\n[STEP 2] 验证猎手坦克初始数值与类型配置...")
 
 	var enemy_scene = load("res://scenes/enemy.tscn")
-	assert(enemy_scene != null, "enemy.tscn 场景必须存在")
+	if not check(enemy_scene != null, "enemy.tscn 场景必须存在"):
+		return
 	var enemy = enemy_scene.instantiate() as EnemyTank
 	enemy.enemy_type = EnemyTank.EnemyType.HUNTER
 	root.add_child(enemy)
 
-	assert(enemy.enemy_type == EnemyTank.EnemyType.HUNTER, "敌人类型必须为 HUNTER")
-	assert(enemy.max_health >= 2, "猎手坦克基础生命值必须 >= 2")
-	assert(enemy.speed >= 80.0, "猎手坦克基础移速必须 >= 80")
+	check(enemy.enemy_type == EnemyTank.EnemyType.HUNTER, "敌人类型必须为 HUNTER")
+	check(enemy.max_health >= 2, "猎手坦克基础生命值必须 >= 2")
+	check(enemy.speed >= 80.0, "猎手坦克基础移速必须 >= 80")
 
 	enemy.queue_free()
 	print("  [PASS] 猎手坦克基础属性验证通过。")
@@ -75,16 +91,21 @@ func _test_hunter_jungle_seeking_and_ambush() -> void:
 
 	# 1. 验证能成功检索到最近草丛
 	var found_bush = enemy._find_nearest_jungle_tile()
-	assert(found_bush == mock_tree.global_position, "必须成功检索到最近草丛坐标")
+	check(found_bush == mock_tree.global_position, "必须成功检索到最近草丛坐标")
 
 	# 2. 模拟猎手坦克靠近草丛并进驻
 	enemy.global_position = mock_tree.global_position
 	enemy._process_hunter_ambush_behavior(0.1)
 
-	assert(enemy.is_in_ambush == true, "进驻草丛后必须进入潜伏状态 is_in_ambush = true")
-	assert(enemy.sprite.modulate.a < 0.5, "潜伏状态下车身必须呈半透明伪装 (modulate.a < 0.5), 实际为 %f" % enemy.sprite.modulate.a)
+	check(enemy.is_in_ambush == true, "进驻草丛后必须进入潜伏状态 is_in_ambush = true")
+	check(enemy.sprite.modulate.a < 0.5, "潜伏状态下车身必须呈半透明伪装 (modulate.a < 0.5), 实际为 %f" % enemy.sprite.modulate.a)
 
 	enemy.queue_free()
+	# remove_from_group() 立即生效，queue_free() 是延迟释放。get_tree().get_nodes_in_group("trees")
+	# 是全局查询，本文件的各步骤之间没有任何 await/帧边界，如果只 queue_free() 不马上脱离分组，
+	# 这棵"草丛"在 Step 5（验证无草丛场景应返回 Vector2.INF）跑的时候其实还没真正离场，会被
+	# 猎手坦克继续搜到——这正是本文件曾经的 bug。
+	mock_tree.remove_from_group("trees")
 	mock_tree.queue_free()
 	mock_scene.queue_free()
 	print("  [PASS] 草丛检索、导航进驻与半透明伪装潜伏机制验证通过。")
@@ -113,10 +134,11 @@ func _test_hunter_ambush_trigger_and_attack() -> void:
 	# 触发伏击行为帧更新
 	enemy._process_hunter_ambush_behavior(0.016)
 
-	assert(enemy.is_in_ambush == false, "触发伏击后必须解除潜伏 is_in_ambush = false")
-	assert(enemy.facing_direction == Vector2.DOWN, "伏击开火必须对准玩家方向 DOWN")
-	assert(enemy.ambush_cooldown > 0.0, "伏击后必须进入冷却")
+	check(enemy.is_in_ambush == false, "触发伏击后必须解除潜伏 is_in_ambush = false")
+	check(enemy.facing_direction == Vector2.DOWN, "伏击开火必须对准玩家方向 DOWN")
+	check(enemy.ambush_cooldown > 0.0, "伏击后必须进入冷却")
 
+	mock_player.remove_from_group("player")
 	mock_player.queue_free()
 	enemy.queue_free()
 	mock_scene.queue_free()
@@ -138,11 +160,11 @@ func _test_hunter_fallback_without_trees() -> void:
 
 	# 检索草丛应返回 INF
 	var bush_pos = enemy._find_nearest_jungle_tile()
-	assert(bush_pos == Vector2.INF, "无草丛时必须返回 Vector2.INF")
+	check(bush_pos == Vector2.INF, "无草丛时必须返回 Vector2.INF")
 
 	enemy._process_hunter_ambush_behavior(0.1)
-	assert(enemy.is_in_ambush == false, "无草丛时不应进入潜伏状态")
-	assert(enemy.sprite.modulate.a == 1.0, "无草丛时车身必须为完全不透明 (modulate.a == 1.0)")
+	check(enemy.is_in_ambush == false, "无草丛时不应进入潜伏状态")
+	check(enemy.sprite.modulate.a == 1.0, "无草丛时车身必须为完全不透明 (modulate.a == 1.0)")
 
 	enemy.queue_free()
 	mock_scene.queue_free()
@@ -155,9 +177,9 @@ func _test_encyclopedia_and_metadata() -> void:
 	for entry in EncyclopediaDataScript.ENTRIES:
 		if entry.get("id") == "enemy_hunter":
 			found = true
-			assert(entry.get("category") == "TANKS", "图鉴分类必须为 TANKS")
-			assert("草丛" in entry.get("desc", ""), "图鉴描述必须包含草丛潜伏")
+			check(entry.get("category") == "TANKS", "图鉴分类必须为 TANKS")
+			check("草丛" in entry.get("desc", ""), "图鉴描述必须包含草丛潜伏")
 			break
 
-	assert(found, "图鉴中必须包含 enemy_hunter 条目")
+	check(found, "图鉴中必须包含 enemy_hunter 条目")
 	print("  [PASS] 图鉴条目配置完整有效。")

@@ -229,12 +229,17 @@ def build_firewall_flame_tile(frame: int = 0):
 def render_all_firewall_assets():
     """渲染火墙坦克 6 帧动画、图标与火墙燃烧帧"""
     print(">>> 正在初始化 Blender Cycles 火墙坦克渲染场景...")
-    setup_render_settings(rx=256, ry=256, samples=32)
+
+    # clear_scene() 是 bpy.ops.wm.read_factory_settings(use_empty=True) —— 整份出厂
+    # 设置重置，不只清 mesh，连 scene.render 分辨率也会被冲回 Blender 默认的
+    # 1920x1080。所以 setup_render_settings() 必须在每次 clear_scene() *之后*
+    # 重新调用一次，不能只在批次开头调一次（这正是本文件曾经的 bug）。
 
     # 1. 玩家/中立版火墙坦克 6 帧 (tank_firewall_f0 ~ f5)
     print("\n--- 渲染火墙坦克 6 帧动画 (tank_firewall_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=32)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_firewall_tank(frame=f, is_enemy=False)
         out_path = os.path.join(SPRITES_TANKS, f"tank_firewall_f{f}.png")
@@ -245,6 +250,7 @@ def render_all_firewall_assets():
     print("\n--- 渲染敌方火墙坦克 6 帧动画 (enemy_firewall_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=32)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_firewall_tank(frame=f, is_enemy=True)
         out_path = os.path.join(SPRITES_TANKS, f"enemy_firewall_f{f}.png")
@@ -253,6 +259,7 @@ def render_all_firewall_assets():
 
     # 3. 静态图鉴图标 (tank_firewall.png)
     clear_scene()
+    setup_render_settings(rx=256, ry=256, samples=32)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
     objs = build_firewall_tank(frame=0, is_enemy=True)
     icon_path = os.path.join(SPRITES_TANKS, "tank_firewall.png")
@@ -263,6 +270,7 @@ def render_all_firewall_assets():
     print("\n--- 渲染地面烈焰火墙 4 帧动效 (firewall_flame_f0~f3.png) ---")
     for f in range(4):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=32)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_firewall_flame_tile(frame=f)
         f_path = os.path.join(SPRITES_BUILDINGS, f"firewall_flame_f{f}.png")

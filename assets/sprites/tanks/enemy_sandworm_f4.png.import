@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://vqk1s2n4qcse"
+path="res://.godot/imported/enemy_sandworm_f4.png-a9a3820442d9f78cd2250b4719c8f1ec.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_sandworm_f4.png"
+dest_files=["res://.godot/imported/enemy_sandworm_f4.png-a9a3820442d9f78cd2250b4719c8f1ec.ctex"]
 
 [params]
 

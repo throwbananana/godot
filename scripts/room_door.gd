@@ -50,15 +50,17 @@ const DOOR_ROW := 6  # 东/西门所在的行
 
 var direction: int = 0
 var state: int = State.LOCKED
+var room_type: String = "normal"
 
 var _sprite: Sprite2D
 var _blocker: StaticBody2D
 var _shape: CollisionShape2D
 
 
-func setup(dir: int, initial_state: int) -> void:
+func setup(dir: int, initial_state: int, target_type: String = "normal") -> void:
 	direction = dir
 	state = initial_state
+	room_type = target_type
 
 
 func _ready() -> void:
@@ -66,6 +68,12 @@ func _ready() -> void:
 
 	_sprite = Sprite2D.new()
 	_sprite.scale = Vector2(TILE_SCALE, TILE_SCALE)
+	# 门根据朝向旋转，使通道发光指引箭头正对房间内部
+	match direction:
+		0: _sprite.rotation = 0.0
+		1: _sprite.rotation = PI * 0.5
+		2: _sprite.rotation = PI
+		3: _sprite.rotation = -PI * 0.5
 	# 画在地块之上、坦克之下。树冠是 z_index 10 (见 main.gd 的
 	# _update_tree_transparency), 门比树低才不会盖住"坦克钻进树林"的表现。
 	_sprite.z_index = 2
@@ -106,27 +114,36 @@ var _crack_wall: StaticBody2D = null
 
 
 func _apply_state() -> void:
+	var prefix := "normal"
+	match room_type:
+		"boss": prefix = "boss"
+		"shop": prefix = "shop"
+		"treasure", "elite": prefix = "treasure"
+		"challenge": prefix = "challenge"
+		"event", "rest": prefix = "event"
+		"secret": prefix = "secret"
+		_: prefix = "normal"
+
 	match state:
 		State.OPEN:
 			_blocker.process_mode = Node.PROCESS_MODE_DISABLED
 			_set_blocker_enabled(false)
 			_set_trigger_enabled(true)
-			_sprite.texture = null
+			_sprite.texture = TextureHelper.get_tex("res://assets/sprites/buildings/door_%s_open.png" % prefix)
+			_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 			_clear_crack_wall()
 		State.LOCKED:
 			_set_blocker_enabled(true)
 			_set_trigger_enabled(false)
-			_sprite.texture = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png")
-			# 压暗 + 偏红: 一眼看出"这是锁着的", 而不是"这里是一块普通钢墙"。
-			_sprite.modulate = Color(0.62, 0.42, 0.42, 1.0)
+			var lock_prefix := "normal" if prefix == "secret" else prefix
+			_sprite.texture = TextureHelper.get_tex("res://assets/sprites/buildings/door_%s_locked.png" % lock_prefix)
+			_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 			_clear_crack_wall()
 		State.SECRET:
-			# 秘密门在被炸开之前, 对玩家来说就该看起来"和旁边的墙一样"。所以
-			# 用砖墙贴图且**不做任何提示性染色** —— 染了就等于在地图上标出
-			# "这里有秘密房", 秘密房也就不成其为秘密了。
+			# 秘密门在被炸开之前为带裂缝的暗门砖墙
 			_set_blocker_enabled(false)
 			_set_trigger_enabled(false)
-			_sprite.texture = TextureHelper.get_tex("res://assets/sprites/tiles/tile_brick.png")
+			_sprite.texture = TextureHelper.get_tex("res://assets/sprites/buildings/door_secret_cracked.png")
 			_sprite.modulate = Color(1.0, 1.0, 1.0, 1.0)
 			_ensure_crack_wall()
 

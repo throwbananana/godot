@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://b00ht3e8vwrt"
+path="res://.godot/imported/enemy_spider_f5.png-4f04ba3e134a0e793813a26f4e2ed921.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_spider_f5.png"
+dest_files=["res://.godot/imported/enemy_spider_f5.png-4f04ba3e134a0e793813a26f4e2ed921.ctex"]
 
 [params]
 

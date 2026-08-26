@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://dgw8na45l1j3t"
+path="res://.godot/imported/tank_firewall_f0.png-891c929ba1c63b9b8e72a10fc64187fd.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/tank_firewall_f0.png"
+dest_files=["res://.godot/imported/tank_firewall_f0.png-891c929ba1c63b9b8e72a10fc64187fd.ctex"]
 
 [params]
 

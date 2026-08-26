@@ -1184,6 +1184,15 @@ func _find_player_target() -> Node2D:
 	return players[0]
 
 func take_damage(amount: int) -> void:
+	# 潜地状态的"避弹无敌"不能只靠 collision_layer 位 2 的开关：bullet.tscn 的 Area2D
+	# 和 enemy.tscn 的 CharacterBody2D 全项目都保持 Godot 默认的 layer=1/mask=1，
+	# _start_sandworm_burrow() 切的是 layer 位 2（Godot 1-based 编号里的"层 2"），从未
+	# 动过位 1，子弹的 body_entered 判定只看 Area2D.collision_mask 与目标
+	# collision_layer 位 1 是否重叠——所以潜地期间沙虫其实和平时一样能被子弹命中，
+	# 整个"钻地无敌"机制形同虚设。按 is_shielded() 同样的做法在这里显式判定。
+	if is_burrowed:
+		return
+
 	if is_shielded():
 		SoundManager.play_shield_hit(get_tree())
 		if is_instance_valid(shield_bubble_sprite):
@@ -1996,8 +2005,3 @@ func _undeploy_cannon_siege_mode() -> void:
 	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
 	var tw = create_tween()
 	tw.tween_property(sprite, "scale", Vector2(0.20, 0.20), 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-
-
-
-
-

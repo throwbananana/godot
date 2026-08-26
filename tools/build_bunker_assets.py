@@ -176,10 +176,14 @@ def build_bunker(rot_deg: float = 0.0):
 def render_all_bunker_assets():
     """渲染战术防御堡垒 4 个朝向与默认图标"""
     print(">>> 正在初始化 Blender Cycles 战术防御堡垒渲染场景...")
-    setup_render_settings(rx=256, ry=256, samples=32)
 
     # 1. 默认图标 (bunker.png - 正面朝上)
+    # clear_scene() 是 bpy.ops.wm.read_factory_settings(use_empty=True) —— 整份出厂
+    # 设置重置，不只清 mesh，连 scene.render 分辨率也会被冲回 Blender 默认的
+    # 1920x1080。所以 setup_render_settings() 必须在每次 clear_scene() *之后*
+    # 重新调用一次，不能只在批次开头调一次。
     clear_scene()
+    setup_render_settings(rx=256, ry=256, samples=32)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
     objs = build_bunker(rot_deg=0.0)
     out_path = os.path.join(SPRITES_BUILDINGS, "bunker.png")
@@ -191,6 +195,7 @@ def render_all_bunker_assets():
     angles = [0.0, 270.0, 180.0, 90.0]
     for f, deg in enumerate(angles):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=32)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_bunker(rot_deg=deg)
         f_path = os.path.join(SPRITES_BUILDINGS, f"bunker_f{f}.png")

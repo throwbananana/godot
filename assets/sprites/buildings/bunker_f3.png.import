@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://da0kf6b6xm26u"
+path="res://.godot/imported/bunker_f3.png-46f115a8951bc4f5101b194dcadda827.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/bunker_f3.png"
+dest_files=["res://.godot/imported/bunker_f3.png-46f115a8951bc4f5101b194dcadda827.ctex"]
 
 [params]
 

@@ -202,8 +202,11 @@ func _try_push(hit_dir: Vector2) -> void:
 		elif collider.is_in_group("enemy") or collider.is_in_group("enemies"):
 			if collider.has_method("take_damage"):
 				collider.take_damage(2)
-			if collider.has_method("stun"):
-				collider.stun(0.6)
+			# enemy.gd 没有 stun() 方法，真正的定身机制叫 freeze()/freeze_timer
+			# (_physics_process 里 freeze_timer > 0 时整体提前 return)。has_method
+			# 守卫让这行调用一直静默地什么都没做——roller_wall.gd 里也是同一个坑。
+			if collider.has_method("freeze"):
+				collider.freeze(0.6)
 			var p_node = get_parent() if get_parent() else self
 			VFXAnimator.spawn_wood_debris(p_node, collider.global_position)
 			VFXAnimator.spawn_dust_puff(p_node, collider.global_position)

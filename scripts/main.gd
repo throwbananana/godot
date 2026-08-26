@@ -629,8 +629,13 @@ func _spawn_doors() -> void:
 
 		var door := RoomDoor.new()
 		# setup() 必须在 add_child() 之前 —— _ready() 是在 add_child() 里跑的,
-		# 它要读 direction/state 才能摆好碰撞盒和贴图。
-		door.setup(d, st)
+		# 它要读 direction/state/target_type 才能摆好碰撞盒和贴图。
+		var neighbor_key := GameState.neighbor_key(GameState.current_room, d)
+		var neighbor_room := GameState.get_room(neighbor_key)
+		var target_type := str(neighbor_room.get("type", "normal"))
+		if bool(room["secret_doors"][d]):
+			target_type = "secret"
+		door.setup(d, st, target_type)
 		door.position = RoomDoor.local_position_for(d, GRID_W, GRID_H)
 		door.player_entered.connect(_on_door_entered)
 		door.secret_breached.connect(_on_secret_breached)

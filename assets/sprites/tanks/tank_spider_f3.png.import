@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://2k22ek2ti2de"
+path="res://.godot/imported/tank_spider_f3.png-d1d853d3c3fdfd53839c429240450796.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/tank_spider_f3.png"
+dest_files=["res://.godot/imported/tank_spider_f3.png-d1d853d3c3fdfd53839c429240450796.ctex"]
 
 [params]
 

@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://u55m0th4qcly"
+path="res://.godot/imported/tank_hunter_f3.png-f0782120b4e31aed35baf8df3692c044.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/tank_hunter_f3.png"
+dest_files=["res://.godot/imported/tank_hunter_f3.png-f0782120b4e31aed35baf8df3692c044.ctex"]
 
 [params]
 

@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://bnbic1ej2cg8m"
+path="res://.godot/imported/enemy_hunter_f2.png-e474c15730bf48429f0faba0a1df48db.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_hunter_f2.png"
+dest_files=["res://.godot/imported/enemy_hunter_f2.png-e474c15730bf48429f0faba0a1df48db.ctex"]
 
 [params]
 

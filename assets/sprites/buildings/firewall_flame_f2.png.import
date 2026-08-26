@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://2kv8ua2agsyi"
+path="res://.godot/imported/firewall_flame_f2.png-fd2fc2423137a5c35091019655b55913.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/firewall_flame_f2.png"
+dest_files=["res://.godot/imported/firewall_flame_f2.png-fd2fc2423137a5c35091019655b55913.ctex"]
 
 [params]
 
