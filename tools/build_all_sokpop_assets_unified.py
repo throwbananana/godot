@@ -516,11 +516,14 @@ def build_sokpop_steel():
 
 def build_sokpop_water(frame=0):
     objs = []
-    mat_deep_water   = create_clay_mat("m_uw_dw", (0.12, 0.40, 0.68, 1.0), roughness=0.18, sss_weight=0.22)
-    mat_mid_water    = create_clay_mat("m_uw_mw", (0.22, 0.64, 0.88, 1.0), roughness=0.16, sss_weight=0.24)
-    mat_light_water  = create_clay_mat("m_uw_lw", (0.46, 0.88, 0.98, 1.0), roughness=0.14, sss_weight=0.26)
-    mat_foam         = create_clay_mat("m_uw_fm", (0.96, 0.98, 1.0, 1.0), roughness=0.40)
-    mat_bubble       = create_clay_mat("m_uw_bub", (0.88, 0.96, 1.0, 1.0), roughness=0.10)
+    # 高光泽晶莹水体材质 (Sokpop ceramic glaze & SSS reflection)
+    mat_deep_water   = create_clay_mat("m_uw_dw", (0.10, 0.36, 0.65, 1.0), roughness=0.08, sss_weight=0.28, bump_strength=0.02)
+    mat_mid_water    = create_clay_mat("m_uw_mw", (0.18, 0.58, 0.85, 1.0), roughness=0.06, sss_weight=0.25, bump_strength=0.02)
+    mat_light_water  = create_clay_mat("m_uw_lw", (0.44, 0.86, 0.96, 1.0), roughness=0.04, sss_weight=0.22, bump_strength=0.02)
+    # 天光与云影镜面反射倒影光带 (Glossy sky & cloud specular reflection sheen)
+    mat_refl_sky     = create_clay_mat("m_uw_refl", (0.84, 0.94, 1.0, 0.95), roughness=0.03, sss_weight=0.15, bump_strength=0.01)
+    mat_foam         = create_clay_mat("m_uw_fm", (0.96, 0.98, 1.0, 1.0), roughness=0.35, bump_strength=0.06)
+    mat_bubble       = create_clay_mat("m_uw_bub", (0.90, 0.98, 1.0, 1.0), roughness=0.04, bump_strength=0.01)
 
     # 1. Full-Bleed Deep River Basin Base Block
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.06))
@@ -530,29 +533,16 @@ def build_sokpop_water(frame=0):
     apply_uniform_clay_bevel(base, width=0.10, segments=3, jitter=0.0)
     objs.append(base)
 
-    # 2. 5-Tier Seamless Multi-Tile River Wave Ribbons
-    # Frequency is calibrated exactly to 2 full periods across ORTHO_SCALE_DEFAULT (3.30)
+    # 2. 5-Tier Seamless Multi-Tile River Wave Ribbons with Specular Sky Reflections
     frame_phase = frame * (2.0 * math.pi / 6.0)
     tile_period = ORTHO_SCALE_DEFAULT  # 3.30
     freq = (2.0 * math.pi * 2.0) / tile_period  # exactly 2 periods per tile width -> seamless across borders
 
-    # 波形本身的周期 (一块瓦片里正好两个) —— 接缝的一切都要对齐到它
     wave_period = tile_period * 0.5    # 1.65
-    half_frame = tile_period * 0.5     # 1.65, 相机实际看到的半宽
+    half_frame = tile_period * 0.5     # 1.65
 
-    # 缎带要生成到画幅*外*整整一个波长, 并且采样格必须能整除波长。
-    #
-    # 旧写法是 x∈[-1.67, 1.67] 配 steps=44: 一来缎带端面几乎就压在画幅边线上
-    # (只出去 0.02), 二来 3.34/43 的采样间距根本不是波长的整数分之一, 于是
-    # 分段折线逼近出的波形在左右两条边上*不一样* —— 正弦本身在 ±1.65 是严格
-    # 对得上的 (相差 4π), 但折线逼近的误差对不上。实测左右边色差 24.87, 且
-    # 集中在波形所在的那几行, 底板行几乎为零, 正是这个原因。
-    #
-    # 现在: 跨度 4 个波长, 96 段 -> 每段 = 波长/24, 折线逼近严格周期,
-    # ±1.65 处必然一致。
     span_ext = half_frame + wave_period          # 3.30
     steps_ext = 96                               # 6.60 / 96 = 1.65/24
-
     half_span = span_ext
 
     wave_tiers = [
@@ -574,6 +564,13 @@ def build_sokpop_water(frame=0):
         wv.data.materials.append(mat_mid_water)
         objs.append(wv)
 
+        # Mirror sky & environment reflection ribbon (水面镜面反射与倒影高光)
+        wv_refl = create_wavy_ribbon(f"{name}_Reflection", y_base - 0.08, amp, freq, cur_phase,
+                                     width_y=wy * 0.26, height_z=hz * 0.40, z_base=zb + hz * 0.16,
+                                     x_min=-half_span, x_max=half_span, steps=steps_ext, taper=False)
+        wv_refl.data.materials.append(mat_refl_sky)
+        objs.append(wv_refl)
+
         # Upper wave crest highlight ribbon
         wv_crest = create_wavy_ribbon(f"{name}_Crest", y_base, amp, freq, cur_phase,
                                       width_y=wy * 0.38, height_z=hz * 0.60, z_base=zb + hz * 0.32,
@@ -581,10 +578,7 @@ def build_sokpop_water(frame=0):
         wv_crest.data.materials.append(mat_light_water)
         objs.append(wv_crest)
 
-        # 浪尖白沫。峰值每 wave_period 出现一次, 所以按波长枚举, 而不是像旧写法
-        # 那样只取两个峰再按 tile_period(3.30) 回绕 —— 回绕步长是波长的两倍,
-        # 会漏掉一半的峰, 而且靠近边缘的峰被 |x|<=1.30 直接丢掉, 于是左边有沫、
-        # 右边没有。这里画到画幅外一点, 让骑在拼缝上的白沫两边各露一半。
+        # 浪尖白沫与晶莹气泡
         x0 = (0.5 * math.pi - cur_phase) / freq
         k_lo = int(math.floor((-half_frame - 0.30 - x0) / wave_period))
         k_hi = int(math.ceil((half_frame + 0.30 - x0) / wave_period))
@@ -612,10 +606,12 @@ def build_sokpop_water(frame=0):
 
 def build_sokpop_trees():
     objs = []
-    mat_matcha = create_clay_mat("m_ut_m", (0.34, 0.72, 0.30, 1.0))
-    mat_lime = create_clay_mat("m_ut_l", (0.50, 0.82, 0.34, 1.0))
-    mat_trunk = create_clay_mat("m_ut_tr", (0.45, 0.28, 0.18, 1.0))
-    mat_berry = create_clay_mat("m_ut_b", (0.92, 0.30, 0.40, 1.0))
+    mat_forest = create_clay_mat("m_ut_f", (0.24, 0.56, 0.22, 1.0))
+    mat_matcha = create_clay_mat("m_ut_m", (0.32, 0.70, 0.28, 1.0))
+    mat_lime = create_clay_mat("m_ut_l", (0.48, 0.82, 0.32, 1.0))
+    mat_crown = create_clay_mat("m_ut_cr", (0.58, 0.88, 0.38, 1.0))
+    mat_trunk = create_clay_mat("m_ut_tr", (0.44, 0.26, 0.16, 1.0))
+    mat_berry = create_clay_mat("m_ut_b", (0.92, 0.28, 0.38, 1.0))
 
     # 1. Exposed Wooden Trunk/Stump Base
     for (tx, ty) in [(-0.65, -0.65), (0.65, 0.65)]:
@@ -625,70 +621,34 @@ def build_sokpop_trees():
         apply_uniform_clay_bevel(trunk, width=0.06, segments=2)
         objs.append(trunk)
 
-    # 2. Rich Layered Canopy Volumes spanning full footprint
+    # 2. Rich Layered Canopy Volumes spanning full footprint (密实多层树冠，完全遮蔽敌方)
     spheres = [
-        # Base canopy layer (dark matcha)
-        (-0.95, -0.95, 0.38, 0.88, mat_matcha), (0.95, -0.95, 0.38, 0.88, mat_matcha),
-        (-0.95, 0.95, 0.38, 0.88, mat_matcha), (0.95, 0.95, 0.38, 0.88, mat_matcha),
-        # Mid-tier lush foliage (vibrant lime)
-        (-0.85, 0.0, 0.50, 0.85, mat_lime), (0.85, 0.0, 0.50, 0.85, mat_lime),
-        (0.0, -0.85, 0.50, 0.85, mat_lime), (0.0, 0.85, 0.50, 0.85, mat_lime),
-        # Crown summit dome
-        (0.0, 0.0, 0.82, 1.15, mat_lime),
-        (-0.25, 0.25, 1.12, 0.70, mat_matcha)
+        # Base canopy layer (deep forest & matcha) - dense foundation
+        (-0.95, -0.95, 0.38, 0.90, mat_forest), (0.95, -0.95, 0.38, 0.90, mat_forest),
+        (-0.95, 0.95, 0.38, 0.90, mat_forest), (0.95, 0.95, 0.38, 0.90, mat_forest),
+        # Mid-tier lush foliage (matcha & lime)
+        (-0.85, 0.0, 0.50, 0.88, mat_matcha), (0.85, 0.0, 0.50, 0.88, mat_matcha),
+        (0.0, -0.85, 0.50, 0.88, mat_matcha), (0.0, 0.85, 0.50, 0.88, mat_matcha),
+        # Inner mid-canopy clusters
+        (-0.40, -0.40, 0.62, 0.82, mat_lime), (0.40, 0.40, 0.62, 0.82, mat_lime),
+        (-0.40, 0.40, 0.62, 0.82, mat_lime), (0.40, -0.40, 0.62, 0.82, mat_lime),
+        # Crown summit domes (lime & sunlit mint)
+        (0.0, 0.0, 0.84, 1.18, mat_lime),
+        (-0.25, 0.25, 1.14, 0.75, mat_crown),
+        (0.25, -0.25, 1.08, 0.68, mat_matcha)
     ]
 
-    # 3'. 边界树冠 —— 球心*落在画幅边线上*, 不是装饰而是补洞。
-    #
-    # 这块瓦片没有底板 (main.gd::_spawn_tile 把 trees 当独立 Sprite2D 画在
-    # z_index=10, 底下没有地面), 所以树冠盖不到的地方直接漏背景。实测边缘有
-    # 21% 的像素 alpha<250, 铺成 3x3 后内部有 160 个像素是全透明的 —— 在网格
-    # 顶点上表现为一圈深色针孔。
-    #
-    # 缺口位置是算得出来的: 画幅半宽 = TILE_FULL_BLEED/2 = 1.67。
-    #   角点 (1.67,1.67) 到最近的基础树冠 (0.95,0.95) 距离 sqrt(0.72^2*2)=1.018,
-    #   而那个球半径只有 0.88 —— 差 0.14。
-    #   边中段 (1.67,0.35): 到 (0.95,0.95) 是 0.937>0.88, 到 (0.85,0) 是
-    #   0.892>0.85 —— 两个球之间本来就有条缝。
-    # 与实测的缺口段完全吻合 (角落 ±1.50~±1.67, 边中段 ±0.27~±0.44)。
-    #
-    # 为什么球心放在边线上而不是把原有的球放大: 相邻两块瓦片拼接时, 各自的
-    # 半个球正好凑成一整棵跨缝的树, 缝两侧的形体自然连续 —— 森林本来就该这样,
-    # 而单纯放大树冠只会让每块瓦片各自变胖, 缝还在。
-    # _HB 必须是*相机画幅*的半宽, 不是底板满幅尺寸的一半。
-    # 原来写的是 TILE_FULL_BLEED/2 = 1.67, 但相机 ortho 只有 3.30, 半宽 1.65 ——
-    # 差的这 0.02 单位 (约 1.5px) 会让边界树冠稍稍偏出画幅, 更要命的是它破坏了
-    # 周期性: 按 3.30 平铺时, +1.67 的球对应到邻居那边是 -1.63, 和本块自己
-    # -1.67 的球差 0.04, 拼缝处于是多出一道细微的重影。
+    # 3. 边界树冠 —— 球心落在画幅边线上，消除接缝与针孔漏景
     _P = ORTHO_SCALE_DEFAULT
     _HB = _P * 0.5
-    # 边界环必须*连续*, 而且必须是画幅边线上的最高面。
-    #
-    # 原来只在 t=±0.35 和四角放球, 中间 x≈±1.03 那一段是空的 —— 那里露出来的
-    # 是底层树冠 (±0.95, r0.88) 的侧面。而底层树冠不是周期排布的: 上边缘看到的
-    # 是 (0.95,0.95) 那颗球的 +y 侧, 下边缘看到的是 (0.95,-0.95) 那颗球的 -y 侧,
-    # 定向光下这两侧本来就不一样亮, 于是拼缝处出现一道明暗错位。实测上下拼接
-    # 梯度 8.3 正是集中在 x≈±1.03 这两段 (其余列只有 2.4)。
-    #
-    # 补齐 t=±1.05 让环连续, 并把整个环抬到 z=0.42: 边线上的最高面因此全部由
-    # 边界环承担, 而边界环是严格按画幅周期摆的 —— 上下两边看到的是*同一颗球*
-    # 的两半 (本块的 +_HB 与 -_HB 互为周期副本), 明暗自然对得上。
     _RZ = 0.42
     for (bx, by) in [(-_HB, -_HB), (_HB, -_HB), (-_HB, _HB), (_HB, _HB)]:
-        spheres.append((bx, by, _RZ, 0.64, mat_matcha))
+        spheres.append((bx, by, _RZ, 0.65, mat_forest))
     for t in (-1.05, -0.35, 0.35, 1.05):
-        spheres += [(_HB, t, _RZ, 0.60, mat_matcha), (-_HB, t, _RZ, 0.60, mat_matcha),
-                    (t, _HB, _RZ, 0.60, mat_matcha), (t, -_HB, _RZ, 0.60, mat_matcha)]
+        spheres += [(_HB, t, _RZ, 0.62, mat_matcha), (-_HB, t, _RZ, 0.62, mat_matcha),
+                    (t, _HB, _RZ, 0.62, mat_matcha), (t, -_HB, _RZ, 0.62, mat_matcha)]
 
-    # 和砖块同理: 把邻居瓦片的树冠也摆出来, 让画幅边缘的遮挡和投影连续。
-    # 树冠是球, 高度差比砖块还大, 缺了邻居就等于边缘的树"半边悬空", 明暗对不上
-    # (实测上下拼缝梯度 9.88, 而瓦片内部最大梯度只有 2.41 —— 树冠本身是平滑的,
-    # 所以任何一点突变都格外显眼)。
-    # 去重: 边界球按周期平移后会和本块已有的球重合, 重复几何没意义。
-    # 剔除半径要按*影长*算, 不是按"看不看得见"。树冠顶到 z≈1.97, 太阳仰角 35°,
-    # 影长 1.97/tan(35°) ≈ 2.81 —— 邻居那个大穹顶自己完全在画幅外, 它的影子却
-    # 照样能斜着盖进来。先前按 _HB+1.0=2.65 剔除, 正好把这些穹顶副本剔掉了,
-    # 于是上下拼缝只从 9.88 降到 8.31。放宽到覆盖影长即可。
+    # 邻居瓦片周期投影副本（覆盖阴影延伸）
     _reach = _HB + 2.9
     _seen = set()
     _emit = []
@@ -711,7 +671,7 @@ def build_sokpop_trees():
         bpy.ops.object.shade_smooth()
         objs.append(b)
 
-    # 3. Clustered Berry Bunches
+    # 4. 手作黏土浆果簇 (Clustered Berry Bunches)
     berry_clusters = [
         (-0.42, -0.32, 1.25), (-0.32, -0.42, 1.22),
         (0.52, 0.32, 1.18), (0.42, 0.45, 1.20),

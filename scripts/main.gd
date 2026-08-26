@@ -1997,13 +1997,12 @@ func _on_player_hp_changed(pid: int, curr: int, max_hp: int) -> void:
 	elif pid == 2 and hud_p2_hp:
 		hud_p2_hp.text = "P2 [GRN] HP: %d / %d [%s]" % [curr, max_hp, _branch_tag(2)]
 
-## 有坦克钻进树林时, 把它压着的那几格树冠淡下去。
-##
-## 遍历的是坦克 (最多十几个) 而不是树格, 所以开销和林子多大无关。
-##
-## 用包围盒而不是"中心点所在的那一格": 坦克约 40px 宽而格子 48px, 骑在两格
-## 中间是常态。只算中心格的话, 车头探进相邻那格的部分照样是隐形的 —— 而那
-## 半截车正是玩家最需要看见的部分。
+## 丛林隐匿机制:
+## 树冠 (z_index=10) 默认完全遮盖下方的坦克。
+## 玩家单位 (P1/P2/车厢) 进入树林时淡化该格树冠 (TREE_REVEAL_ALPHA = 0.38)，
+## 使玩家看清自车位置以及与玩家处于同一树林格内的敌方伏击单位；
+## 当仅有敌方处于树林中且玩家在远处时，树冠保持 100% 不透明 (a = 1.0)，
+## 敌方获得完全的丛林隐匿 (Camouflage) 效果。
 func _update_tree_transparency(delta: float) -> void:
 	if tree_sprites.is_empty():
 		return
@@ -2011,19 +2010,10 @@ func _update_tree_transparency(delta: float) -> void:
 	var occupied := {}
 	var units: Array = []
 	units.append_array(get_tree().get_nodes_in_group("player"))
-	units.append_array(get_tree().get_nodes_in_group("enemies"))
 	const HALF := 17.0
 	for u in units:
 		if not is_instance_valid(u) or not (u is Node2D):
 			continue
-		# 已经开启光学迷彩的 MIRAGE 不触发淡出。它静止时会把自己伪装成一棵树,
-		# 要是周围的真树反而因为它而淡了一圈, 等于亲手在地图上标出"这里有东西",
-		# 它整个机制就废了。潜行单位不该自己暴露自己。
-		if "is_camouflaged" in u and u.is_camouflaged:
-			continue
-		# 树瓦片挂在 map_container 下用的是*局部*坐标, 而坦克给的是全局坐标。
-		# GameArea 有 (48,48) 的偏移, 直接拿全局坐标去除以 TILE_SIZE 会整整
-		# 差一格 —— 见 CLAUDE.md 的坐标系一节。
 		var lp: Vector2 = map_container.to_local(u.global_position)
 		var c0 := int(floor((lp.x - HALF) / TILE_SIZE))
 		var c1 := int(floor((lp.x + HALF) / TILE_SIZE))

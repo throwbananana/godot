@@ -136,40 +136,35 @@ func _check_reveal() -> void:
 		else:
 			ok("跨格时两格都淡了 (左 a=%.2f 右 a=%.2f)" % [spr.modulate.a, spr_r.modulate.a])
 
-	# 开了光学迷彩的 MIRAGE 不该淡树 —— 它正伪装成一棵树, 周围真树淡一圈
-	# 等于替它在地图上打了个标记
+	# 敌方隐藏在丛林中：敌方进入树林且玩家在远处时，树冠保持 100% 不透明
 	p1.global_position = main.map_container.to_global(
 		Vector2((cell.x + 6) * main.TILE_SIZE, (cell.y + 6) * main.TILE_SIZE))
 	await _tick(40)
 	var EnemyTank = load("res://scripts/enemy.gd")
-	main._instantiate_enemy(Vector2(200, 200), EnemyTank.EnemyType.MIRAGE, false, 0)
-	var mir: Node = null
+	main._instantiate_enemy(Vector2(200, 200), EnemyTank.EnemyType.BASIC, false, 0)
+	var enemy_node: Node = null
 	for c in main.actors_container.get_children():
-		if "enemy_type" in c and c.enemy_type == EnemyTank.EnemyType.MIRAGE:
-			mir = c
+		if "enemy_type" in c:
+			enemy_node = c
 			break
-	if mir == null:
-		fail("MIRAGE 没能实例化")
+	if enemy_node == null:
+		fail("测试敌人没能实例化")
 	else:
-		mir.global_position = main.map_container.to_global(center)
-		# 冻住它的 _physics_process: MIRAGE 的迷彩状态机是"静止 0.45 秒才隐身、
-		# 一动就解除", 让 AI 继续跑的话它会自己把 is_camouflaged 翻回 false,
-		# 测的就不是这里要测的东西了。游戏里"已隐身"本来就蕴含"没在动"。
-		mir.set_physics_process(false)
-		mir.is_camouflaged = true
+		enemy_node.global_position = main.map_container.to_global(center)
 		await _tick(30)
-		if spr.modulate.a < 0.9:
-			fail("已隐身的 MIRAGE 把树淡掉了 (a=%.2f) —— 等于自曝位置" % spr.modulate.a)
+		if spr.modulate.a < 0.95:
+			fail("敌方在树中且玩家在远处时树冠变半透 (a=%.2f) —— 敌方失去丛林隐蔽" % spr.modulate.a)
 		else:
-			ok("已隐身的 MIRAGE 不触发淡出 (a=%.2f), 伪装保住了" % spr.modulate.a)
-		# 而一旦解除迷彩就该正常淡出
-		mir.is_camouflaged = false
+			ok("敌方在树中且玩家在远处时树冠保持完全不透明 (a=%.2f), 成功隐蔽" % spr.modulate.a)
+
+		# 玩家走入该格时，树冠淡出，显露出自车与埋伏的敌军
+		p1.global_position = main.map_container.to_global(center)
 		await _tick(30)
 		if spr.modulate.a > 0.9:
-			fail("MIRAGE 解除迷彩后树冠仍不透明 (a=%.2f)" % spr.modulate.a)
+			fail("玩家进入有敌方的树林格后树冠仍不透明 (a=%.2f)" % spr.modulate.a)
 		else:
-			ok("MIRAGE 解除迷彩后正常淡出 (a=%.2f)" % spr.modulate.a)
-		mir.free()
+			ok("玩家进入同格后树冠正常淡出 (a=%.2f), 显露双方交战视野" % spr.modulate.a)
+		enemy_node.free()
 		await _tick(1)
 
 	# 走开要恢复
