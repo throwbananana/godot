@@ -22,5 +22,18 @@ static func get_tex(path: String) -> Texture2D:
 			tex = ImageTexture.create_from_image(img)
 	
 	if tex:
+		# 如果存在对应的相机空间法线贴图 (*_n.png)，自动封装为 CanvasTexture 以支持 2D 动态光照
+		if not path.ends_with("_n.png"):
+			var dot_idx = path.rfind(".")
+			if dot_idx != -1:
+				var norm_path = path.left(dot_idx) + "_n" + path.substr(dot_idx)
+				if ResourceLoader.exists(norm_path):
+					var norm_tex = load(norm_path) as Texture2D
+					if norm_tex:
+						var canvas_tex = CanvasTexture.new()
+						canvas_tex.diffuse_texture = tex
+						canvas_tex.normal_texture = norm_tex
+						canvas_tex.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+						tex = canvas_tex
 		_cache[path] = tex
 	return tex
