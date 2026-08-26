@@ -274,6 +274,9 @@ def build_cannon_tank(frame: int = 0, is_enemy: bool = True, is_deployed: bool =
     return objs
 
 
+ORTHO_SCALE_CANNON = 3.85  # 巨炮坦克专用画幅（容纳加长榴弹炮管与展开液压驻锄，避免顶部边缘裁切）
+
+
 def render_all_cannon_assets():
     """全量渲染巨炮坦克移动形态与驻扎固定炮形态资源"""
     print("==================================================================")
@@ -285,7 +288,7 @@ def render_all_cannon_assets():
         for f in range(6):
             clear_scene()
             setup_render_settings(256, 256, samples=28)
-            create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
+            create_sokpop_lighting(ortho_scale=ORTHO_SCALE_CANNON)
             objs = build_cannon_tank(frame=f, is_enemy=is_en, is_deployed=False)
             out_path = os.path.join(SPRITES_TANKS, f"{prefix}_f{f}.png")
             render_and_clean(objs, out_path)
@@ -296,7 +299,7 @@ def render_all_cannon_assets():
         for f in range(6):
             clear_scene()
             setup_render_settings(256, 256, samples=28)
-            create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
+            create_sokpop_lighting(ortho_scale=ORTHO_SCALE_CANNON)
             objs = build_cannon_tank(frame=f, is_enemy=is_en, is_deployed=True)
             out_path = os.path.join(SPRITES_TANKS, f"{prefix}_f{f}.png")
             render_and_clean(objs, out_path)
@@ -305,7 +308,7 @@ def render_all_cannon_assets():
     # 3. 默认静态图标
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_CANNON)
     objs = build_cannon_tank(frame=0, is_enemy=True, is_deployed=False)
     static_en = os.path.join(SPRITES_TANKS, "enemy_cannon.png")
     render_and_clean(objs, static_en)
@@ -313,7 +316,7 @@ def render_all_cannon_assets():
 
     clear_scene()
     setup_render_settings(256, 256, samples=28)
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_CANNON)
     objs = build_cannon_tank(frame=0, is_enemy=False, is_deployed=False)
     static_pl = os.path.join(SPRITES_TANKS, "tank_cannon.png")
     render_and_clean(objs, static_pl)

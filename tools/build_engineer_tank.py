@@ -248,12 +248,12 @@ def build_engineer_tank(frame: int = 0, is_enemy: bool = False):
 def render_all_engineer_tanks():
     """渲染工程坦克全套 6 帧动画及图标"""
     print(">>> 正在初始化 Blender Cycles 工程坦克渲染场景...")
-    setup_render_settings(rx=256, ry=256, samples=32)
 
     # 1. 玩家/中立版工程坦克 6 帧 (tank_engineer_f0 ~ f5)
     print("\n--- 渲染工程坦克 6 帧动画 (tank_engineer_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=28)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_engineer_tank(frame=f, is_enemy=False)
         out_path = os.path.join(SPRITES_TANKS, f"tank_engineer_f{f}.png")
@@ -264,6 +264,7 @@ def render_all_engineer_tanks():
     print("\n--- 渲染敌方工程坦克 6 帧动画 (enemy_engineer_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=28)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_engineer_tank(frame=f, is_enemy=True)
         out_path = os.path.join(SPRITES_TANKS, f"enemy_engineer_f{f}.png")
@@ -272,6 +273,7 @@ def render_all_engineer_tanks():
 
     # 3. 静态图鉴图标 (tank_engineer.png)
     clear_scene()
+    setup_render_settings(rx=256, ry=256, samples=28)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
     objs = build_engineer_tank(frame=0, is_enemy=False)
     icon_path = os.path.join(SPRITES_TANKS, "tank_engineer.png")

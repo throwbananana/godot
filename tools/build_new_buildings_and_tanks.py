@@ -488,10 +488,10 @@ def build_sniper_tank(frame=0):
     objs.append(turret)
 
     # 5. 超长炮管
-    barrel_len = 1.50
+    barrel_len = 1.28
     barrel_r   = 0.11
     bpy.ops.mesh.primitive_cylinder_add(radius=barrel_r, depth=barrel_len, vertices=16,
-                                         location=(0, 0.35 + barrel_len/2.0, 0.48))
+                                         location=(0, 0.25 + barrel_len/2.0, 0.48))
     barrel = bpy.context.active_object
     barrel.rotation_euler = (math.radians(90), 0, 0)
     barrel.data.materials.append(mat_turret)
@@ -499,9 +499,9 @@ def build_sniper_tank(frame=0):
     objs.append(barrel)
 
     # 炮管中部加强环
-    for ry in [0.55, 0.90, 1.25]:
+    for ry in [0.40, 0.72, 1.04]:
         bpy.ops.mesh.primitive_torus_add(major_radius=barrel_r*1.5, minor_radius=0.04,
-                                          location=(0, 0.35 + ry, 0.48))
+                                          location=(0, 0.25 + ry, 0.48))
         ring = bpy.context.active_object
         ring.rotation_euler = (math.radians(90), 0, 0)
         ring.data.materials.append(mat_trim)
@@ -509,8 +509,8 @@ def build_sniper_tank(frame=0):
         objs.append(ring)
 
     # 消焰器
-    bpy.ops.mesh.primitive_cylinder_add(radius=barrel_r*1.6, depth=0.28, vertices=16,
-                                         location=(0, 0.35 + barrel_len, 0.48))
+    bpy.ops.mesh.primitive_cylinder_add(radius=barrel_r*1.6, depth=0.24, vertices=16,
+                                         location=(0, 0.25 + barrel_len, 0.48))
     muzzle = bpy.context.active_object
     muzzle.rotation_euler = (math.radians(90), 0, 0)
     muzzle.data.materials.append(mat_trim)

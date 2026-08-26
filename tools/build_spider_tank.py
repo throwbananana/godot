@@ -247,12 +247,12 @@ def build_spider_tank(frame: int = 0, is_enemy: bool = False):
 def render_all_spider_tanks():
     """渲染跳蛛坦克全套 6 帧动画及图标"""
     print(">>> 正在初始化 Blender Cycles 跳蛛坦克渲染场景...")
-    setup_render_settings(rx=256, ry=256, samples=32)
 
     # 1. 玩家/中立版跳蛛坦克 6 帧 (tank_spider_f0 ~ f5)
     print("\n--- 渲染跳蛛坦克 6 帧动画 (tank_spider_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=28)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_spider_tank(frame=f, is_enemy=False)
         out_path = os.path.join(SPRITES_TANKS, f"tank_spider_f{f}.png")
@@ -263,6 +263,7 @@ def render_all_spider_tanks():
     print("\n--- 渲染敌方跳蛛坦克 6 帧动画 (enemy_spider_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=28)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_spider_tank(frame=f, is_enemy=True)
         out_path = os.path.join(SPRITES_TANKS, f"enemy_spider_f{f}.png")
@@ -271,6 +272,7 @@ def render_all_spider_tanks():
 
     # 3. 静态图鉴图标 (tank_spider.png)
     clear_scene()
+    setup_render_settings(rx=256, ry=256, samples=28)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
     objs = build_spider_tank(frame=0, is_enemy=False)
     icon_path = os.path.join(SPRITES_TANKS, "tank_spider.png")

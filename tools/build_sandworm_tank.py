@@ -141,12 +141,12 @@ def build_sandworm_tank(frame: int = 0, is_enemy: bool = True):
 def render_all_sandworm_assets():
     """渲染沙虫坦克 6 帧动画与静态图标"""
     print(">>> 正在初始化 Blender Cycles 沙虫坦克渲染场景...")
-    setup_render_settings(rx=256, ry=256, samples=32)
 
     # 1. 玩家/中立版沙虫坦克 6 帧 (tank_sandworm_f0 ~ f5)
     print("\n--- 渲染沙虫坦克 6 帧动画 (tank_sandworm_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=28)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_sandworm_tank(frame=f, is_enemy=False)
         out_path = os.path.join(SPRITES_TANKS, f"tank_sandworm_f{f}.png")
@@ -157,6 +157,7 @@ def render_all_sandworm_assets():
     print("\n--- 渲染敌方沙虫坦克 6 帧动画 (enemy_sandworm_f0~f5.png) ---")
     for f in range(6):
         clear_scene()
+        setup_render_settings(rx=256, ry=256, samples=28)
         create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
         objs = build_sandworm_tank(frame=f, is_enemy=True)
         out_path = os.path.join(SPRITES_TANKS, f"enemy_sandworm_f{f}.png")
@@ -165,6 +166,7 @@ def render_all_sandworm_assets():
 
     # 3. 静态图鉴图标 (tank_sandworm.png)
     clear_scene()
+    setup_render_settings(rx=256, ry=256, samples=28)
     create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
     objs = build_sandworm_tank(frame=0, is_enemy=True)
     icon_path = os.path.join(SPRITES_TANKS, "tank_sandworm.png")
