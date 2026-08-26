@@ -1393,6 +1393,47 @@ const TEMPLATE_SECTOR_DEFENSE_NEXUS = [
 	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]
 
+# 商店房专属地图 —— 之前商店走的是普通 "battle" 池, 跟战斗房抽同一批手搓
+# 模板, 而 main.gd::_build_shop_room() 只是把货位摆在固定格子 (col 2/6/10,
+# row 4/8) 和换货机 (10,10) 上, 从不检查那几格底下是不是砖/钢/水 —— 抽到
+# TEMPLATE_RIVERS 那类地图, 货位就摆在了河里, 玩家根本走不到。
+# 这两张图专门给 battle_type == "shop" 用: 除了四角的装饰砖垛 (远离 col3/row6
+# 的门廊, 也远离货位格), 中央全部留空, 保证货位、换货机和五个入场点
+# (main.gd::SHOP_STAND_CELLS / SHOP_REROLLER_CELL 的注释) 都站在空地上。
+const TEMPLATE_SHOP_MARKET = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+	[0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+const TEMPLATE_SHOP_BAZAAR = [
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+]
+
+const SHOP_POOL: Array = [TEMPLATE_SHOP_MARKET, TEMPLATE_SHOP_BAZAAR]
+
 const TEMPLATE_MIN_FLOOR: Dictionary = {
 	TEMPLATE_TIMBER_BARRICADE_DEFENSE: 1, TEMPLATE_WOODEN_WALL_RAMPART: 2,
 	TEMPLATE_WOODEN_FORTRESS_LABYRINTH: 2, TEMPLATE_BUNKER_CROSSFIRE_VALLEY: 2,
@@ -1422,26 +1463,33 @@ const TEMPLATE_MIN_FLOOR: Dictionary = {
 	TEMPLATE_SOLAR_TITAN_SANCTUM: 5,
 }
 
-static func _pick_from_pool(pool: Array, floor_idx: int) -> Array:
+static func _pick_from_pool(pool: Array, floor_idx: int, room_entropy: int = 0) -> Array:
 	var eligible = pool.filter(func(t): return floor_idx >= TEMPLATE_MIN_FLOOR.get(t, 0))
 	if not eligible.is_empty():
-		return eligible[_pool_index(eligible.size(), floor_idx)]
+		return eligible[_pool_index(eligible.size(), floor_idx, room_entropy)]
 	var lowest = 999999
 	for t in pool:
 		lowest = mini(lowest, TEMPLATE_MIN_FLOOR.get(t, 0))
 	var closest = pool.filter(func(t): return TEMPLATE_MIN_FLOOR.get(t, 0) == lowest)
-	return closest[_pool_index(closest.size(), floor_idx)]
+	return closest[_pool_index(closest.size(), floor_idx, room_entropy)]
 
-static func _pool_index(size: int, floor_idx: int) -> int:
+# room_entropy 是房间标识(GameState.current_room)哈希后的常量偏移。
+# current_floor 每清 2 个房间才前进一格 (game_state.gd::_recompute_current_floor),
+# 一层楼有 8-11 个房间, 所以同一层里好几个不同房间会共享同一个 floor_idx ——
+# 不加这个偏移的话, _pool_index 只看 floor_idx, 这些房间就会拿到一模一样的
+# 手搓模板, 玩家观感就是"这层怎么和上一间长得一样"。偏移量对每个 floor_idx
+# 都加同一个常数, 序列仍是双射 (mod size 下加常数不破坏满射), 所以跨楼层的
+# 覆盖率不变; room_entropy=0 (默认值/旧调用点) 精确复现旧行为, 测试不受影响。
+static func _pool_index(size: int, floor_idx: int, room_entropy: int = 0) -> int:
 	if size <= 0:
 		return 0
 	if GameState.run_seed == 0 or size == 1:
-		return floor_idx % size
+		return (floor_idx + room_entropy) % size
 	var off: int = abs(hash("%d:pool_off" % GameState.run_seed)) % size
 	var stride: int = 1 + abs(hash("%d:pool_stride" % GameState.run_seed)) % (size - 1)
 	while _gcd(stride, size) != 1:
 		stride = (stride % (size - 1)) + 1
-	return (off + floor_idx * stride) % size
+	return (off + floor_idx * stride + room_entropy) % size
 
 static func _gcd(a: int, b: int) -> int:
 	while b != 0:
@@ -1450,13 +1498,14 @@ static func _gcd(a: int, b: int) -> int:
 		a = t
 	return a
 
-static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int = -1, allow_procgen: bool = true) -> Array:
+static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int = -1, allow_procgen: bool = true, room_key: String = "") -> Array:
 	# Acts beyond 3 reuse the 3 existing visual themes on a cycle (see
 	# GameState.get_visual_act()) -- there's no unique template pool per act
 	# past that, so map selection always keys off the cycled theme, not the
 	# raw act number.
 	var raw_act = GameState.current_act if act == -1 else act
 	var current_act = GameState.get_visual_act(raw_act)
+	var room_entropy: int = 0 if room_key.is_empty() else abs(hash(room_key))
 
 	# Procedural generation chance (25% chance for a fresh randomized layout during regular battles)
 	if allow_procgen and battle_type == "battle" and (floor_idx % 3 == 2):
@@ -1465,6 +1514,12 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 		# 而这一分支第一次触发正好是 floor 2 —— 全局最难的图出现在第三层。
 		return MapDirector.build(floor_idx, current_act)
 
+	if battle_type == "shop":
+		# 商店房不打仗, 不该抽跟战斗房同一批手搓模板 —— 那些图里的砖/钢/水
+		# 谁都不保证避开 main.gd::SHOP_STAND_CELLS, 货位就可能摆在墙里/水里
+		# 走不到。这个专属池 (见 SHOP_POOL) 每张图都保证货位、换货机、五个
+		# 入场点全部是空地。
+		return _pick_from_pool(SHOP_POOL, floor_idx, room_entropy)
 	if battle_type == "boss":
 		match current_act:
 			1: return TEMPLATE_BOSS_ARENA
@@ -1475,26 +1530,26 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 		match current_act:
 			1:
 				var pc1 = [TEMPLATE_CHECKERBOARD, TEMPLATE_CITADEL, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_ENEMY_SHIELD_BASTION, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_BUNKER_REDOUBT, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA]
-				return _pick_from_pool(pc1, floor_idx)
+				return _pick_from_pool(pc1, floor_idx, room_entropy)
 			2:
 				var pc2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_WIND_TEMPEST, TEMPLATE_INFERNO_REFINERY, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_ENGINEER_FACTORY_COMPLEX, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE]
-				return _pick_from_pool(pc2, floor_idx)
+				return _pick_from_pool(pc2, floor_idx, room_entropy)
 			3:
 				var pc3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_OIL_REFINERY, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_CYCLONE_ARENA, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_GLACIER_BUNKER_REDOUBT, TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_SECTOR_DEFENSE_NEXUS]
-				return _pick_from_pool(pc3, floor_idx)
+				return _pick_from_pool(pc3, floor_idx, room_entropy)
 			_:
 				return TEMPLATE_SHIELD_OUTPOST
 	elif battle_type == "elite":
 		match current_act:
 			1:
 				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA]
-				return _pick_from_pool(p1, floor_idx)
+				return _pick_from_pool(p1, floor_idx, room_entropy)
 			2:
 				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_ENGINEER_FACTORY_COMPLEX, TEMPLATE_BUNKER_REDOUBT, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE]
-				return _pick_from_pool(p2, floor_idx)
+				return _pick_from_pool(p2, floor_idx, room_entropy)
 			3:
 				var p3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_TWIN_LAKES_SALVAGE, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_GLACIER_BUNKER_REDOUBT, TEMPLATE_TESLA_CONDUIT_PINBALL, TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_SECTOR_DEFENSE_NEXUS]
-				return _pick_from_pool(p3, floor_idx)
+				return _pick_from_pool(p3, floor_idx, room_entropy)
 			_:
 				return TEMPLATE_CITADEL
 	else:
@@ -1533,7 +1588,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_BUNKER_CROSSFIRE_VALLEY,
 					TEMPLATE_PIPE_AMMO_REFLEX_ARENA,
 				]
-				return _pick_from_pool(act1_pool, floor_idx)
+				return _pick_from_pool(act1_pool, floor_idx, room_entropy)
 			2:
 				var act2_pool = [
 					TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY,
@@ -1545,7 +1600,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE,
 					TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA
 				]
-				return _pick_from_pool(act2_pool, floor_idx)
+				return _pick_from_pool(act2_pool, floor_idx, room_entropy)
 			3:
 				var act3_pool = [
 					TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD,
@@ -1558,6 +1613,6 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_TESLA_CONDUIT_PINBALL, TEMPLATE_ENGINEER_FACTORY_COMPLEX,
 					TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_NAVAL_FERRY_SALVAGE, TEMPLATE_SECTOR_DEFENSE_NEXUS
 				]
-				return _pick_from_pool(act3_pool, floor_idx)
+				return _pick_from_pool(act3_pool, floor_idx, room_entropy)
 			_:
 				return TEMPLATE_CLASSIC

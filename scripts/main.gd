@@ -151,6 +151,29 @@ var tree_sprites: Dictionary = {}
 # 但看不清朝向和血条, 伏击仍然成立。
 const TREE_REVEAL_ALPHA: float = 0.38
 const TREE_FADE_SPEED: float = 6.0
+
+# 风吹树冠的轻微摇摆。锚定在瓦片下半 (VERTEX.y > 0 处 top_weight 被 clamp 到 0),
+# 只让上半的树冠晃, 免得整块 256px 不透明瓦片跟着水平漂移, 在相邻瓦片的接缝处
+# 露出下面的地面瓦片 (参见 CLAUDE.md 里 tileseam 那段的教训)。相位从每棵树自己
+# 的世界坐标哈希出来 (MODEL_MATRIX[3].xy), 所以同一份 ShaderMaterial 可以被全部
+# 树冠 Sprite2D 共用, 而不会所有树同步晃成一个整体。伪装成树的 MIRAGE 用的是
+# 敌方坦克自己的 Sprite2D, 不在这份材质的挂载点上, 保持静止 —— 这跟
+# _update_tree_transparency() 特意跳过伪装中 MIRAGE 是同一个理由: 会动的树会把
+# 静止的假树衬得格外显眼, 伪装机制就废了。
+const TREE_SWAY_SHADER_CODE = """
+shader_type canvas_item;
+
+uniform float sway_speed = 1.1;
+uniform float sway_amount = 4.0;
+
+void vertex() {
+	vec2 world_pos = MODEL_MATRIX[3].xy;
+	float phase = fract(sin(dot(world_pos, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831853;
+	float top_weight = clamp(-VERTEX.y / 128.0, 0.0, 1.0);
+	VERTEX.x += sin(TIME * sway_speed + phase) * sway_amount * top_weight;
+}
+"""
+var _tree_sway_material: ShaderMaterial
 var water_bodies: Array[StaticBody2D] = [] # used by player.gd's Amphibious Hull perk for add_collision_exception_with()
 var water_frame: int = 0
 var water_anim_timer: float = 0.0
@@ -1139,7 +1162,7 @@ func _build_map() -> void:
 		# 一张出生点被钢墙隔断的图, 所有人当天都得吃这个亏。
 		layout = MapDirector.build(0, daily_act, GameState.get_daily_seed(), 2)
 	else:
-		layout = MapTemplates.get_layout_for_stage(GameState.current_floor, GameState.battle_type, GameState.current_act)
+		layout = MapTemplates.get_layout_for_stage(GameState.current_floor, GameState.battle_type, GameState.current_act, true, GameState.current_room)
 
 	# **必须深拷贝。** get_layout_for_stage() 手搓模板那一支返回的是
 	# map_templates.gd 里那个 const 数组**本身**的引用, 不是副本; 下面
@@ -1246,8 +1269,14 @@ func _build_map() -> void:
 			elif tile_type == 44:
 				_spawn_wooden_wall(pos)
 
-	# Dynamic terrain hazards (Minefields on higher floors / elite encounters)
-	if (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
+	# Dynamic terrain hazards (Minefields on higher floors / elite encounters).
+	# 只在战斗房加 —— 这段是在 _build_map() 尾部无条件跑的, 跟房间类型无关;
+	# 商店/事件/宝物/休息房也会经过 _build_map() (每间房都建图), 不加这个判定
+	# 的话高楼层的商店房会在货位旁边埋地雷, 玩家逛街进门就被炸。
+	var room_is_combat: bool = true
+	if GameState.mode != GameState.GameMode.DAILY_CHALLENGE:
+		room_is_combat = FloorMap.is_combat_room(GameState.current_room_data())
+	if room_is_combat and (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
 		var mine_positions = []
 		if GameState.current_floor == 2:
 			mine_positions = [
@@ -1348,6 +1377,14 @@ func _spawn_hard_clay_tile(container: Node2D, pos: Vector2) -> void:
 
 			container.add_child(sub_body)
 
+func _tree_sway_mat() -> ShaderMaterial:
+	if _tree_sway_material == null:
+		var shader := Shader.new()
+		shader.code = TREE_SWAY_SHADER_CODE
+		_tree_sway_material = ShaderMaterial.new()
+		_tree_sway_material.shader = shader
+	return _tree_sway_material
+
 func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 	if not tex:
 		return
@@ -1357,6 +1394,7 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 		spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
 		spr.position = pos
 		spr.z_index = 10
+		spr.material = _tree_sway_mat()
 		spr.add_to_group("trees")
 		map_container.add_child(spr)
 		# 按格记下来, 供 _update_tree_transparency() 做"有坦克进林子就透出来"。

@@ -367,11 +367,20 @@ static func current_room_data() -> Dictionary:
 ## 一一对应: 普通房打的是原来的 "battle", boss 房是 "boss", 挑战房是
 ## "challenge"; 商店/宝物/事件/休息房不打仗, 但仍然要给一个合法值, 否则
 ## main.gd::encounter_size() 会拿 ENCOUNTER_BASE 的默认分支去算遭遇规模。
+##
+## "shop" 单独给一个值 (而不是退到 "battle" 默认分支), 是因为
+## MapTemplates.get_layout_for_stage() 按 battle_type 分派地图池 —— 退到
+## "battle" 意味着商店房和普通战斗房抽同一个池子, 货位 (main.gd::
+## SHOP_STAND_CELLS) 摆下去就可能压在那张图的砖墙/水面上, 玩家根本走不到货位。
+## encounter_size()/spawn_interval_for() 对不认识的 battle_type 会退回
+## ENCOUNTER_BASE["battle"] 的默认值, 所以这里加一个新值不会破坏遭遇规模计算 ——
+## 反正商店房从不进 _begin_room_encounter(), 这两个函数压根不会被调用。
 static func battle_type_for_room(room: Dictionary) -> String:
 	match str(room.get("type", "normal")):
 		"boss": return "boss"
 		"challenge": return "challenge"
 		"elite": return "elite"
+		"shop": return "shop"
 		_: return "battle"
 
 
