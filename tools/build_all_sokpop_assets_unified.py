@@ -517,16 +517,18 @@ def build_sokpop_steel():
 
 def build_sokpop_water(frame=0):
     objs = []
-    # 高光泽晶莹水体材质 (Sokpop ceramic glaze & SSS reflection)
-    mat_deep_water   = create_clay_mat("m_uw_dw", (0.10, 0.36, 0.65, 1.0), roughness=0.08, sss_weight=0.28, bump_strength=0.02)
-    mat_mid_water    = create_clay_mat("m_uw_mw", (0.18, 0.58, 0.85, 1.0), roughness=0.06, sss_weight=0.25, bump_strength=0.02)
-    mat_light_water  = create_clay_mat("m_uw_lw", (0.44, 0.86, 0.96, 1.0), roughness=0.04, sss_weight=0.22, bump_strength=0.02)
-    # 天光与云影镜面反射倒影光带 (Glossy sky & cloud specular reflection sheen)
-    mat_refl_sky     = create_clay_mat("m_uw_refl", (0.84, 0.94, 1.0, 0.95), roughness=0.03, sss_weight=0.15, bump_strength=0.01)
-    mat_foam         = create_clay_mat("m_uw_fm", (0.96, 0.98, 1.0, 1.0), roughness=0.35, bump_strength=0.06)
-    mat_bubble       = create_clay_mat("m_uw_bub", (0.90, 0.98, 1.0, 1.0), roughness=0.04, bump_strength=0.01)
+    # 1. 材质定义 (Sokpop 釉面陶瓷质感与 SSS 高透光水体)
+    mat_deep_water   = create_clay_mat("m_uw_dw", (0.08, 0.32, 0.58, 1.0), roughness=0.08, sss_weight=0.28, bump_strength=0.02)
+    mat_mid_water    = create_clay_mat("m_uw_mw", (0.16, 0.60, 0.82, 1.0), roughness=0.05, sss_weight=0.25, bump_strength=0.02)
+    mat_light_water  = create_clay_mat("m_uw_lw", (0.42, 0.85, 0.95, 1.0), roughness=0.04, sss_weight=0.22, bump_strength=0.02)
+    mat_refl_sky     = create_clay_mat("m_uw_refl", (0.85, 0.95, 1.0, 0.95), roughness=0.02, sss_weight=0.15, bump_strength=0.01)
+    mat_foam         = create_clay_mat("m_uw_fm", (0.96, 0.98, 1.0, 1.0), roughness=0.32, bump_strength=0.06)
+    mat_bubble       = create_clay_mat("m_uw_bub", (0.90, 0.98, 1.0, 1.0), roughness=0.03, bump_strength=0.01)
+    mat_lily         = create_clay_mat("m_uw_lily", (0.22, 0.68, 0.26, 1.0), roughness=0.68, sss_weight=0.08)
+    mat_lotus        = create_clay_mat("m_uw_lotus", (0.96, 0.48, 0.64, 1.0), roughness=0.55, sss_weight=0.12)
+    mat_lotus_gold   = create_clay_mat("m_uw_lotus_gold", (0.98, 0.82, 0.18, 1.0), roughness=0.45)
 
-    # 1. Full-Bleed Deep River Basin Base Block
+    # 2. 满幅深水盆地底板 (TILE_PLATE_BLEED=3.64 保证倒角溢出画幅，消除边缘黑缝)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, -0.06))
     base = bpy.context.active_object
     base.scale = (TILE_PLATE_BLEED, TILE_PLATE_BLEED, 0.32)
@@ -534,20 +536,19 @@ def build_sokpop_water(frame=0):
     apply_uniform_clay_bevel(base, width=0.10, segments=3, jitter=0.0)
     objs.append(base)
 
-    # 2. 5-Tier Seamless Multi-Tile River Wave Ribbons with Specular Sky Reflections
+    # 3. 5 排多层无缝波浪 (Multi-Tier Seamless River Waves)
     frame_phase = frame * (2.0 * math.pi / 6.0)
     tile_period = ORTHO_SCALE_DEFAULT  # 3.30
-    freq = (2.0 * math.pi * 2.0) / tile_period  # exactly 2 periods per tile width -> seamless across borders
+    freq = (2.0 * math.pi * 2.0) / tile_period  # 2 periods / tile -> 无缝平铺
 
     wave_period = tile_period * 0.5    # 1.65
     half_frame = tile_period * 0.5     # 1.65
 
-    span_ext = half_frame + wave_period          # 3.30
-    steps_ext = 96                               # 6.60 / 96 = 1.65/24
+    span_ext = half_frame + wave_period  # 3.30
+    steps_ext = 96
     half_span = span_ext
 
     wave_tiers = [
-        # (name, y_base, amp, phase_offset, width_y, height_z, z_base)
         ("WaveRow0",  1.26, 0.15, 0.0,  0.54, 0.11, 0.08),
         ("WaveRow1",  0.63, 0.18, 1.3,  0.58, 0.13, 0.10),
         ("WaveRow2",  0.00, 0.20, 2.6,  0.60, 0.14, 0.11),
@@ -558,50 +559,89 @@ def build_sokpop_water(frame=0):
     for name, y_base, amp, row_phase, wy, hz, zb in wave_tiers:
         cur_phase = row_phase + frame_phase
 
-        # Main wave body ribbon spanning full tile width without tapering
+        # 主波浪流体带 (全幅延伸)
         wv = create_wavy_ribbon(f"{name}_Body", y_base, amp, freq, cur_phase,
                                 width_y=wy, height_z=hz, z_base=zb,
                                 x_min=-half_span, x_max=half_span, steps=steps_ext, taper=False)
         wv.data.materials.append(mat_mid_water)
         objs.append(wv)
 
-        # Mirror sky & environment reflection ribbon (水面镜面反射与倒影高光)
+        # 镜面天光与倒影反射光带 (Ceramic Reflection Sheen)
         wv_refl = create_wavy_ribbon(f"{name}_Reflection", y_base - 0.08, amp, freq, cur_phase,
-                                     width_y=wy * 0.26, height_z=hz * 0.40, z_base=zb + hz * 0.16,
+                                     width_y=wy * 0.28, height_z=hz * 0.42, z_base=zb + hz * 0.18,
                                      x_min=-half_span, x_max=half_span, steps=steps_ext, taper=False)
         wv_refl.data.materials.append(mat_refl_sky)
         objs.append(wv_refl)
 
-        # Upper wave crest highlight ribbon
+        # 浪脊浅青高光带 (Crest Highlight)
         wv_crest = create_wavy_ribbon(f"{name}_Crest", y_base, amp, freq, cur_phase,
                                       width_y=wy * 0.38, height_z=hz * 0.60, z_base=zb + hz * 0.32,
                                       x_min=-half_span, x_max=half_span, steps=steps_ext, taper=False)
         wv_crest.data.materials.append(mat_light_water)
         objs.append(wv_crest)
 
-        # 浪尖白沫与晶莹气泡
+        # 浪尖白沫与晶莹气泡簇
         x0 = (0.5 * math.pi - cur_phase) / freq
         k_lo = int(math.floor((-half_frame - 0.30 - x0) / wave_period))
         k_hi = int(math.ceil((half_frame + 0.30 - x0) / wave_period))
         for k in range(k_lo, k_hi + 1):
             peak_x = x0 + k * wave_period
 
-            flen = 0.52
+            flen = 0.54
             if -(half_frame + 0.30) <= peak_x <= (half_frame + 0.30):
                 fm = create_wavy_ribbon(f"{name}_Foam_{k}", y_base, amp, freq, cur_phase,
-                                        width_y=0.065, height_z=0.04, z_base=zb + hz * 0.45,
+                                        width_y=0.07, height_z=0.045, z_base=zb + hz * 0.46,
                                         x_min=peak_x - flen * 0.5, x_max=peak_x + flen * 0.5, steps=16, taper=True)
                 fm.data.materials.append(mat_foam)
                 objs.append(fm)
 
-                # Sparkling bubble droplets beside foam cap
-                bx = peak_x + flen * 0.30
-                by = y_base + amp * math.sin(bx * freq + cur_phase) + 0.04
-                bpy.ops.mesh.primitive_uv_sphere_add(radius=0.045, location=(bx, by, zb + hz * 0.48))
-                bub = bpy.context.active_object
-                bub.data.materials.append(mat_bubble)
+                # 3 颗一组的浪尖飞溅气泡水珠
+                for b_i, b_ox in enumerate([0.18, 0.28, 0.36]):
+                    bx = peak_x + b_ox
+                    by = y_base + amp * math.sin(bx * freq + cur_phase) + (b_i * 0.02)
+                    bz = zb + hz * 0.48 + (0.01 if b_i == 1 else 0.0)
+                    brad = 0.042 - b_i * 0.008
+                    bpy.ops.mesh.primitive_uv_sphere_add(radius=brad, location=(bx, by, bz))
+                    bub = bpy.context.active_object
+                    bub.data.materials.append(mat_bubble)
+                    bpy.ops.object.shade_smooth()
+                    objs.append(bub)
+
+    # 4. 浮水手作黏土睡莲叶与小荷花 (Floating Clay Lily Pads with 6-Frame Bobbing)
+    lily_configs = [
+        ("Lily1", -0.65, 0.48, 0.38, math.radians(35), 0.5, True),
+        ("Lily2", 0.58, -0.42, 0.30, math.radians(40), 2.2, False),
+        ("Lily3", -0.15, -0.85, 0.24, math.radians(45), 4.1, False)
+    ]
+    for (lname, lx, ly, lrad, lnotch, lphase, has_flower) in lily_configs:
+        bob_z = 0.16 + math.sin(frame_phase + lphase) * 0.016
+        bob_rot = math.sin(frame_phase + lphase) * math.radians(3.5)
+
+        lily = create_lily_pad(lname, radius=lrad, depth=0.04, notch_angle=lnotch, z_pos=bob_z)
+        lily.location = (lx, ly, 0)
+        lily.rotation_euler = (bob_rot, -bob_rot * 0.5, lphase)
+        lily.data.materials.append(mat_lily)
+        apply_clay_jitter(lily, strength=0.008)
+        objs.append(lily)
+
+        if has_flower:
+            fl_x, fl_y, fl_z = lx + 0.06, ly + 0.06, bob_z + 0.04
+            for p_i in range(4):
+                p_ang = p_i * (math.pi * 0.5) + 0.3
+                px = fl_x + math.cos(p_ang) * 0.06
+                py = fl_y + math.sin(p_ang) * 0.06
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=0.05, location=(px, py, fl_z))
+                petal = bpy.context.active_object
+                petal.scale = (1.2, 0.8, 0.7)
+                petal.rotation_euler = (0, 0, p_ang)
+                petal.data.materials.append(mat_lotus)
                 bpy.ops.object.shade_smooth()
-                objs.append(bub)
+                objs.append(petal)
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=0.038, location=(fl_x, fl_y, fl_z + 0.02))
+            center = bpy.context.active_object
+            center.data.materials.append(mat_lotus_gold)
+            bpy.ops.object.shade_smooth()
+            objs.append(center)
 
     return objs
 
