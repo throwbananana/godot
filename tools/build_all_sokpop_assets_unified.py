@@ -16,6 +16,7 @@ from sokpop_common import (  # noqa: E402
     create_sokpop_lighting,
     create_clay_mat,
     apply_uniform_clay_bevel,
+    apply_clay_jitter,
     reset_jitter_seed,
     render_and_clean,
     ORTHO_SCALE_DEFAULT,
@@ -606,81 +607,105 @@ def build_sokpop_water(frame=0):
 
 def build_sokpop_trees():
     objs = []
-    mat_forest = create_clay_mat("m_ut_f", (0.24, 0.56, 0.22, 1.0))
-    mat_matcha = create_clay_mat("m_ut_m", (0.32, 0.70, 0.28, 1.0))
-    mat_lime = create_clay_mat("m_ut_l", (0.48, 0.82, 0.32, 1.0))
-    mat_crown = create_clay_mat("m_ut_cr", (0.58, 0.88, 0.38, 1.0))
-    mat_trunk = create_clay_mat("m_ut_tr", (0.44, 0.26, 0.16, 1.0))
-    mat_berry = create_clay_mat("m_ut_b", (0.92, 0.28, 0.38, 1.0))
+    # 1. Sokpop 黏土材质微调 (消除局部过度高光，增加微透光感)
+    mat_forest = create_clay_mat("m_ut_f", (0.23, 0.53, 0.21, 1.0), roughness=0.82, sss_weight=0.06)
+    mat_matcha = create_clay_mat("m_ut_m", (0.33, 0.69, 0.27, 1.0), roughness=0.82, sss_weight=0.06)
+    mat_lime   = create_clay_mat("m_ut_l", (0.47, 0.81, 0.31, 1.0), roughness=0.80, sss_weight=0.06)
+    mat_crown  = create_clay_mat("m_ut_cr", (0.57, 0.87, 0.37, 1.0), roughness=0.78, sss_weight=0.08)
+    mat_trunk  = create_clay_mat("m_ut_tr", (0.44, 0.26, 0.16, 1.0), roughness=0.85, sss_weight=0.04)
+    mat_berry  = create_clay_mat("m_ut_b", (0.92, 0.26, 0.36, 1.0), roughness=0.70, sss_weight=0.10)
 
-    # 1. Exposed Wooden Trunk/Stump Base
-    for (tx, ty) in [(-0.65, -0.65), (0.65, 0.65)]:
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.32, depth=0.45, vertices=12, location=(tx, ty, 0.08))
+    # 2. 露出地表的树桩与地表树根节瘤基座 (Exposed Wooden Trunk & Ground Root Knuckles)
+    trunks = [
+        (-0.65, -0.65, 0.08, 0.32, 0.45),
+        (0.65, 0.65, 0.08, 0.32, 0.45),
+        (-0.35, -0.75, 0.04, 0.16, 0.25),
+        (0.75, 0.35, 0.04, 0.15, 0.25)
+    ]
+    for (tx, ty, tz, rad, dep) in trunks:
+        bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=dep, vertices=12, location=(tx, ty, tz))
         trunk = bpy.context.active_object
         trunk.data.materials.append(mat_trunk)
-        apply_uniform_clay_bevel(trunk, width=0.06, segments=2)
+        apply_uniform_clay_bevel(trunk, width=0.05, segments=2)
         objs.append(trunk)
 
-    # 2. Rich Layered Canopy Volumes spanning full footprint (密实多层树冠，完全遮蔽敌方)
+    # 3. 饱满多层树冠体块 (Layered Canopy Volumes)
+    # (x, y, z, rx, ry, rz, material) 引入轴向轻微扁平手捏感与非对称去中心化分布
     spheres = [
-        # Base canopy layer (deep forest & matcha) - dense foundation
-        (-0.95, -0.95, 0.38, 0.90, mat_forest), (0.95, -0.95, 0.38, 0.90, mat_forest),
-        (-0.95, 0.95, 0.38, 0.90, mat_forest), (0.95, 0.95, 0.38, 0.90, mat_forest),
-        # Mid-tier lush foliage (matcha & lime)
-        (-0.85, 0.0, 0.50, 0.88, mat_matcha), (0.85, 0.0, 0.50, 0.88, mat_matcha),
-        (0.0, -0.85, 0.50, 0.88, mat_matcha), (0.0, 0.85, 0.50, 0.88, mat_matcha),
-        # Inner mid-canopy clusters
-        (-0.40, -0.40, 0.62, 0.82, mat_lime), (0.40, 0.40, 0.62, 0.82, mat_lime),
-        (-0.40, 0.40, 0.62, 0.82, mat_lime), (0.40, -0.40, 0.62, 0.82, mat_lime),
-        # Crown summit domes (lime & sunlit mint)
-        (0.0, 0.0, 0.84, 1.18, mat_lime),
-        (-0.25, 0.25, 1.14, 0.75, mat_crown),
-        (0.25, -0.25, 1.08, 0.68, mat_matcha)
+        # 底层深林绿体块 (稳固基座，完全遮蔽)
+        (-0.95, -0.95, 0.38, 0.92, 0.90, 0.72, mat_forest),
+        (0.95, -0.95, 0.38, 0.90, 0.92, 0.72, mat_forest),
+        (-0.95, 0.95, 0.38, 0.92, 0.90, 0.72, mat_forest),
+        (0.95, 0.95, 0.38, 0.90, 0.92, 0.72, mat_forest),
+
+        # 中层抹茶与青柠体块 (手捏扁球簇)
+        (-0.85, 0.0, 0.50, 0.90, 0.86, 0.70, mat_matcha),
+        (0.85, 0.0, 0.50, 0.88, 0.90, 0.70, mat_matcha),
+        (0.0, -0.85, 0.50, 0.90, 0.88, 0.70, mat_matcha),
+        (0.0, 0.85, 0.50, 0.88, 0.90, 0.70, mat_matcha),
+
+        # 内圈多层次树冠簇
+        (-0.40, -0.40, 0.62, 0.85, 0.82, 0.68, mat_lime),
+        (0.40, 0.40, 0.62, 0.82, 0.85, 0.68, mat_lime),
+        (-0.40, 0.40, 0.62, 0.84, 0.84, 0.68, mat_lime),
+        (0.40, -0.40, 0.62, 0.84, 0.82, 0.68, mat_lime),
+
+        # 顶冠隆起中心丘 (轻微偏离中心，消除大片平铺时的单调网格感)
+        (0.08, -0.06, 0.85, 1.15, 1.12, 0.82, mat_lime),
+        (-0.22, 0.22, 1.15, 0.76, 0.72, 0.62, mat_crown),
+        (0.28, -0.22, 1.08, 0.70, 0.68, 0.58, mat_matcha)
     ]
 
-    # 3. 边界树冠 —— 球心落在画幅边线上，消除接缝与针孔漏景
+    # 4. 边界无缝树冠 (球心落在画幅边线上，消除接缝与针孔漏景)
     _P = ORTHO_SCALE_DEFAULT
     _HB = _P * 0.5
     _RZ = 0.42
     for (bx, by) in [(-_HB, -_HB), (_HB, -_HB), (-_HB, _HB), (_HB, _HB)]:
-        spheres.append((bx, by, _RZ, 0.65, mat_forest))
+        spheres.append((bx, by, _RZ, 0.68, 0.68, 0.60, mat_forest))
     for t in (-1.05, -0.35, 0.35, 1.05):
-        spheres += [(_HB, t, _RZ, 0.62, mat_matcha), (-_HB, t, _RZ, 0.62, mat_matcha),
-                    (t, _HB, _RZ, 0.62, mat_matcha), (t, -_HB, _RZ, 0.62, mat_matcha)]
+        spheres += [
+            (_HB, t, _RZ, 0.64, 0.64, 0.58, mat_matcha),
+            (-_HB, t, _RZ, 0.64, 0.64, 0.58, mat_matcha),
+            (t, _HB, _RZ, 0.64, 0.64, 0.58, mat_matcha),
+            (t, -_HB, _RZ, 0.64, 0.64, 0.58, mat_matcha)
+        ]
 
-    # 邻居瓦片周期投影副本（覆盖阴影延伸）
+    # 5. 邻居瓦片周期投影副本 (覆盖阴影延伸)
     _reach = _HB + 2.9
     _seen = set()
     _emit = []
     for dx in (-_P, 0.0, _P):
         for dy in (-_P, 0.0, _P):
-            for (x, y, z, r, m) in spheres:
+            for (x, y, z, rx, ry, rz, m) in spheres:
                 nx, ny = x + dx, y + dy
                 if abs(nx) > _reach or abs(ny) > _reach:
                     continue
-                key = (round(nx, 3), round(ny, 3), round(z, 3), round(r, 3))
+                key = (round(nx, 3), round(ny, 3), round(z, 3), round(rx, 3), round(ry, 3), round(rz, 3))
                 if key in _seen:
                     continue
                 _seen.add(key)
-                _emit.append((nx, ny, z, r, m))
+                _emit.append((nx, ny, z, rx, ry, rz, m))
 
-    for x, y, z, r, m in _emit:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(x, y, z))
+    for (x, y, z, rx, ry, rz, m) in _emit:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(x, y, z))
         b = bpy.context.active_object
+        b.scale = (rx, ry, rz)
+        apply_clay_jitter(b, strength=0.012)
         b.data.materials.append(m)
         bpy.ops.object.shade_smooth()
         objs.append(b)
 
-    # 4. 手作黏土浆果簇 (Clustered Berry Bunches)
+    # 6. 成簇手作黏土浆果 (Clustered Berry Bunches)
     berry_clusters = [
-        (-0.42, -0.32, 1.25), (-0.32, -0.42, 1.22),
-        (0.52, 0.32, 1.18), (0.42, 0.45, 1.20),
-        (0.12, -0.65, 1.12),
-        (-0.22, 0.62, 1.28)
+        (-0.40, -0.30, 1.25, 0.11), (-0.30, -0.40, 1.22, 0.09), (-0.46, -0.42, 1.21, 0.08),
+        (0.52, 0.30, 1.18, 0.11), (0.42, 0.44, 1.20, 0.09), (0.58, 0.42, 1.16, 0.08),
+        (0.12, -0.62, 1.12, 0.10), (0.22, -0.68, 1.09, 0.08),
+        (-0.20, 0.60, 1.26, 0.11), (-0.28, 0.68, 1.22, 0.09)
     ]
-    for bx, by, bz in berry_clusters:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(bx, by, bz))
+    for (bx, by, bz, brad) in berry_clusters:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=brad, location=(bx, by, bz))
         berry = bpy.context.active_object
+        apply_clay_jitter(berry, strength=0.008)
         berry.data.materials.append(mat_berry)
         bpy.ops.object.shade_smooth()
         objs.append(berry)
