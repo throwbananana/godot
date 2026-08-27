@@ -607,108 +607,143 @@ def build_sokpop_water(frame=0):
 
 def build_sokpop_trees():
     objs = []
-    # 1. Sokpop 黏土材质微调 (消除局部过度高光，增加微透光感)
-    mat_forest = create_clay_mat("m_ut_f", (0.23, 0.53, 0.21, 1.0), roughness=0.82, sss_weight=0.06)
-    mat_matcha = create_clay_mat("m_ut_m", (0.33, 0.69, 0.27, 1.0), roughness=0.82, sss_weight=0.06)
-    mat_lime   = create_clay_mat("m_ut_l", (0.47, 0.81, 0.31, 1.0), roughness=0.80, sss_weight=0.06)
-    mat_crown  = create_clay_mat("m_ut_cr", (0.57, 0.87, 0.37, 1.0), roughness=0.78, sss_weight=0.08)
-    mat_trunk  = create_clay_mat("m_ut_tr", (0.44, 0.26, 0.16, 1.0), roughness=0.85, sss_weight=0.04)
-    mat_berry  = create_clay_mat("m_ut_b", (0.92, 0.26, 0.36, 1.0), roughness=0.70, sss_weight=0.10)
+    # 1. 材质设定 (Sokpop 黏土材质：高对比度丛林色系)
+    mat_forest = create_clay_mat("m_jungle_f", (0.16, 0.44, 0.18, 1.0), roughness=0.82, sss_weight=0.06)
+    mat_matcha = create_clay_mat("m_jungle_m", (0.28, 0.62, 0.24, 1.0), roughness=0.80, sss_weight=0.06)
+    mat_lime   = create_clay_mat("m_jungle_l", (0.45, 0.78, 0.28, 1.0), roughness=0.78, sss_weight=0.08)
+    mat_leaf   = create_clay_mat("m_jungle_leaf", (0.36, 0.72, 0.22, 1.0), roughness=0.75, sss_weight=0.10)
+    mat_wood   = create_clay_mat("m_jungle_wood", (0.46, 0.25, 0.14, 1.0), roughness=0.85, sss_weight=0.04)
+    mat_vine   = create_clay_mat("m_jungle_vine", (0.22, 0.50, 0.20, 1.0), roughness=0.80, sss_weight=0.06)
+    mat_flower = create_clay_mat("m_jungle_flower", (0.95, 0.32, 0.45, 1.0), roughness=0.65, sss_weight=0.12)
+    mat_fruit  = create_clay_mat("m_jungle_fruit", (0.98, 0.70, 0.15, 1.0), roughness=0.65, sss_weight=0.12)
 
-    # 2. 露出地表的树桩与地表树根节瘤基座 (Exposed Wooden Trunk & Ground Root Knuckles)
-    trunks = [
-        (-0.65, -0.65, 0.08, 0.32, 0.45),
-        (0.65, 0.65, 0.08, 0.32, 0.45),
-        (-0.35, -0.75, 0.04, 0.16, 0.25),
-        (0.75, 0.35, 0.04, 0.15, 0.25)
-    ]
-    for (tx, ty, tz, rad, dep) in trunks:
-        bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=dep, vertices=12, location=(tx, ty, tz))
-        trunk = bpy.context.active_object
-        trunk.data.materials.append(mat_trunk)
-        apply_uniform_clay_bevel(trunk, width=0.05, segments=2)
-        objs.append(trunk)
-
-    # 3. 饱满多层树冠体块 (Layered Canopy Volumes)
-    # (x, y, z, rx, ry, rz, material) 引入轴向轻微扁平手捏感与非对称去中心化分布
-    spheres = [
-        # 底层深林绿体块 (稳固基座，完全遮蔽)
-        (-0.95, -0.95, 0.38, 0.92, 0.90, 0.72, mat_forest),
-        (0.95, -0.95, 0.38, 0.90, 0.92, 0.72, mat_forest),
-        (-0.95, 0.95, 0.38, 0.92, 0.90, 0.72, mat_forest),
-        (0.95, 0.95, 0.38, 0.90, 0.92, 0.72, mat_forest),
-
-        # 中层抹茶与青柠体块 (手捏扁球簇)
-        (-0.85, 0.0, 0.50, 0.90, 0.86, 0.70, mat_matcha),
-        (0.85, 0.0, 0.50, 0.88, 0.90, 0.70, mat_matcha),
-        (0.0, -0.85, 0.50, 0.90, 0.88, 0.70, mat_matcha),
-        (0.0, 0.85, 0.50, 0.88, 0.90, 0.70, mat_matcha),
-
-        # 内圈多层次树冠簇
-        (-0.40, -0.40, 0.62, 0.85, 0.82, 0.68, mat_lime),
-        (0.40, 0.40, 0.62, 0.82, 0.85, 0.68, mat_lime),
-        (-0.40, 0.40, 0.62, 0.84, 0.84, 0.68, mat_lime),
-        (0.40, -0.40, 0.62, 0.84, 0.82, 0.68, mat_lime),
-
-        # 顶冠隆起中心丘 (轻微偏离中心，消除大片平铺时的单调网格感)
-        (0.08, -0.06, 0.85, 1.15, 1.12, 0.82, mat_lime),
-        (-0.22, 0.22, 1.15, 0.76, 0.72, 0.62, mat_crown),
-        (0.28, -0.22, 1.08, 0.70, 0.68, 0.58, mat_matcha)
-    ]
-
-    # 4. 边界无缝树冠 (球心落在画幅边线上，消除接缝与针孔漏景)
+    # (A) 满幅深绿灌木底座 (保证 100% 满幅遮蔽与无缝)
     _P = ORTHO_SCALE_DEFAULT
     _HB = _P * 0.5
-    _RZ = 0.42
+    _RZ = 0.35
+
+    base_spheres = [
+        (-0.95, -0.95, _RZ, 0.95, 0.95, 0.65, mat_forest),
+        (0.95, -0.95, _RZ, 0.95, 0.95, 0.65, mat_forest),
+        (-0.95, 0.95, _RZ, 0.95, 0.95, 0.65, mat_forest),
+        (0.95, 0.95, _RZ, 0.95, 0.95, 0.65, mat_forest),
+        (0.0, 0.0, _RZ, 1.25, 1.25, 0.70, mat_forest)
+    ]
+    # 边界无缝球 (消除拼接漏光)
     for (bx, by) in [(-_HB, -_HB), (_HB, -_HB), (-_HB, _HB), (_HB, _HB)]:
-        spheres.append((bx, by, _RZ, 0.68, 0.68, 0.60, mat_forest))
+        base_spheres.append((bx, by, _RZ, 0.72, 0.72, 0.60, mat_forest))
     for t in (-1.05, -0.35, 0.35, 1.05):
-        spheres += [
-            (_HB, t, _RZ, 0.64, 0.64, 0.58, mat_matcha),
-            (-_HB, t, _RZ, 0.64, 0.64, 0.58, mat_matcha),
-            (t, _HB, _RZ, 0.64, 0.64, 0.58, mat_matcha),
-            (t, -_HB, _RZ, 0.64, 0.64, 0.58, mat_matcha)
+        base_spheres += [
+            (_HB, t, _RZ, 0.68, 0.68, 0.58, mat_forest),
+            (-_HB, t, _RZ, 0.68, 0.68, 0.58, mat_forest),
+            (t, _HB, _RZ, 0.68, 0.68, 0.58, mat_forest),
+            (t, -_HB, _RZ, 0.68, 0.68, 0.58, mat_forest)
         ]
 
-    # 5. 邻居瓦片周期投影副本 (覆盖阴影延伸)
+    # 3x3 邻居瓦片周期投影副本 (覆盖阴影延伸)
     _reach = _HB + 2.9
     _seen = set()
-    _emit = []
     for dx in (-_P, 0.0, _P):
         for dy in (-_P, 0.0, _P):
-            for (x, y, z, rx, ry, rz, m) in spheres:
+            for (x, y, z, rx, ry, rz, m) in base_spheres:
                 nx, ny = x + dx, y + dy
                 if abs(nx) > _reach or abs(ny) > _reach:
                     continue
-                key = (round(nx, 3), round(ny, 3), round(z, 3), round(rx, 3), round(ry, 3), round(rz, 3))
-                if key in _seen:
+                k = (round(nx, 3), round(ny, 3), round(z, 3), round(rx, 3), round(ry, 3))
+                if k in _seen:
                     continue
-                _seen.add(key)
-                _emit.append((nx, ny, z, rx, ry, rz, m))
+                _seen.add(k)
+                bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(nx, ny, z))
+                b = bpy.context.active_object
+                b.scale = (rx, ry, rz)
+                apply_clay_jitter(b, strength=0.012)
+                b.data.materials.append(m)
+                bpy.ops.object.shade_smooth()
+                objs.append(b)
 
-    for (x, y, z, rx, ry, rz, m) in _emit:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(x, y, z))
-        b = bpy.context.active_object
-        b.scale = (rx, ry, rz)
-        apply_clay_jitter(b, strength=0.012)
-        b.data.materials.append(m)
-        bpy.ops.object.shade_smooth()
-        objs.append(b)
-
-    # 6. 成簇手作黏土浆果 (Clustered Berry Bunches)
-    berry_clusters = [
-        (-0.40, -0.30, 1.25, 0.11), (-0.30, -0.40, 1.22, 0.09), (-0.46, -0.42, 1.21, 0.08),
-        (0.52, 0.30, 1.18, 0.11), (0.42, 0.44, 1.20, 0.09), (0.58, 0.42, 1.16, 0.08),
-        (0.12, -0.62, 1.12, 0.10), (0.22, -0.68, 1.09, 0.08),
-        (-0.20, 0.60, 1.26, 0.11), (-0.28, 0.68, 1.22, 0.09)
+    # (B) 苍劲出露的古木老枝 (穿透并横跨树冠上方，顶视清晰可见木色结构)
+    branches = [
+        # 主老树干 1 (从左下向中心上方拱起出露)
+        (-0.55, -0.55, 0.65, 0.28, 0.90, math.radians(45), math.radians(25), math.radians(-30)),
+        (-0.25, -0.20, 0.85, 0.22, 0.80, math.radians(65), math.radians(-15), math.radians(40)),
+        # 次生枝干 2 (从右向中心横跨)
+        (0.45, 0.35, 0.75, 0.24, 0.85, math.radians(-40), math.radians(35), math.radians(70)),
+        (0.15, 0.55, 0.82, 0.18, 0.65, math.radians(30), math.radians(-50), math.radians(-20)),
+        # 树桩基底 (粗大根瘤)
+        (-0.75, -0.75, 0.25, 0.38, 0.55, math.radians(10), math.radians(-15), 0),
+        (0.75, 0.65, 0.25, 0.35, 0.55, math.radians(-15), math.radians(10), 0)
     ]
-    for (bx, by, bz, brad) in berry_clusters:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=brad, location=(bx, by, bz))
-        berry = bpy.context.active_object
-        apply_clay_jitter(berry, strength=0.008)
-        berry.data.materials.append(mat_berry)
+    for (bx, by, bz, rad, dep, rx, ry, rz) in branches:
+        bpy.ops.mesh.primitive_cylinder_add(radius=rad, depth=dep, vertices=12, location=(bx, by, bz))
+        br = bpy.context.active_object
+        br.rotation_euler = (rx, ry, rz)
+        br.data.materials.append(mat_wood)
+        apply_uniform_clay_bevel(br, width=0.05, segments=2, jitter=0.018)
+        objs.append(br)
+
+    # (C) 热带掌状大阔叶簇 (Tropical Leaf Fronds - 辐射状扁平大叶片)
+    leaf_clusters = [
+        # 树冠中心大阔叶簇 (放射状 5 片大叶)
+        (-0.20, -0.10, 1.05, 5, 0.85, 0.30, 0.10, mat_leaf),
+        # 树冠东北次级阔叶簇 (4 片中叶)
+        (0.40, 0.35, 0.98, 4, 0.70, 0.26, 0.08, mat_lime),
+        # 树冠西北阔叶簇 (4 片中叶)
+        (-0.45, 0.40, 0.95, 4, 0.65, 0.24, 0.08, mat_matcha),
+        # 树冠南侧边缘叶簇 (3 片大叶)
+        (0.15, -0.55, 0.92, 3, 0.75, 0.28, 0.09, mat_lime)
+    ]
+    for (cx, cy, cz, num_leaves, length, width, thick, mat_l) in leaf_clusters:
+        for i in range(num_leaves):
+            ang = (i / float(num_leaves)) * (2.0 * math.pi) + 0.35
+            lx = cx + math.cos(ang) * (length * 0.45)
+            ly = cy + math.sin(ang) * (length * 0.45)
+            lz = cz - 0.06
+            bpy.ops.mesh.primitive_cube_add(size=1.0, location=(lx, ly, lz))
+            leaf = bpy.context.active_object
+            leaf.scale = (length * 0.5, width * 0.5, thick * 0.5)
+            leaf.rotation_euler = (
+                math.sin(ang) * math.radians(22),
+                -math.cos(ang) * math.radians(22),
+                ang
+            )
+            leaf.data.materials.append(mat_l)
+            apply_uniform_clay_bevel(leaf, width=0.06, segments=2, jitter=0.016)
+            objs.append(leaf)
+
+    # (D) 热带卷曲藤蔓 (Jungle Lianas & Vines)
+    vines = [
+        (-0.40, -0.30, 0.95, 0.25, 0.05, math.radians(45), math.radians(30)),
+        (0.30, 0.45, 0.88, 0.22, 0.05, math.radians(-30), math.radians(60)),
+        (0.05, 0.20, 0.92, 0.28, 0.05, math.radians(15), math.radians(-45)),
+        (-0.15, -0.45, 0.85, 0.20, 0.05, math.radians(60), math.radians(10))
+    ]
+    for (vx, vy, vz, rad, thick, rx, ry) in vines:
+        bpy.ops.mesh.primitive_torus_add(major_radius=rad, minor_radius=thick, location=(vx, vy, vz))
+        vn = bpy.context.active_object
+        vn.rotation_euler = (rx, ry, 0)
+        vn.data.materials.append(mat_vine)
+        apply_clay_jitter(vn, strength=0.01)
         bpy.ops.object.shade_smooth()
-        objs.append(berry)
+        objs.append(vn)
+
+    # (E) 鲜亮热带花朵与金色果实 (Vibrant Exotic Flora & Golden Fruits)
+    flowers = [
+        (-0.05, -0.15, 1.15, 0.14, mat_flower),
+        (0.02, -0.12, 1.14, 0.10, mat_flower),
+        (-0.10, -0.22, 1.12, 0.11, mat_flower),
+        (0.35, 0.20, 1.05, 0.13, mat_fruit),
+        (0.42, 0.15, 1.02, 0.11, mat_fruit),
+        (0.28, 0.25, 1.03, 0.10, mat_fruit),
+        (-0.35, 0.35, 1.02, 0.12, mat_flower),
+        (-0.42, 0.28, 1.00, 0.09, mat_flower)
+    ]
+    for (fx, fy, fz, frad, fmat) in flowers:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=frad, location=(fx, fy, fz))
+        fl = bpy.context.active_object
+        fl.data.materials.append(fmat)
+        apply_clay_jitter(fl, strength=0.01)
+        bpy.ops.object.shade_smooth()
+        objs.append(fl)
 
     return objs
 
