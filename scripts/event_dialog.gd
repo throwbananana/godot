@@ -46,7 +46,7 @@ func setup(type: String) -> void:
 		UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/hp_heart_full.png", Vector2(22, 22))
 	elif type == "shop":
 		icon_path = "res://assets/sprites/ui/diorama_shop.png"
-		title_label.text = "BLACK MARKET ARMS DEALER"
+		title_label.text = "BLACK MARKET ARMS DEALER (黑市军火商)"
 		desc_label.text = "The arms dealer offers military-grade prototypes. (Current Gold: %dG)" % GameState.gold
 		btn_1.text = "1. Star Weapon Module (100G) -> Tier Up!"
 		btn_2.text = "2. Forcefield Generator (60G) -> +2 Max HP"
@@ -54,6 +54,9 @@ func setup(type: String) -> void:
 		UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/powerups/star.png", Vector2(22, 22))
 		UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_shield.png", Vector2(22, 22))
 		UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/hp_heart_full.png", Vector2(22, 22))
+		btn_1.disabled = (GameState.gold < 100 or not _tier_up_would_help())
+		btn_2.disabled = (GameState.gold < 60)
+		btn_3.disabled = (GameState.gold < 80)
 	elif type == "event":
 		icon_path = "res://assets/sprites/ui/diorama_event.png"
 		var event_types = ["depot", "mechanic", "singularity", "glacier_cache", "bounty"]

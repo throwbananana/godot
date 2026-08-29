@@ -538,3 +538,467 @@ static func create_victory_defeat_modal(parent: Node) -> Dictionary:
 		"stats_box": stats_box,
 		"button": btn_action
 	}
+
+static func get_category_info(category_code: String, item_id: String = "") -> Dictionary:
+	match category_code:
+		"BUILD":
+			return {
+				"tag": "【战备建筑】",
+				"color": Color(0.40, 0.88, 0.98),
+				"bg": Color(0.12, 0.28, 0.36, 0.9)
+			}
+		"WEAPON":
+			return {
+				"tag": "【核心武装】",
+				"color": Color(1.0, 0.75, 0.35),
+				"bg": Color(0.38, 0.22, 0.10, 0.9)
+			}
+		"HULL":
+			return {
+				"tag": "【装甲强化】",
+				"color": Color(0.45, 0.92, 0.65),
+				"bg": Color(0.12, 0.32, 0.20, 0.9)
+			}
+		"FIREPOWER":
+			return {
+				"tag": "【火力调校】",
+				"color": Color(1.0, 0.85, 0.35),
+				"bg": Color(0.35, 0.28, 0.10, 0.9)
+			}
+		"MOBILITY":
+			return {
+				"tag": "【机动引擎】",
+				"color": Color(0.50, 0.80, 1.0),
+				"bg": Color(0.15, 0.25, 0.38, 0.9)
+			}
+		"SUPPORT":
+			return {
+				"tag": "【后勤增援】",
+				"color": Color(0.95, 0.60, 0.85),
+				"bg": Color(0.35, 0.15, 0.30, 0.9)
+			}
+		"BASE":
+			return {
+				"tag": "【基地工程】",
+				"color": Color(0.85, 0.75, 0.55),
+				"bg": Color(0.30, 0.24, 0.16, 0.9)
+			}
+		"TACTICAL":
+			return {
+				"tag": "【战术特种】",
+				"color": Color(0.95, 0.88, 0.45),
+				"bg": Color(0.32, 0.28, 0.12, 0.9)
+			}
+		"RISK":
+			return {
+				"tag": "【高风险改造】",
+				"color": Color(1.0, 0.45, 0.45),
+				"bg": Color(0.40, 0.12, 0.12, 0.95)
+			}
+		_:
+			return {
+				"tag": "【战术强化】",
+				"color": Color(0.85, 0.85, 0.90),
+				"bg": Color(0.20, 0.18, 0.24, 0.9)
+			}
+
+## 构造高品质黏土风格货位商品悬浮说明卡
+static func create_shop_explanation_card() -> PanelContainer:
+	var card := PanelContainer.new()
+	card.name = "ShopExplanationCard"
+	card.custom_minimum_size = Vector2(240, 140)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.z_index = 30
+	
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.12, 0.10, 0.15, 0.96)
+	sb.corner_radius_top_left = 12
+	sb.corner_radius_top_right = 12
+	sb.corner_radius_bottom_left = 12
+	sb.corner_radius_bottom_right = 12
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.border_color = Color(0.48, 0.42, 0.54, 0.95)
+	sb.shadow_color = Color(0, 0, 0, 0.6)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 4)
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", sb)
+	
+	var vbox := VBoxContainer.new()
+	vbox.name = "VBox"
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_theme_constant_override("separation", 3)
+	card.add_child(vbox)
+	
+	# Header: Icon + Title + Tag
+	var header := HBoxContainer.new()
+	header.name = "Header"
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_theme_constant_override("separation", 8)
+	vbox.add_child(header)
+	
+	var icon_panel := PanelContainer.new()
+	icon_panel.name = "IconPanel"
+	icon_panel.custom_minimum_size = Vector2(34, 34)
+	var icon_sb := StyleBoxFlat.new()
+	icon_sb.bg_color = Color(0.20, 0.17, 0.24, 0.95)
+	icon_sb.corner_radius_top_left = 6
+	icon_sb.corner_radius_top_right = 6
+	icon_sb.corner_radius_bottom_left = 6
+	icon_sb.corner_radius_bottom_right = 6
+	icon_sb.border_width_left = 1
+	icon_sb.border_width_top = 1
+	icon_sb.border_width_right = 1
+	icon_sb.border_width_bottom = 1
+	icon_sb.border_color = Color(0.45, 0.40, 0.50, 0.8)
+	icon_panel.add_theme_stylebox_override("panel", icon_sb)
+	header.add_child(icon_panel)
+	
+	var icon_rect := TextureRect.new()
+	icon_rect.name = "Icon"
+	icon_rect.custom_minimum_size = Vector2(28, 28)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_panel.add_child(icon_rect)
+	
+	var title_box := VBoxContainer.new()
+	title_box.name = "TitleBox"
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 1)
+	header.add_child(title_box)
+	
+	var title_lbl := Label.new()
+	title_lbl.name = "TitleLabel"
+	title_lbl.add_theme_font_size_override("font_size", 12)
+	title_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.50))
+	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_box.add_child(title_lbl)
+	
+	var tag_lbl := Label.new()
+	tag_lbl.name = "TagLabel"
+	tag_lbl.add_theme_font_size_override("font_size", 10)
+	tag_lbl.add_theme_color_override("font_color", Color(0.40, 0.88, 0.98))
+	title_box.add_child(tag_lbl)
+	
+	# Price and Status Row
+	var price_row := HBoxContainer.new()
+	price_row.name = "PriceRow"
+	price_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(price_row)
+	
+	var price_lbl := Label.new()
+	price_lbl.name = "PriceLabel"
+	price_lbl.add_theme_font_size_override("font_size", 12)
+	price_lbl.add_theme_color_override("font_color", Color(1.0, 0.86, 0.35))
+	price_row.add_child(price_lbl)
+	
+	var status_lbl := Label.new()
+	status_lbl.name = "StatusLabel"
+	status_lbl.add_theme_font_size_override("font_size", 11)
+	status_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	price_row.add_child(status_lbl)
+	
+	# Description Label
+	var desc_lbl := Label.new()
+	desc_lbl.name = "DescLabel"
+	desc_lbl.add_theme_font_size_override("font_size", 10)
+	desc_lbl.add_theme_color_override("font_color", Color(0.85, 0.83, 0.88))
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc_lbl)
+	
+	# Progress / Stock Label
+	var progress_lbl := Label.new()
+	progress_lbl.name = "ProgressLabel"
+	progress_lbl.add_theme_font_size_override("font_size", 10)
+	progress_lbl.add_theme_color_override("font_color", Color(0.70, 0.95, 0.70))
+	progress_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(progress_lbl)
+	
+	# Prompt Footer
+	var prompt_lbl := Label.new()
+	prompt_lbl.name = "PromptLabel"
+	prompt_lbl.add_theme_font_size_override("font_size", 9)
+	prompt_lbl.add_theme_color_override("font_color", Color(0.65, 0.75, 0.85))
+	prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	vbox.add_child(prompt_lbl)
+	
+	return card
+
+## 刷新货位商品悬浮说明卡的数据与状态
+static func update_shop_explanation_card(card: Control, item_id: String, cost: int, sold: bool) -> void:
+	if not card: return
+	var ShopDialogClass = load("res://scripts/shop_dialog.gd")
+	var GameStateClass = load("res://scripts/game_state.gd")
+	if not ShopDialogClass or not GameStateClass: return
+	
+	var data: Dictionary = ShopDialogClass.item_by_id(item_id)
+	if data.is_empty(): return
+	
+	var icon_rect: TextureRect = card.find_child("Icon", true, false)
+	var title_lbl: Label = card.find_child("TitleLabel", true, false)
+	var tag_lbl: Label = card.find_child("TagLabel", true, false)
+	var price_lbl: Label = card.find_child("PriceLabel", true, false)
+	var status_lbl: Label = card.find_child("StatusLabel", true, false)
+	var desc_lbl: Label = card.find_child("DescLabel", true, false)
+	var progress_lbl: Label = card.find_child("ProgressLabel", true, false)
+	var prompt_lbl: Label = card.find_child("PromptLabel", true, false)
+	
+	var cat_code = str(data.get("category", "TACTICAL"))
+	var cat_info = get_category_info(cat_code, item_id)
+	
+	if icon_rect:
+		var tex = TextureHelper.get_tex(str(data.get("icon", "")))
+		icon_rect.texture = tex
+	
+	if title_lbl:
+		title_lbl.text = str(data.get("name", item_id))
+	
+	if tag_lbl:
+		tag_lbl.text = cat_info["tag"]
+		tag_lbl.add_theme_color_override("font_color", cat_info["color"])
+		
+	if desc_lbl:
+		desc_lbl.text = str(data.get("desc", ""))
+		if cat_code == "RISK":
+			desc_lbl.add_theme_color_override("font_color", Color(1.0, 0.75, 0.75))
+		else:
+			desc_lbl.add_theme_color_override("font_color", Color(0.85, 0.83, 0.88))
+	
+	var can_afford: bool = (GameStateClass.gold >= cost)
+	var can_buy_cond: bool = ShopDialogClass.can_buy_item(item_id)
+	
+	if price_lbl:
+		price_lbl.text = "💰 %d G" % cost
+	
+	if sold:
+		if status_lbl:
+			status_lbl.text = "[已售罄 SOLD]"
+			status_lbl.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+		if prompt_lbl:
+			prompt_lbl.text = "✖ 该货位商品已被购入"
+			prompt_lbl.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
+	elif not can_buy_cond:
+		if status_lbl:
+			status_lbl.text = "[已达上限 MAX]"
+			status_lbl.add_theme_color_override("font_color", Color(0.95, 0.45, 0.35))
+		if prompt_lbl:
+			prompt_lbl.text = "✖ 已达到该强化的最大上限"
+			prompt_lbl.add_theme_color_override("font_color", Color(0.90, 0.50, 0.45))
+	elif not can_afford:
+		if status_lbl:
+			status_lbl.text = "[金币不足]"
+			status_lbl.add_theme_color_override("font_color", Color(1.0, 0.40, 0.40))
+		if prompt_lbl:
+			prompt_lbl.text = "✖ 缺少 %d G (持有 %d G)" % [cost - GameStateClass.gold, GameStateClass.gold]
+			prompt_lbl.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
+	else:
+		if status_lbl:
+			status_lbl.text = "[可购买 READY]"
+			status_lbl.add_theme_color_override("font_color", Color(0.40, 0.95, 0.45))
+		if prompt_lbl:
+			prompt_lbl.text = "👉 开上货位即可立即购买"
+			prompt_lbl.add_theme_color_override("font_color", Color(0.60, 0.90, 1.0))
+			
+	# Progress text
+	if progress_lbl:
+		if cat_code == "BUILD":
+			var stock: int = GameStateClass.get_structure_stock(item_id)
+			progress_lbl.text = "📦 当前战备库存: x%d" % stock
+			progress_lbl.add_theme_color_override("font_color", Color(0.45, 0.90, 1.0))
+		elif item_id in ShopDialogClass.PER_PLAYER_PERKS:
+			var stacks: int = int(GameStateClass.unlocked_perks.get(item_id, 0))
+			var max_s: int = GameStateClass.max_stacks_for_perk(item_id)
+			progress_lbl.text = "⚡ 强化层数: %d / %d 层" % [stacks, max_s]
+			progress_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.40))
+		elif item_id == "star_tier":
+			if GameStateClass.tank_branch == "default":
+				progress_lbl.text = "⭐ 当前战车阶级: Tier %d (上限: 3)" % GameStateClass.player_tier
+			else:
+				progress_lbl.text = "⭐ 分支专属转化: 永久攻击 +1 (当前加成: +%d)" % GameStateClass.atk_bonus
+			progress_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.45))
+		elif item_id == "heavy_armor":
+			progress_lbl.text = "🛡️ 当前装甲等级加成: +%d HP" % GameStateClass.max_hp_lvl
+			progress_lbl.add_theme_color_override("font_color", Color(0.50, 0.95, 0.65))
+		elif item_id == "autoloader":
+			progress_lbl.text = "⚙️ 当前装填强化等级: Lv.%d" % GameStateClass.fire_rate_lvl
+			progress_lbl.add_theme_color_override("font_color", Color(0.95, 0.85, 0.45))
+		elif item_id == "turbo_engine":
+			progress_lbl.text = "🚀 当前机动强化等级: Lv.%d" % GameStateClass.speed_lvl
+			progress_lbl.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0))
+		elif item_id == "extra_life":
+			if GameStateClass.player_count == 2:
+				progress_lbl.text = "❤️ 备用生命: P1:%d | P2:%d" % [GameStateClass.player_lives, GameStateClass.p2_lives]
+			else:
+				progress_lbl.text = "❤️ 备用生命: %d 条" % GameStateClass.player_lives
+			progress_lbl.add_theme_color_override("font_color", Color(1.0, 0.60, 0.70))
+		elif item_id == "steel_shovel":
+			progress_lbl.text = "🏰 基地工程防御等级: Lv.%d" % GameStateClass.builder_lvl
+			progress_lbl.add_theme_color_override("font_color", Color(0.85, 0.78, 0.60))
+		elif item_id == "plasma_mod":
+			progress_lbl.text = "💥 武器攻击加成: +%d" % GameStateClass.atk_bonus
+			progress_lbl.add_theme_color_override("font_color", Color(1.0, 0.70, 0.40))
+		elif item_id == "landmine_crate":
+			progress_lbl.text = "🎖️ 战役总经验值: %d XP" % GameStateClass.player_xp
+			progress_lbl.add_theme_color_override("font_color", Color(0.95, 0.90, 0.50))
+		else:
+			progress_lbl.text = ""
+
+## 构造高品质黏土风格换货机悬浮说明卡
+static func create_reroll_explanation_card() -> PanelContainer:
+	var card := PanelContainer.new()
+	card.name = "RerollExplanationCard"
+	card.custom_minimum_size = Vector2(250, 130)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.z_index = 30
+	
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.12, 0.10, 0.16, 0.96)
+	sb.corner_radius_top_left = 12
+	sb.corner_radius_top_right = 12
+	sb.corner_radius_bottom_left = 12
+	sb.corner_radius_bottom_right = 12
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.border_color = Color(0.55, 0.45, 0.68, 0.95)
+	sb.shadow_color = Color(0, 0, 0, 0.6)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 4)
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", sb)
+	
+	var vbox := VBoxContainer.new()
+	vbox.name = "VBox"
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_theme_constant_override("separation", 3)
+	card.add_child(vbox)
+	
+	var header := HBoxContainer.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_theme_constant_override("separation", 8)
+	vbox.add_child(header)
+	
+	var icon_panel := PanelContainer.new()
+	icon_panel.custom_minimum_size = Vector2(34, 34)
+	var icon_sb := StyleBoxFlat.new()
+	icon_sb.bg_color = Color(0.22, 0.16, 0.28, 0.95)
+	icon_sb.corner_radius_top_left = 6
+	icon_sb.corner_radius_top_right = 6
+	icon_sb.corner_radius_bottom_left = 6
+	icon_sb.corner_radius_bottom_right = 6
+	icon_sb.border_width_left = 1
+	icon_sb.border_width_top = 1
+	icon_sb.border_width_right = 1
+	icon_sb.border_width_bottom = 1
+	icon_sb.border_color = Color(0.60, 0.45, 0.75, 0.8)
+	icon_panel.add_theme_stylebox_override("panel", icon_sb)
+	header.add_child(icon_panel)
+	
+	var icon_rect := TextureRect.new()
+	icon_rect.name = "Icon"
+	icon_rect.custom_minimum_size = Vector2(28, 28)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var r_tex = TextureHelper.get_tex("res://assets/sprites/map/node_shop.png")
+	if r_tex: icon_rect.texture = r_tex
+	icon_panel.add_child(icon_rect)
+	
+	var title_box := VBoxContainer.new()
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_theme_constant_override("separation", 1)
+	header.add_child(title_box)
+	
+	var title_lbl := Label.new()
+	title_lbl.name = "TitleLabel"
+	title_lbl.text = "军火商货物刷新机 (Shop Reroll Device)"
+	title_lbl.add_theme_font_size_override("font_size", 12)
+	title_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
+	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_box.add_child(title_lbl)
+	
+	var tag_lbl := Label.new()
+	tag_lbl.name = "TagLabel"
+	tag_lbl.text = "【货架重置】"
+	tag_lbl.add_theme_font_size_override("font_size", 10)
+	tag_lbl.add_theme_color_override("font_color", Color(0.85, 0.65, 1.0))
+	title_box.add_child(tag_lbl)
+	
+	var price_row := HBoxContainer.new()
+	price_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	price_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(price_row)
+	
+	var price_lbl := Label.new()
+	price_lbl.name = "PriceLabel"
+	price_lbl.add_theme_font_size_override("font_size", 12)
+	price_lbl.add_theme_color_override("font_color", Color(1.0, 0.86, 0.35))
+	price_row.add_child(price_lbl)
+	
+	var status_lbl := Label.new()
+	status_lbl.name = "StatusLabel"
+	status_lbl.add_theme_font_size_override("font_size", 11)
+	status_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	price_row.add_child(status_lbl)
+	
+	var desc_lbl := Label.new()
+	desc_lbl.name = "DescLabel"
+	desc_lbl.text = "支付金币向军火商请求调拨全新货架！清空当前货位并重新随机上架 3 种战术强化与 3 种战备建筑。（每次刷新费用递增）"
+	desc_lbl.add_theme_font_size_override("font_size", 10)
+	desc_lbl.add_theme_color_override("font_color", Color(0.85, 0.82, 0.90))
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(desc_lbl)
+	
+	var prompt_lbl := Label.new()
+	prompt_lbl.name = "PromptLabel"
+	prompt_lbl.text = "👉 开上机器即可立即换货。"
+	prompt_lbl.add_theme_font_size_override("font_size", 9)
+	prompt_lbl.add_theme_color_override("font_color", Color(0.50, 0.90, 1.0))
+	prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	vbox.add_child(prompt_lbl)
+	
+	return card
+
+## 刷新换货机悬浮说明卡数据与状态
+static func update_reroll_explanation_card(card: Control, cost: int) -> void:
+	if not card: return
+	var GameStateClass = load("res://scripts/game_state.gd")
+	if not GameStateClass: return
+	
+	var price_lbl: Label = card.find_child("PriceLabel", true, false)
+	var status_lbl: Label = card.find_child("StatusLabel", true, false)
+	var prompt_lbl: Label = card.find_child("PromptLabel", true, false)
+	
+	var can_afford: bool = (GameStateClass.gold >= cost)
+	if price_lbl:
+		price_lbl.text = "💰 %d G" % cost
+		price_lbl.add_theme_color_override("font_color", Color(1.0, 0.86, 0.35) if can_afford else Color(1.0, 0.45, 0.45))
+	
+	if status_lbl:
+		if can_afford:
+			status_lbl.text = "[可刷新 READY]"
+			status_lbl.add_theme_color_override("font_color", Color(0.40, 0.95, 0.45))
+		else:
+			status_lbl.text = "[金币不足]"
+			status_lbl.add_theme_color_override("font_color", Color(1.0, 0.40, 0.40))
+			
+	if prompt_lbl:
+		if can_afford:
+			prompt_lbl.text = "👉 开上机器即可立即换货"
+			prompt_lbl.add_theme_color_override("font_color", Color(0.50, 0.90, 1.0))
+		else:
+			prompt_lbl.text = "✖ 缺少 %d G (持有 %d G)" % [cost - GameStateClass.gold, GameStateClass.gold]
+			prompt_lbl.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55))
+

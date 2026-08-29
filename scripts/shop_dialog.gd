@@ -384,14 +384,14 @@ func _render_item_cards() -> void:
 
 	for item in current_shop_items:
 		var card = PanelContainer.new()
-		card.custom_minimum_size = Vector2(210, 150)
-		UIThemeHelper.apply_clay_panel(card, Color(0.20, 0.17, 0.23, 0.95), 8)
+		card.custom_minimum_size = Vector2(210, 160)
+		UIThemeHelper.apply_clay_panel(card, Color(0.18, 0.15, 0.22, 0.95), 10)
 
 		var vbox = VBoxContainer.new()
-		vbox.add_theme_constant_override("separation", 4)
+		vbox.add_theme_constant_override("separation", 3)
 		card.add_child(vbox)
 
-		# Top row: icon + title
+		# Top row: icon + title + tag
 		var top_row = HBoxContainer.new()
 		top_row.add_theme_constant_override("separation", 6)
 		vbox.add_child(top_row)
@@ -405,22 +405,47 @@ func _render_item_cards() -> void:
 			icon_rect.texture = tex
 		top_row.add_child(icon_rect)
 
+		var title_box = VBoxContainer.new()
+		title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		title_box.add_theme_constant_override("separation", 1)
+		top_row.add_child(title_box)
+
 		var lbl_title = Label.new()
 		lbl_title.text = item["name"]
 		lbl_title.add_theme_font_size_override("font_size", 11)
 		lbl_title.add_theme_color_override("font_color", Color(0.98, 0.88, 0.45))
 		lbl_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lbl_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		top_row.add_child(lbl_title)
+		title_box.add_child(lbl_title)
+
+		var cat_info = UIThemeHelper.get_category_info(str(item.get("category", "")), str(item["id"]))
+		var lbl_tag = Label.new()
+		lbl_tag.text = cat_info["tag"]
+		lbl_tag.add_theme_font_size_override("font_size", 9)
+		lbl_tag.add_theme_color_override("font_color", cat_info["color"])
+		title_box.add_child(lbl_tag)
 
 		# Description
 		var lbl_desc = Label.new()
 		lbl_desc.text = item["desc"]
-		lbl_desc.add_theme_font_size_override("font_size", 10)
+		lbl_desc.add_theme_font_size_override("font_size", 9)
 		lbl_desc.add_theme_color_override("font_color", Color(0.78, 0.76, 0.82))
 		lbl_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		lbl_desc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		vbox.add_child(lbl_desc)
+
+		# Progress / stock info
+		var item_id_str = str(item["id"])
+		var stock_info = ""
+		if str(item.get("category", "")) == "BUILD":
+			stock_info = "当前库存: x%d" % GameState.get_structure_stock(item_id_str)
+		elif item_id_str in PER_PLAYER_PERKS:
+			stock_info = "已强化: %d/%d 层" % [int(GameState.unlocked_perks.get(item_id_str, 0)), GameState.max_stacks_for_perk(item_id_str)]
+		if stock_info != "":
+			var lbl_stock = Label.new()
+			lbl_stock.text = stock_info
+			lbl_stock.add_theme_font_size_override("font_size", 9)
+			lbl_stock.add_theme_color_override("font_color", Color(0.55, 0.88, 0.98))
+			vbox.add_child(lbl_stock)
 
 		# Bottom Row: Price & Buy Button
 		var bot_row = HBoxContainer.new()

@@ -300,6 +300,26 @@ func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(pause_menu)
 	UIThemeHelper.apply_clay_progressbar(hud_rpg_xp)
 	
+	if hud_toast:
+		var toast_sb := StyleBoxFlat.new()
+		toast_sb.bg_color = Color(0.18, 0.14, 0.22, 0.95)
+		toast_sb.corner_radius_top_left = 8
+		toast_sb.corner_radius_top_right = 8
+		toast_sb.corner_radius_bottom_left = 8
+		toast_sb.corner_radius_bottom_right = 8
+		toast_sb.border_width_left = 2
+		toast_sb.border_width_top = 2
+		toast_sb.border_width_right = 2
+		toast_sb.border_width_bottom = 2
+		toast_sb.border_color = Color(0.55, 0.45, 0.65, 0.9)
+		toast_sb.content_margin_left = 8
+		toast_sb.content_margin_right = 8
+		toast_sb.content_margin_top = 6
+		toast_sb.content_margin_bottom = 6
+		hud_toast.add_theme_stylebox_override("normal", toast_sb)
+		hud_toast.modulate.a = 0.0
+		hud_toast.visible = false
+	
 	if hud_score_icon: hud_score_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_score_trophy.png")
 	if hud_lives_icon: hud_lives_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/hp_heart_full.png")
 	if hud_enemies_icon: hud_enemies_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_enemy_radar.png")
@@ -391,6 +411,8 @@ func _toggle_pause() -> void:
 	var paused = not get_tree().paused
 	get_tree().paused = paused
 	pause_menu.visible = paused
+	if paused:
+		UIThemeHelper.focus_first(pause_menu)
 
 ## 遭遇规模 —— 一场要打多少辆车, 按战斗类型 + 难度圈。
 ##
@@ -1994,14 +2016,20 @@ func heal_player(amount: int = 99) -> void:
 		p2_instance.heal(amount)
 	show_toast("❤️ 装甲全功率修复！")
 
+var _toast_tween: Tween = null
+
 func show_toast(msg: String) -> void:
 	if hud_toast:
 		hud_toast.text = msg
 		hud_toast.visible = true
-		var tween = create_tween()
-		tween.tween_property(hud_toast, "modulate:a", 1.0, 0.2)
-		tween.tween_interval(2.0)
-		tween.tween_property(hud_toast, "modulate:a", 0.0, 0.5)
+		if _toast_tween and _toast_tween.is_valid():
+			_toast_tween.kill()
+		hud_toast.modulate.a = 0.0
+		_toast_tween = create_tween()
+		_toast_tween.tween_property(hud_toast, "modulate:a", 1.0, 0.15)
+		_toast_tween.tween_interval(2.2)
+		_toast_tween.tween_property(hud_toast, "modulate:a", 0.0, 0.4)
+		_toast_tween.tween_callback(func(): hud_toast.visible = false)
 
 func _spawn_player(pid: int) -> void:
 	var lives = p1_lives if pid == 1 else p2_lives

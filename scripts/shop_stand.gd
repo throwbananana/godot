@@ -19,6 +19,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const ShopDialogRules = preload("res://scripts/shop_dialog.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
 const TILE_SIZE := 48.0
 const TILE_SCALE := TILE_SIZE / 256.0
@@ -28,7 +29,7 @@ const TILE_SCALE := TILE_SIZE / 256.0
 ## 但不能是"路过就中招"。
 const BUY_RADIUS := 18.0
 
-## 靠近多远开始显示商品名。比成交半径大得多, 所以玩家在扣钱之前一定先看到
+## 靠近多远开始显示商品说明卡。比成交半径大得多, 所以玩家在扣钱之前一定先看到
 ## 自己要买的是什么 —— 这是"走过去就买"这种无确认交互唯一的防呆。
 const HOVER_RADIUS := 74.0
 
@@ -41,7 +42,7 @@ var sold: bool = false
 var _icon: Sprite2D
 var _pad: Sprite2D
 var _price_label: Label
-var _name_label: Label
+var _explanation_card: PanelContainer
 var _deny_cooldown: float = 0.0
 var _bob_t: float = 0.0
 
@@ -93,58 +94,79 @@ func _ready() -> void:
 	_price_label.z_index = 4
 	add_child(_price_label)
 
-	# 商品名只在玩家靠近时出现。常驻的话六个货位的名字会把整个房间糊满 ——
-	# 以撒也是靠近才显示。
-	_name_label = Label.new()
-	_name_label.add_theme_font_size_override("font_size", 12)
-	_name_label.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
-	_name_label.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.06))
-	_name_label.add_theme_constant_override("outline_size", 4)
-	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_name_label.size = Vector2(200, 34)
-	_name_label.position = Vector2(-100, -50)
-	_name_label.z_index = 4
-	_name_label.modulate.a = 0.0
-	add_child(_name_label)
+	# 黏土风格高品质悬浮商品说明卡
+	_explanation_card = UIThemeHelper.create_shop_explanation_card()
+	_explanation_card.modulate.a = 0.0
+	_explanation_card.visible = false
+	_update_card_position()
+	add_child(_explanation_card)
 
 	body_entered.connect(_on_body_entered)
 	_refresh_visuals()
 
 
+func _update_card_position() -> void:
+	if not _explanation_card:
+		return
+	var card_w := 240.0
+	var offset_x := -card_w * 0.5
+	var offset_y := -158.0
+
+	# 自适应屏幕边界，避免在顶部或左右贴边时溢出被裁切
+	if position.y < 160.0:
+		offset_y = 36.0 # 在靠顶部货位时显示在下方
+	if position.x < 140.0:
+		offset_x = -16.0 # 在最左侧货位时向右偏移
+	elif position.x > 480.0:
+		offset_x = -card_w + 16.0 # 在最右侧货位时向左偏移
+
+	_explanation_card.position = Vector2(offset_x, offset_y)
+
+
 func _refresh_visuals() -> void:
-	var data := ShopDialogRules.item_by_id(item_id)
 	if sold:
 		_icon.visible = false
 		_price_label.text = "SOLD"
 		_price_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.60))
 		_pad.modulate = Color(0.42, 0.40, 0.46, 1.0)
-		return
-	_icon.visible = true
-	_price_label.text = "%d G" % cost
-	_name_label.text = str(data.get("name", item_id))
+	else:
+		_icon.visible = true
+		_price_label.text = "%d G" % cost
+		_pad.modulate = Color(0.72, 0.68, 0.80, 1.0)
+
+	if _explanation_card:
+		UIThemeHelper.update_shop_explanation_card(_explanation_card, item_id, cost, sold)
 
 
 func _process(delta: float) -> void:
 	if _deny_cooldown > 0.0:
 		_deny_cooldown -= delta
-	if sold:
-		return
 
-	# 图标轻微上下浮动, 和地面上的其它东西区分开 —— 静止的图标看着像地贴。
-	_bob_t += delta * 2.4
-	_icon.position.y = sin(_bob_t) * 2.5
+	if not sold:
+		# 图标轻微上下浮动, 和地面上的其它东西区分开 —— 静止的图标看着像地贴。
+		_bob_t += delta * 2.4
+		_icon.position.y = sin(_bob_t) * 2.5
 
 	var near := _nearest_player_distance()
 
-	# 靠近渐显商品名。
+	# 靠近渐显商品说明卡窗口
 	var want_alpha := 1.0 if near <= HOVER_RADIUS else 0.0
-	_name_label.modulate.a = move_toward(_name_label.modulate.a, want_alpha, delta * 6.0)
+	if _explanation_card:
+		if want_alpha > 0.0:
+			UIThemeHelper.update_shop_explanation_card(_explanation_card, item_id, cost, sold)
+		_explanation_card.modulate.a = move_toward(_explanation_card.modulate.a, want_alpha, delta * 6.0)
+		_explanation_card.visible = (_explanation_card.modulate.a > 0.001)
 
-	# 买不起时价签变红。这是唯一的"买不起"提示 —— 走过去什么都不会发生,
-	# 玩家需要在**碰上去之前**就知道原因。
-	var affordable := GameState.gold >= cost
-	_price_label.modulate = Color(1.0, 1.0, 1.0) if affordable else Color(1.0, 0.45, 0.45)
+	# 买不起或达上限时价签变色
+	if not sold:
+		var can_buy_cond := ShopDialogRules.can_buy_item(item_id)
+		var affordable := GameState.gold >= cost
+		if not can_buy_cond:
+			_price_label.modulate = Color(0.95, 0.55, 0.45)
+		elif not affordable:
+			_price_label.modulate = Color(1.0, 0.45, 0.45)
+		else:
+			_price_label.modulate = Color(1.0, 1.0, 1.0)
 
 
 func _nearest_player_distance() -> float:
@@ -181,7 +203,6 @@ func _on_body_entered(body: Node2D) -> void:
 	var msg := ShopDialogRules.apply_item_purchase(item_id)
 	sold = true
 	_refresh_visuals()
-	_name_label.modulate.a = 0.0
 
 	SoundManager.play_level_up(get_tree())
 	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
@@ -209,3 +230,4 @@ func _deny(msg: String) -> void:
 	var main = get_tree().current_scene
 	if main and main.has_method("show_toast"):
 		main.show_toast(msg)
+

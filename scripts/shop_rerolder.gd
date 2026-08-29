@@ -16,15 +16,18 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const ShopDialogRules = preload("res://scripts/shop_dialog.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
 const TILE_SIZE := 48.0
 const TILE_SCALE := TILE_SIZE / 256.0
 const TRIGGER_RADIUS := 20.0
+const HOVER_RADIUS := 74.0
 
 signal reroll_requested
 
 var _sprite: Sprite2D
 var _label: Label
+var _explanation_card: PanelContainer
 var _cooldown: float = 0.0
 
 
@@ -54,14 +57,42 @@ func _ready() -> void:
 	_label.z_index = 4
 	add_child(_label)
 
+	# 黏土风格专属悬浮说明卡
+	_explanation_card = UIThemeHelper.create_reroll_explanation_card()
+	_explanation_card.modulate.a = 0.0
+	_explanation_card.visible = false
+	_update_card_position()
+	add_child(_explanation_card)
+
 	body_entered.connect(_on_body_entered)
 	refresh_label()
+
+
+func _update_card_position() -> void:
+	if not _explanation_card:
+		return
+	var card_w := 250.0
+	var offset_x := -card_w * 0.5
+	var offset_y := -150.0
+
+	# 换货机位于 (10, 10) -> (504, 504)，左偏可以保证完全在屏幕内
+	if position.x > 450.0:
+		offset_x = -card_w + 20.0
+	elif position.x < 150.0:
+		offset_x = -20.0
+
+	if position.y < 160.0:
+		offset_y = 36.0
+
+	_explanation_card.position = Vector2(offset_x, offset_y)
 
 
 func refresh_label() -> void:
 	var c := GameState.shop_reroll_cost
 	_label.text = "换货 %d G" % c
 	_label.modulate = Color(1.0, 1.0, 1.0) if GameState.gold >= c else Color(1.0, 0.45, 0.45)
+	if _explanation_card:
+		UIThemeHelper.update_reroll_explanation_card(_explanation_card, c)
 
 
 func _process(delta: float) -> void:
@@ -69,6 +100,22 @@ func _process(delta: float) -> void:
 		_cooldown -= delta
 	_sprite.rotation += delta * 0.6
 	refresh_label()
+
+	var near := _nearest_player_distance()
+	var want_alpha := 1.0 if near <= HOVER_RADIUS else 0.0
+	if _explanation_card:
+		if want_alpha > 0.0:
+			UIThemeHelper.update_reroll_explanation_card(_explanation_card, GameState.shop_reroll_cost)
+		_explanation_card.modulate.a = move_toward(_explanation_card.modulate.a, want_alpha, delta * 6.0)
+		_explanation_card.visible = (_explanation_card.modulate.a > 0.001)
+
+
+func _nearest_player_distance() -> float:
+	var best := 99999.0
+	for p in get_tree().get_nodes_in_group("player"):
+		if p is Node2D and is_instance_valid(p):
+			best = minf(best, global_position.distance_to(p.global_position))
+	return best
 
 
 func _on_body_entered(body: Node2D) -> void:
@@ -93,3 +140,4 @@ func _on_body_entered(body: Node2D) -> void:
 	GameState.bump_shop_reroll_cost()
 	SoundManager.play_pickup(get_tree())
 	reroll_requested.emit()
+
