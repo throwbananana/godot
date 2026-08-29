@@ -493,7 +493,12 @@ static func create_boss_bar(parent: Node) -> Dictionary:
 	root.name = "BossHealthBar"
 	root.custom_minimum_size = Vector2(480, 56)
 	root.anchors_preset = Control.PRESET_TOP_WIDE
-	root.position = Vector2(120, 18)
+	# y=18 (with the name label's -14 offset) put the bar's top edge at
+	# screen y=4, squarely over the row-0 enemy spawn points (screen y
+	# 48-96, see main.gd::enemy_spawn_points) -- a boss's own spawn got
+	# hidden by its own health bar. 120 clears row 0 the same way the
+	# minimap's ORIGIN does (scripts/minimap.gd).
+	root.position = Vector2(120, 120)
 	root.visible = false
 	parent.add_child(root)
 

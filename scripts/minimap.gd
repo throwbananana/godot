@@ -16,7 +16,11 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 ## 每格边长。14px 下 9x9 的网格是 126px, 正好塞进棋盘右上角而不压到中央战场。
 const CELL := 14.0
 const GAP := 2.0
-const ORIGIN := Vector2(528.0, 56.0)
+## Y=56 时地图顶边(含 -14 的画框外扩)落在 y=42, 而三个敌人刷新点都在
+## 战场第 0 行 (屏幕 y 48-96, 见 main.gd::enemy_spawn_points), 右侧刷新点
+## 恰好在 col12 == 小地图这一角, 于是坦克一刷出来就被地图整个盖住。
+## 120 把整块地图 (含外扩画框) 推到 y>=106, 完全让开第 0 行。
+const ORIGIN := Vector2(528.0, 120.0)
 
 # 房型 -> 中心那个小点的颜色。boss 用红、商店用金、宝物用青 —— 和它们在
 # 战斗里的语义一致。普通房不画点 (画了满屏都是点, 反而看不出哪个特殊)。
