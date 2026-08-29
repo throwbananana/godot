@@ -24,6 +24,7 @@ const EXEMPT := {
 	"floor_rooms":         "字典套字典还带数组, 本测试用 str() 比字段值, 比不了嵌套结构; 由 test_state_and_save.gd 单独验类型还原 (col/row/depth 必须是 int, doors 必须是长度 4 的数组)",
 	"max_acts":            "战役配置, 全项目无人赋值, 等同常量",
 	"max_floors":          "同上",
+	"playtest_layout":     "关卡编辑器试玩用的一次性图层覆盖, main.gd::_build_map() 读到就立刻清空, 不是某一局的存档数据",
 }
 
 ## RPGManager 里不参与 GameState 往返的字段。

@@ -117,9 +117,9 @@ func setup(type: String) -> void:
 	UIThemeHelper.focus_first(self)
 
 func _grant_life(amount: int) -> void:
+	# player_lives 是双人战役下的共享生命池, 不再需要给 p2_lives 单独发一份
+	# (那个字段已经被删掉了) —— 见 game_state.gd::p2_branch 前面的注释。
 	GameState.player_lives += amount
-	if GameState.player_count == 2:
-		GameState.p2_lives += amount
 
 func _grant_tier_up() -> void:
 	GameState.grant_star_tier_reward(1)

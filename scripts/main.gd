@@ -110,6 +110,15 @@ var base_instance: BaseEagle
 var score: int = 0
 var p1_lives: int = 3
 var p2_lives: int = 3
+
+## 双人战役的"共享生命池 + 手动复活"机制: 死亡不立刻扣命/自动重生, 而是等
+## 约 SHARED_REVIVE_DELAY 秒后弹出提示, 死亡玩家自己按开火键才复活并扣一条
+## 共享生命。_lives_shared() 为 false 的模式 (单人、双人街机、每日挑战)
+## 完全走原来的自动重生逻辑, 不受这套状态影响。
+const SHARED_REVIVE_DELAY := 1.5
+var p1_awaiting_revive: bool = false
+var p2_awaiting_revive: bool = false
+
 var total_enemies: int = 20
 var enemies_spawned: int = 0
 var enemies_alive: int = 0
@@ -496,9 +505,15 @@ func start_game() -> void:
 	is_bomb_rain_active = false
 	bomb_rain_timer = 0.0
 
+	p1_awaiting_revive = false
+	p2_awaiting_revive = false
+
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		# 双人战役下 player_lives 是唯一的共享池, p1_lives/p2_lives 两个本局
+		# 镜像变量全程保持相等 (_lives_shared() 的所有改动点都维持这个不变式)。
+		# 单人战役下 p2_lives 没人用, 赋成同一个值也无所谓。
 		p1_lives = GameState.player_lives
-		p2_lives = GameState.p2_lives
+		p2_lives = GameState.player_lives
 		rpg_mgr.sync_from_game_state()
 		max_alive_cap = max_alive_for(GameState.get_difficulty_cycle())
 
@@ -1073,6 +1088,12 @@ func _place_players_at_entry(entry_dir: int) -> void:
 func _settle_player(pid: int, pos: Vector2) -> void:
 	var inst: PlayerTank = p1_instance if pid == 1 else p2_instance
 	if inst == null or not is_instance_valid(inst):
+		# 共享生命池下, 死亡玩家是"等按键", 不是"等下一次进房间就自动回来" ——
+		# 不加这条守卫的话, 队友随便走一扇门就白送一条命, 手动复活形同虚设。
+		# p1_spawn_point/p2_spawn_point 已经在调用方 (_place_players_at_entry)
+		# 里刷新过了, 所以哪怕这次跳过生成, 玩家日后按键复活时落点仍是新房间的。
+		if _lives_shared() and (p1_awaiting_revive if pid == 1 else p2_awaiting_revive):
+			return
 		_spawn_player(pid)
 		return
 	inst.position = pos
@@ -1170,7 +1191,11 @@ func _build_map() -> void:
 	_build_border_walls(door_dirs)
 
 	var layout: Array
-	if GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
+	if not GameState.playtest_layout.is_empty():
+		# 关卡编辑器的"试玩"按钮: 最高优先级, 用完即清空, 只影响这一个房间。
+		layout = GameState.playtest_layout.duplicate(true)
+		GameState.playtest_layout = []
+	elif GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
 		# Fully procedural terrain (not one of the handcrafted templates) --
 		# "random tiles" is the point of the mode. Biome is randomized too
 		# (global RNG was already seed()-ed from today's date in start_game()),
@@ -1832,7 +1857,6 @@ func add_life(amount: int = 1) -> void:
 		p2_lives += amount
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		GameState.player_lives = p1_lives
-		GameState.p2_lives = p2_lives
 	_update_hud()
 	show_toast("❤️ EXTRA LIFE +%d!" % amount)
 
@@ -2031,6 +2055,13 @@ func show_toast(msg: String) -> void:
 		_toast_tween.tween_property(hud_toast, "modulate:a", 0.0, 0.4)
 		_toast_tween.tween_callback(func(): hud_toast.visible = false)
 
+## 双人战役是否走"共享生命池 + 手动复活"。单人 (没有队友概念)、双人街机
+## (start_game() 给它一套独立于 GameState 的本局 3/3, 跟战役存档无关)、
+## 每日挑战 (单人一命) 都不受影响, 继续用原来的自动重生。
+func _lives_shared() -> bool:
+	return GameState.mode == GameState.GameMode.CAMPAIGN and GameState.player_count == 2
+
+
 func _spawn_player(pid: int) -> void:
 	var lives = p1_lives if pid == 1 else p2_lives
 	if lives <= 0 or not player_scene:
@@ -2149,6 +2180,12 @@ func _process(delta: float) -> void:
 					hud_boss_bar.visible = false
 					hud_boss_bar.modulate.a = 1.0
 				)
+
+	if _lives_shared() and not is_game_over and not is_victory and not get_tree().paused:
+		if p1_awaiting_revive and Input.is_action_just_pressed("p1_fire"):
+			_consume_shared_life_and_respawn(1)
+		if p2_awaiting_revive and Input.is_action_just_pressed("p2_fire"):
+			_consume_shared_life_and_respawn(2)
 
 	if is_game_over or is_victory:
 		if Input.is_action_just_pressed("restart"):
@@ -2297,8 +2334,34 @@ func _request_spawn_enemy() -> void:
 		type = all_types[randi() % all_types.size()]
 	elif GameState.battle_type == "boss":
 		if enemies_spawned == 0:
-			type = EnemyTank.EnemyType.BOSS
-			show_toast("⚠️ WARLORD SUPER-TANK DETECTED! ⚠️")
+			match GameState.get_visual_act():
+				1:
+					var b_roll = randf()
+					if b_roll < 0.50:
+						type = EnemyTank.EnemyType.TITAN_BOSS
+						show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
+					else:
+						type = EnemyTank.EnemyType.BOSS
+						show_toast("👑 WARLORD SUPER-TANK DETECTED! 👑")
+				2:
+					var b_roll = randf()
+					if b_roll < 0.60:
+						type = EnemyTank.EnemyType.SCORPION_BOSS
+						show_toast("🦂 DESERT SCORPION MECH DETECTED! 🦂")
+					else:
+						type = EnemyTank.EnemyType.TITAN_BOSS
+						show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
+				3:
+					var b_roll = randf()
+					if b_roll < 0.60:
+						type = EnemyTank.EnemyType.MAMMOTH_BOSS
+						show_toast("❄️ GLACIAL MAMMOTH MECH DETECTED! ❄️")
+					else:
+						type = EnemyTank.EnemyType.TITAN_BOSS
+						show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
+				_:
+					type = EnemyTank.EnemyType.TITAN_BOSS
+					show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
 			add_trauma(0.50)
 		elif r < 0.10: type = EnemyTank.EnemyType.AIRCRAFT
 		elif r < 0.20: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
@@ -2403,7 +2466,7 @@ func _request_spawn_enemy() -> void:
 	# the current act's themed_type are exempt -- they're encounter identity
 	# (the elite's boss escort, the act finale, the act's signature silhouette),
 	# not power-tier filler.
-	if GameState.mode != GameState.GameMode.DAILY_CHALLENGE and type != EnemyTank.EnemyType.TRAIN_BOSS and type != EnemyTank.EnemyType.BOSS and type != themed_type:
+	if GameState.mode != GameState.GameMode.DAILY_CHALLENGE and not (type in [EnemyTank.EnemyType.TRAIN_BOSS, EnemyTank.EnemyType.BOSS, EnemyTank.EnemyType.TITAN_BOSS, EnemyTank.EnemyType.SCORPION_BOSS, EnemyTank.EnemyType.MAMMOTH_BOSS]) and type != themed_type:
 		type = _gate_enemy_type(type, floor_idx)
 
 	var spawn_index = enemies_spawned
@@ -2430,12 +2493,18 @@ func _instantiate_enemy(pos: Vector2, type: EnemyTank.EnemyType, is_bonus: bool,
 	)
 	actors_container.add_child(enemy)
 
-	if type in [EnemyTank.EnemyType.BOSS, EnemyTank.EnemyType.TRAIN_BOSS]:
+	if type in [EnemyTank.EnemyType.BOSS, EnemyTank.EnemyType.TRAIN_BOSS, EnemyTank.EnemyType.TITAN_BOSS, EnemyTank.EnemyType.SCORPION_BOSS, EnemyTank.EnemyType.MAMMOTH_BOSS]:
 		active_boss_instance = enemy
 		if hud_boss_bar and hud_boss_fill and hud_boss_label:
 			hud_boss_bar.visible = true
 			hud_boss_bar.modulate.a = 1.0
-			var b_name = "👑 SUMMIT COLOSSUS FORTRESS" if type == EnemyTank.EnemyType.BOSS else "🚂 ARMORED TRAIN FORTRESS"
+			var b_name = "👑 SUMMIT COLOSSUS FORTRESS"
+			match type:
+				EnemyTank.EnemyType.BOSS: b_name = "👑 SUMMIT COLOSSUS FORTRESS"
+				EnemyTank.EnemyType.TRAIN_BOSS: b_name = "🚂 ARMORED TRAIN FORTRESS"
+				EnemyTank.EnemyType.TITAN_BOSS: b_name = "⚡ DREADNOUGHT TITAN FORTRESS"
+				EnemyTank.EnemyType.SCORPION_BOSS: b_name = "🦂 DESERT SCORPION MECH"
+				EnemyTank.EnemyType.MAMMOTH_BOSS: b_name = "❄️ GLACIAL MAMMOTH MECH"
 			hud_boss_label.text = b_name
 			hud_boss_fill.max_value = enemy.max_health
 			hud_boss_fill.value = enemy.health
@@ -2539,17 +2608,23 @@ func _on_player_destroyed(pid: int) -> void:
 
 	# 1. Reset Tank Upgrades to Base Scout Tier on Death
 	if pid == 1:
-		p1_lives -= 1
 		GameState.player_tier = 0
+	else:
+		GameState.p2_tier = 0
+
+	if _lives_shared():
+		# 共享生命池: 死亡本身不扣命、不自动重生 —— 扣命发生在玩家自己按开火键
+		# 复活的那一刻 (_consume_shared_life_and_respawn), 死亡只是排到"等按键"
+		# 的队列里。延迟只是给爆炸特效留时间, 跟原来自动重生前的停顿一致。
+		get_tree().create_timer(SHARED_REVIVE_DELAY).timeout.connect(func(): _arm_revive_prompt(pid))
+	elif pid == 1:
+		p1_lives -= 1
 		if GameState.mode == GameState.GameMode.CAMPAIGN:
 			GameState.player_lives = p1_lives
 		if p1_lives > 0:
 			get_tree().create_timer(1.5).timeout.connect(func(): _spawn_player(1))
 	else:
 		p2_lives -= 1
-		GameState.p2_tier = 0
-		if GameState.mode == GameState.GameMode.CAMPAIGN:
-			GameState.p2_lives = p2_lives
 		if p2_lives > 0:
 			get_tree().create_timer(1.5).timeout.connect(func(): _spawn_player(2))
 
@@ -2578,6 +2653,66 @@ func _on_player_destroyed(pid: int) -> void:
 	_update_hud()
 	_update_rpg_hud()
 	_check_defeat_condition()
+
+## 共享生命池死亡延迟结束: 该玩家仍然没有坦克的话, 挂出"按开火键复活"的提示。
+## 池子已经空了就没什么好等的, 直接走一遍失败判定 (处理"队友先把最后一条命
+## 花掉了"这种情况)。
+func _arm_revive_prompt(pid: int) -> void:
+	if is_game_over or is_victory:
+		return
+	if pid == 1 and p1_instance and is_instance_valid(p1_instance):
+		return
+	if pid == 2 and p2_instance and is_instance_valid(p2_instance):
+		return
+	if p1_lives <= 0:
+		_check_defeat_condition()
+		return
+	if pid == 1:
+		p1_awaiting_revive = true
+	else:
+		p2_awaiting_revive = true
+	_update_revive_prompt()
+
+
+## 死亡玩家按下自己的开火键触发的手动复活。顺序很关键: 先在生命值还没扣减
+## 时调用 _spawn_player() (它自己有 lives <= 0 的守卫), 花的是"这一条"命,
+## 花完之后再扣减 —— 花最后一条命也应该能复活这一次, 只是复活之后没有下一次
+## 了。p1_lives/p2_lives 全程保持镜像相等, 这样 _check_defeat_condition() 才
+## 不需要改。
+func _consume_shared_life_and_respawn(pid: int) -> void:
+	if p1_lives <= 0:
+		_check_defeat_condition()
+		return
+	if pid == 1:
+		p1_awaiting_revive = false
+	else:
+		p2_awaiting_revive = false
+	_spawn_player(pid)
+	p1_lives -= 1
+	p2_lives -= 1
+	GameState.player_lives = p1_lives
+	_update_revive_prompt()
+
+
+## 用 HUD 中央那条 (hud_status, 平时只有胜利/失败结算用它, 对局中一直隐藏)
+## 显示"谁在等复活 + 剩余共享生命"。非共享模式下什么都不做。
+func _update_revive_prompt() -> void:
+	if not _lives_shared():
+		return
+	if is_game_over or is_victory:
+		return
+	if not p1_awaiting_revive and not p2_awaiting_revive:
+		hud_status.visible = false
+		return
+	var lines: Array[String] = []
+	if p1_awaiting_revive:
+		lines.append("P1 阵亡 —— 按开火键复活 (REVIVE)")
+	if p2_awaiting_revive:
+		lines.append("P2 阵亡 —— 按开火键复活 (REVIVE)")
+	lines.append("剩余共享生命 SHARED LIVES: %d" % p1_lives)
+	hud_status.text = "\n".join(lines)
+	hud_status.visible = true
+
 
 func _check_defeat_condition() -> void:
 	if GameState.player_count == 1:
@@ -2656,10 +2791,12 @@ func _game_over(victory: bool) -> void:
 	if is_game_over or is_victory:
 		return
 	
+	p1_awaiting_revive = false
+	p2_awaiting_revive = false
+
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		rpg_mgr.sync_to_game_state()
 		GameState.player_lives = p1_lives
-		GameState.p2_lives = p2_lives
 		if p1_instance and is_instance_valid(p1_instance):
 			GameState.player_tier = p1_instance.upgrade_tier
 		if p2_instance and is_instance_valid(p2_instance):
@@ -2829,7 +2966,11 @@ func _on_button_action() -> void:
 
 func _update_hud() -> void:
 	hud_score.text = "SCORE: %06d" % score
-	if GameState.player_count == 1:
+	if _lives_shared():
+		# 双人战役共享池: p1_lives/p2_lives 本来就镜像相等, 分开显示 "P1:3 | P2:3"
+		# 会让人以为是两份独立的命, 所以单独给一行 "SHARED"。
+		hud_lives.text = "LIVES (SHARED): %d" % p1_lives
+	elif GameState.player_count == 1:
 		hud_lives.text = "LIVES: %d" % p1_lives
 	else:
 		hud_lives.text = "LIVES: P1:%d | P2:%d" % [p1_lives, p2_lives]

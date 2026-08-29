@@ -2,6 +2,7 @@ class_name MapTemplates
 extends RefCounted
 
 const MapDirector = preload("res://scripts/map_director.gd")
+const CustomMapStore = preload("res://scripts/custom_map_store.gd")
 
 # Tile Legend:
 # 0 = Empty Ground
@@ -1498,6 +1499,54 @@ static func _gcd(a: int, b: int) -> int:
 		a = t
 	return a
 
+## 判断一张 13x13 图是不是一张"合法可玩"的战场 —— 结构 (尺寸/地形号/鹰巢与
+## 出生点留空) 加连通性 (出生点到得了鹰巢)。这几条规则原来只手抄在
+## tools/test_map_templates_and_base_fit.gd 里, 现在拆成共享函数, 因为关卡
+## 编辑器需要在玩家保存时跑同一套检查 —— 两处各自维护一份的话, 迟早像
+## build_*.py 那些重复的地形判定一样漂移。测试文件也改用这个函数, 不再手抄。
+static func validate_layout(grid: Array) -> Array[String]:
+	var errs: Array[String] = []
+	if grid.size() != 13:
+		errs.append("行数 %d != 13" % grid.size())
+		return errs
+	for r in range(13):
+		if not (grid[r] is Array) or grid[r].size() != 13:
+			errs.append("第 %d 行有 %d 列 != 13" % [r, grid[r].size() if grid[r] is Array else -1])
+	if not errs.is_empty():
+		return errs
+	for r in range(13):
+		for c in range(13):
+			var v := int(grid[r][c])
+			if v < 0 or v > 44:
+				errs.append("(%d,%d) 地形号 %d 越界 (合法 0-44)" % [r, c, v])
+	for c in [5, 6, 7]:
+		if int(grid[12][c]) != 0:
+			errs.append("鹰巢格 (12,%d) 必须为空" % c)
+		if int(grid[11][c]) != 0:
+			errs.append("鹰巢围墙格 (11,%d) 必须为空" % c)
+	if int(grid[12][4]) != 0:
+		errs.append("P1 出生点 (12,4) 必须为空")
+	if int(grid[12][8]) != 0:
+		errs.append("P2 出生点 (12,8) 必须为空")
+	for c in [0, 6, 12]:
+		if int(grid[0][c]) != 0:
+			errs.append("敌人出生点 (0,%d) 必须为空" % c)
+	if not errs.is_empty():
+		return errs
+
+	var seen := MapDirector.reachable_from_base(grid)
+	var miss: Array[String] = []
+	for c in [0, 6, 12]:
+		if not seen.has(Vector2i(c, 0)):
+			miss.append("敌人出生点(0,%d)" % c)
+	for c in [4, 8]:
+		if not seen.has(Vector2i(c, 12)):
+			miss.append("玩家出生点(12,%d)" % c)
+	if not miss.is_empty():
+		errs.append("到不了鹰巢 (被钢/水彻底隔断): %s" % ", ".join(miss))
+	return errs
+
+
 static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int = -1, allow_procgen: bool = true, room_key: String = "") -> Array:
 	# Acts beyond 3 reuse the 3 existing visual themes on a cycle (see
 	# GameState.get_visual_act()) -- there's no unique template pool per act
@@ -1519,13 +1568,21 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 		# 谁都不保证避开 main.gd::SHOP_STAND_CELLS, 货位就可能摆在墙里/水里
 		# 走不到。这个专属池 (见 SHOP_POOL) 每张图都保证货位、换货机、五个
 		# 入场点全部是空地。
-		return _pick_from_pool(SHOP_POOL, floor_idx, room_entropy)
+		var shop_pool: Array = SHOP_POOL + CustomMapStore.eligible_layouts(current_act, "shop", floor_idx)
+		return _pick_from_pool(shop_pool, floor_idx, room_entropy)
 	if battle_type == "boss":
+		# 内置 Boss 图本来是每幕一张固定模板, 不走池子。为了让自定义图也能
+		# 出现在 Boss 房, 这里把它包成一个"至少含默认图"的池子再抽 ——
+		# 没有自定义图时池子大小恰好是 1, _pick_from_pool 必然选中它,
+		# 跟改造前的行为完全一致 (tools/test_custom_map_editor.gd 断言这条)。
+		var default_boss: Array
 		match current_act:
-			1: return TEMPLATE_BOSS_ARENA
-			2: return TEMPLATE_SPEEDWAY
-			3: return TEMPLATE_SOLAR_TITAN_SANCTUM
-			_: return TEMPLATE_APEX_TRI_ARMOR_CITADEL
+			1: default_boss = TEMPLATE_BOSS_ARENA
+			2: default_boss = TEMPLATE_SPEEDWAY
+			3: default_boss = TEMPLATE_SOLAR_TITAN_SANCTUM
+			_: default_boss = TEMPLATE_APEX_TRI_ARMOR_CITADEL
+		var boss_pool: Array = [default_boss] + CustomMapStore.eligible_layouts(current_act, "boss", floor_idx)
+		return _pick_from_pool(boss_pool, floor_idx, room_entropy)
 	elif battle_type == "challenge" or GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
 		match current_act:
 			1:
@@ -1543,12 +1600,15 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 		match current_act:
 			1:
 				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA]
+				p1 += CustomMapStore.eligible_layouts(1, "elite", floor_idx)
 				return _pick_from_pool(p1, floor_idx, room_entropy)
 			2:
 				var p2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_INFERNO_REFINERY, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_DESERT_LABYRINTH, TEMPLATE_CANYON, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_VOID_CANAL, TEMPLATE_WIND_TEMPEST, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_NAVAL_SALVAGE_ROUTE, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_EMP_TESLA_LABYRINTH, TEMPLATE_ENGINEER_FACTORY_COMPLEX, TEMPLATE_BUNKER_REDOUBT, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE]
+				p2 += CustomMapStore.eligible_layouts(2, "elite", floor_idx)
 				return _pick_from_pool(p2, floor_idx, room_entropy)
 			3:
 				var p3 = [TEMPLATE_GLACIER_TESLA, TEMPLATE_NIGHTSHADE_WARP, TEMPLATE_MAGNETIC_ARCHIPELAGO, TEMPLATE_TRI_DOMAIN_BIOHAZARD, TEMPLATE_SOLAR_TITAN_SANCTUM, TEMPLATE_APEX_TRI_ARMOR_CITADEL, TEMPLATE_AIR_NAVAL_STRAITS, TEMPLATE_DIAMOND_CRYSTAL_MINE, TEMPLATE_ELITE_CITADEL, TEMPLATE_NEO_TITAN_BASTION, TEMPLATE_WARP_CITADEL_APEX, TEMPLATE_TURBINE_CONVEYOR_LAB, TEMPLATE_CYCLONE_ARENA, TEMPLATE_WARP_TURBINE_VALLEY, TEMPLATE_TWIN_LAKES_SALVAGE, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_GLACIER_BUNKER_REDOUBT, TEMPLATE_TESLA_CONDUIT_PINBALL, TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_SECTOR_DEFENSE_NEXUS]
+				p3 += CustomMapStore.eligible_layouts(3, "elite", floor_idx)
 				return _pick_from_pool(p3, floor_idx, room_entropy)
 			_:
 				return TEMPLATE_CITADEL
@@ -1588,6 +1648,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_BUNKER_CROSSFIRE_VALLEY,
 					TEMPLATE_PIPE_AMMO_REFLEX_ARENA,
 				]
+				act1_pool += CustomMapStore.eligible_layouts(1, "battle", floor_idx)
 				return _pick_from_pool(act1_pool, floor_idx, room_entropy)
 			2:
 				var act2_pool = [
@@ -1600,6 +1661,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE,
 					TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA
 				]
+				act2_pool += CustomMapStore.eligible_layouts(2, "battle", floor_idx)
 				return _pick_from_pool(act2_pool, floor_idx, room_entropy)
 			3:
 				var act3_pool = [
@@ -1613,6 +1675,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 					TEMPLATE_TESLA_CONDUIT_PINBALL, TEMPLATE_ENGINEER_FACTORY_COMPLEX,
 					TEMPLATE_GLACIAL_WORMHOLE_CITADEL, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_NAVAL_FERRY_SALVAGE, TEMPLATE_SECTOR_DEFENSE_NEXUS
 				]
+				act3_pool += CustomMapStore.eligible_layouts(3, "battle", floor_idx)
 				return _pick_from_pool(act3_pool, floor_idx, room_entropy)
 			_:
 				return TEMPLATE_CLASSIC

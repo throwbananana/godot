@@ -44,6 +44,8 @@ func _init() -> void:
 	_check_sequence("explosion", "res://assets/sprites/effects/explosion_%d.png")
 	_check_sequence("suicide_blast", "res://assets/sprites/effects/vfx_suicide_blast_f%d.png")
 	_check_sequence("dust_puff", "res://assets/sprites/effects/dust_puff_%d.png")
+	_check_sequence("boss_plasma_nova", "res://assets/sprites/effects/boss_plasma_nova_%d.png")
+	_check_sequence("boss_frost_nova", "res://assets/sprites/effects/boss_frost_nova_%d.png")
 	_check_legacy_asset_gone()
 	await _check_runtime()
 

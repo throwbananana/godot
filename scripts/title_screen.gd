@@ -13,6 +13,7 @@ const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 @onready var btn_2p_arcade: Button = $CenterContainer/VBox/ButtonsBox/Arcade2PButton
 @onready var btn_daily_challenge: Button = $CenterContainer/VBox/ButtonsBox/DailyChallengeButton
 @onready var btn_encyclopedia: Button = $CenterContainer/VBox/ButtonsBox/EncyclopediaButton
+@onready var btn_map_editor: Button = $CenterContainer/VBox/ButtonsBox/MapEditorButton
 @onready var btn_quit: Button = $CenterContainer/VBox/ButtonsBox/QuitButton
 @onready var encyclopedia_dialog: EncyclopediaDialog = $EncyclopediaDialog
 
@@ -30,6 +31,7 @@ func _ready() -> void:
 	UIThemeHelper.apply_icon_button(btn_2p_arcade, "res://assets/sprites/ui/ui_icon_mode_arcade.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_daily_challenge, "res://assets/sprites/ui/ui_icon_score_trophy.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_encyclopedia, "res://assets/sprites/powerups/star.png", Vector2(28, 28))
+	UIThemeHelper.apply_icon_button(btn_map_editor, "res://assets/sprites/powerups/shovel.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_quit, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(28, 28))
 
 	var today_best = GameState.get_daily_best_score()
@@ -44,6 +46,7 @@ func _ready() -> void:
 	btn_2p_arcade.pressed.connect(_start_arcade_2p)
 	btn_daily_challenge.pressed.connect(_start_daily_challenge)
 	btn_encyclopedia.pressed.connect(_on_encyclopedia_pressed)
+	btn_map_editor.pressed.connect(_on_map_editor_pressed)
 	btn_quit.pressed.connect(_on_quit_pressed)
 
 	if encyclopedia_dialog:
@@ -90,6 +93,10 @@ func _start_daily_challenge() -> void:
 func _on_encyclopedia_pressed() -> void:
 	if encyclopedia_dialog:
 		encyclopedia_dialog.open_dialog()
+
+func _on_map_editor_pressed() -> void:
+	SoundManager.play_shot(get_tree())
+	get_tree().change_scene_to_file("res://scenes/map_editor.tscn")
 
 func _on_quit_pressed() -> void:
 	get_tree().quit()

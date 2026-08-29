@@ -189,3 +189,29 @@ static func spawn_wormhole_swirl(parent: Node, pos: Vector2) -> void:
 	else:
 		swirl.queue_free()
 
+
+static func spawn_boss_plasma_nova(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/boss_plasma_nova_0.png",
+		"res://assets/sprites/effects/boss_plasma_nova_1.png",
+		"res://assets/sprites/effects/boss_plasma_nova_2.png",
+		"res://assets/sprites/effects/boss_plasma_nova_3.png",
+		"res://assets/sprites/effects/boss_plasma_nova_4.png",
+		"res://assets/sprites/effects/boss_plasma_nova_5.png"
+	]
+	create_anim(parent, pos, paths, 0.28 * scale_mult, 16.0)
+	_notify_darkness_flash(parent, pos, 180.0 * scale_mult, 0.35)
+
+static func spawn_boss_frost_nova(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/boss_frost_nova_0.png",
+		"res://assets/sprites/effects/boss_frost_nova_1.png",
+		"res://assets/sprites/effects/boss_frost_nova_2.png",
+		"res://assets/sprites/effects/boss_frost_nova_3.png",
+		"res://assets/sprites/effects/boss_frost_nova_4.png",
+		"res://assets/sprites/effects/boss_frost_nova_5.png"
+	]
+	create_anim(parent, pos, paths, 0.28 * scale_mult, 16.0)
+	_notify_darkness_flash(parent, pos, 160.0 * scale_mult, 0.30)
+
+

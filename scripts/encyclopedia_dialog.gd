@@ -96,11 +96,7 @@ func _update_tab_buttons_appearance() -> void:
 	for tab in tabs:
 		var btn: Button = tab["btn"]
 		var is_selected: bool = (tab["id"] == current_category)
-		UIThemeHelper.apply_clay_button(btn, not is_selected)
-		if is_selected:
-			btn.modulate = Color(1.3, 1.2, 0.7, 1.0)
-		else:
-			btn.modulate = Color(0.85, 0.85, 0.9, 1.0)
+		UIThemeHelper.apply_clay_tab_button(btn, is_selected)
 
 func _rebuild_item_list() -> void:
 	# Clear old list buttons
@@ -129,7 +125,7 @@ func _rebuild_item_list() -> void:
 				item_btn.expand_icon = true
 				item_btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 
-		UIThemeHelper.apply_clay_button(item_btn, true)
+		UIThemeHelper.apply_clay_list_item(item_btn, i == 0)
 		item_btn.pressed.connect(func(): _select_entry(entry, item_btn))
 		item_btn.focus_entered.connect(func(): _select_entry(entry, item_btn))
 
@@ -143,10 +139,8 @@ func _rebuild_item_list() -> void:
 func _select_entry(entry: Dictionary, selected_btn: Button = null) -> void:
 	# Highlight selected button
 	for btn in active_item_buttons:
-		if btn == selected_btn:
-			btn.modulate = Color(1.2, 1.15, 0.7, 1.0)
-		else:
-			btn.modulate = Color(1.0, 1.0, 1.0, 1.0)
+		var is_sel = (btn == selected_btn)
+		UIThemeHelper.apply_clay_list_item(btn, is_sel)
 
 	# Update Icon
 	var icon_path = str(entry.get("icon", ""))

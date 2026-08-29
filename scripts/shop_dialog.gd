@@ -258,13 +258,18 @@ static func _price_for(base_cost: int) -> int:
 ##
 ## 大多数商品写的是 GameState 上的团队字段 (max_hp_lvl / fire_rate_lvl /
 ## speed_lvl / builder_lvl / atk_bonus / player_xp), 两个玩家天然共享。但有
-## 四样不是: 备用生命 (player_lives 与 p2_lives 分开)、升阶模块, 以及三个
-## perk (unlocked_perks 与 p2_unlocked_perks 分开)。这四样以前一律硬编码
+## 三样不是: 升阶模块 (player_tier 与 p2_tier 分开), 以及三个 perk
+## (unlocked_perks 与 p2_unlocked_perks 分开)。这几样以前一律硬编码
 ## player_id = 1, 于是**双人模式下 2P 永远拿不到**。
 ##
+## 备用生命曾经也在这份名单里 (player_lives 与 p2_lives 分开), 双人战役改成
+## 共享生命池之后, p2_lives 整个字段被删掉了, "lives" 天然变回团队字段 ——
+## 不再需要 player_count == 2 时额外发一份。见 game_state.gd::p2_branch
+## 前面的注释和 main.gd::_lives_shared()。
+##
 ## 同一个项目里的 event_dialog.gd 对完全相同的奖励是发两份的
-## (_grant_life / _grant_tier_up / _grant_perk 都判 player_count == 2) ——
-## 也就是说双份才是既定行为, 商店这边是漏了, 不是另一种设计。
+## (_grant_tier_up / _grant_perk 都判 player_count == 2) —— 也就是说双份才是
+## 既定行为, 商店这边是漏了, 不是另一种设计。
 const PER_PLAYER_PERKS := ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds"]
 
 
@@ -350,11 +355,9 @@ static func apply_item_purchase(item_id: String) -> String:
 			GameState.speed_lvl += 1
 			return "战车引擎输出功率强化！"
 		"extra_life":
-			# player_lives 和 p2_lives 是分开的两个字段 —— 只加前者的话双人
-			# 模式下 2P 买了命也没命。event_dialog._grant_life() 同理。
+			# player_lives 是双人战役下的共享生命池, 买一次就是整个团队 +1,
+			# 不需要再单独发一份给 P2。
 			GameState.player_lives += 1
-			if GameState.player_count == 2:
-				GameState.p2_lives += 1
 			return "呼叫近卫坦克增援，备用生命 +1！"
 		"steel_shovel":
 			GameState.builder_lvl += 1

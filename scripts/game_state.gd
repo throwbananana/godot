@@ -5,6 +5,13 @@ enum GameMode { CAMPAIGN, ARCADE, DAILY_CHALLENGE }
 
 static var mode: GameMode = GameMode.CAMPAIGN
 static var player_count: int = 1 # 1=单人, 2=本地双人
+
+## 关卡编辑器"试玩"按钮用的一次性图层覆盖: main.gd::_build_map() 一旦读到
+## 非空值就直接拿去当这个房间的地形, 并立刻清空自己。不是战役存档字段——
+## 编辑器产物存在 CustomMapStore (user://custom_maps.json), 这里只是"下一个
+## 房间强制用这张图"的临时信号, 所以在 tools/test_persistence_roundtrip.gd
+## 的 EXEMPT 里有名有姓地被豁免, 不要求它能穿过 save_campaign()/load_campaign()。
+static var playtest_layout: Array = []
 static var current_act: int = 1   # 1..max_acts
 ## 一整局有几幕。**一幕 = 一层以撒式楼层**, 打掉那层的 boss 进下一幕。
 ##
@@ -179,7 +186,9 @@ static func get_structure_stock(id: String) -> int:
 
 # P2 Stats (For 2-Player Co-op)
 static var p2_tier: int = 0
-static var p2_lives: int = 3
+## 双人战役共享一个生命池 (player_lives), 不再有独立的 p2_lives —— main.gd 的
+## _lives_shared() 机制下, 两个玩家死亡后靠按开火键手动复活, 扣的是同一个池子。
+## 见 main.gd::_consume_shared_life_and_respawn()。
 static var p2_branch: String = "default"
 static var p2_branch_tier: int = 0
 
@@ -284,7 +293,6 @@ static func reset_campaign(p_count: int = 1) -> void:
 	unlocked_perks.clear()
 	structure_inventory.clear()
 	p2_tier = 0
-	p2_lives = 3
 	p2_branch = "default"
 	p2_branch_tier = 0
 	p2_unlocked_perks.clear()
@@ -556,7 +564,6 @@ static func save_campaign() -> void:
 		"unlocked_perks": unlocked_perks,
 		"structure_inventory": structure_inventory,
 		"p2_tier": p2_tier,
-		"p2_lives": p2_lives,
 		"p2_branch": p2_branch,
 		"p2_branch_tier": p2_branch_tier,
 		"p2_unlocked_perks": p2_unlocked_perks,
@@ -611,7 +618,8 @@ static func load_campaign() -> bool:
 	unlocked_perks = _load_perk_dict(d.get("unlocked_perks", {}))
 	structure_inventory = _load_perk_dict(d.get("structure_inventory", {})) # same {string: int} shape, reuse the same loader
 	p2_tier = int(d.get("p2_tier", 0))
-	p2_lives = int(d.get("p2_lives", 3))
+	# p2_lives 字段不再读取: 老存档里可能还带着这个 key, 直接忽略就是了 ——
+	# 生命现在是单一共享池 (player_lives), 见上面 p2_branch 之前的注释。
 	p2_branch = str(d.get("p2_branch", "default"))
 	p2_branch_tier = int(d.get("p2_branch_tier", 0))
 	p2_unlocked_perks = _load_perk_dict(d.get("p2_unlocked_perks", {}))

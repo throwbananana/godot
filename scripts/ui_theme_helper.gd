@@ -124,6 +124,121 @@ static func apply_clay_upgrade_card(btn: Button, is_branch: bool = false) -> voi
 		btn.add_theme_stylebox_override("focus", style_card_hover)
 		btn.add_theme_stylebox_override("pressed", style_card_hover)
 
+static func apply_clay_event_card(btn: Button) -> void:
+	_init_card_styles()
+	if not btn: return
+	if style_card_normal:
+		btn.add_theme_stylebox_override("normal", style_card_normal)
+		btn.add_theme_stylebox_override("disabled", style_card_normal)
+	if style_card_hover:
+		btn.add_theme_stylebox_override("hover", style_card_hover)
+		btn.add_theme_stylebox_override("focus", style_card_hover)
+		btn.add_theme_stylebox_override("pressed", style_card_hover)
+
+static func apply_clay_tab_button(btn: Button, is_active: bool = false) -> void:
+	if not btn: return
+	var sb = StyleBoxFlat.new()
+	if is_active:
+		sb.bg_color = Color(0.85, 0.72, 0.35, 1.0)
+		sb.border_width_left = 2
+		sb.border_width_top = 2
+		sb.border_width_right = 2
+		sb.border_width_bottom = 2
+		sb.border_color = Color(1.0, 0.92, 0.65, 1.0)
+		sb.corner_radius_top_left = 8
+		sb.corner_radius_top_right = 8
+		sb.corner_radius_bottom_left = 4
+		sb.corner_radius_bottom_right = 4
+		sb.content_margin_left = 12
+		sb.content_margin_right = 12
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		btn.add_theme_stylebox_override("normal", sb)
+		btn.add_theme_stylebox_override("hover", sb)
+		btn.add_theme_stylebox_override("pressed", sb)
+		btn.add_theme_stylebox_override("focus", sb)
+		btn.add_theme_color_override("font_color", Color(0.18, 0.12, 0.05, 1.0))
+		btn.add_theme_color_override("font_hover_color", Color(0.1, 0.05, 0.0, 1.0))
+		btn.add_theme_color_override("font_pressed_color", Color(0.18, 0.12, 0.05, 1.0))
+		btn.add_theme_color_override("font_focus_color", Color(0.18, 0.12, 0.05, 1.0))
+	else:
+		sb.bg_color = Color(0.20, 0.16, 0.24, 0.9)
+		sb.border_width_left = 1
+		sb.border_width_top = 1
+		sb.border_width_right = 1
+		sb.border_width_bottom = 1
+		sb.border_color = Color(0.38, 0.32, 0.44, 0.8)
+		sb.corner_radius_top_left = 8
+		sb.corner_radius_top_right = 8
+		sb.corner_radius_bottom_left = 4
+		sb.corner_radius_bottom_right = 4
+		sb.content_margin_left = 12
+		sb.content_margin_right = 12
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		btn.add_theme_stylebox_override("normal", sb)
+		
+		var sb_h = sb.duplicate()
+		sb_h.bg_color = Color(0.30, 0.24, 0.36, 1.0)
+		sb_h.border_color = Color(0.60, 0.50, 0.70, 1.0)
+		btn.add_theme_stylebox_override("hover", sb_h)
+		btn.add_theme_stylebox_override("focus", sb_h)
+		btn.add_theme_stylebox_override("pressed", sb_h)
+		
+		btn.add_theme_color_override("font_color", Color(0.85, 0.80, 0.90, 1.0))
+		btn.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.80, 1.0))
+		btn.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
+		btn.add_theme_color_override("font_focus_color", Color(1.0, 0.95, 0.80, 1.0))
+
+static func apply_clay_list_item(btn: Button, is_selected: bool = false) -> void:
+	if not btn: return
+	var sb = StyleBoxFlat.new()
+	if is_selected:
+		sb.bg_color = Color(0.32, 0.25, 0.40, 0.95)
+		sb.border_width_left = 3
+		sb.border_width_top = 1
+		sb.border_width_right = 1
+		sb.border_width_bottom = 1
+		sb.border_color = Color(0.98, 0.82, 0.35, 1.0)
+		sb.corner_radius_top_left = 6
+		sb.corner_radius_top_right = 6
+		sb.corner_radius_bottom_left = 6
+		sb.corner_radius_bottom_right = 6
+		sb.content_margin_left = 10
+		sb.content_margin_right = 10
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		btn.add_theme_stylebox_override("normal", sb)
+		btn.add_theme_stylebox_override("hover", sb)
+		btn.add_theme_stylebox_override("pressed", sb)
+		btn.add_theme_stylebox_override("focus", sb)
+		btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.50, 1.0))
+	else:
+		sb.bg_color = Color(0.16, 0.13, 0.20, 0.90)
+		sb.border_width_left = 1
+		sb.border_width_top = 1
+		sb.border_width_right = 1
+		sb.border_width_bottom = 1
+		sb.border_color = Color(0.28, 0.23, 0.33, 0.8)
+		sb.corner_radius_top_left = 6
+		sb.corner_radius_top_right = 6
+		sb.corner_radius_bottom_left = 6
+		sb.corner_radius_bottom_right = 6
+		sb.content_margin_left = 10
+		sb.content_margin_right = 10
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		btn.add_theme_stylebox_override("normal", sb)
+		
+		var sb_h = sb.duplicate()
+		sb_h.bg_color = Color(0.24, 0.19, 0.30, 0.95)
+		sb_h.border_color = Color(0.60, 0.50, 0.70, 0.9)
+		btn.add_theme_stylebox_override("hover", sb_h)
+		btn.add_theme_stylebox_override("focus", sb_h)
+		btn.add_theme_stylebox_override("pressed", sb_h)
+		btn.add_theme_color_override("font_color", Color(0.90, 0.88, 0.92, 1.0))
+		btn.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.70, 1.0))
+
 static func apply_clay_button(btn: Button, dark_text: bool = true) -> void:
 	_init_styles()
 	if not btn: return
@@ -834,10 +949,8 @@ static func update_shop_explanation_card(card: Control, item_id: String, cost: i
 			progress_lbl.text = "🚀 当前机动强化等级: Lv.%d" % GameStateClass.speed_lvl
 			progress_lbl.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0))
 		elif item_id == "extra_life":
-			if GameStateClass.player_count == 2:
-				progress_lbl.text = "❤️ 备用生命: P1:%d | P2:%d" % [GameStateClass.player_lives, GameStateClass.p2_lives]
-			else:
-				progress_lbl.text = "❤️ 备用生命: %d 条" % GameStateClass.player_lives
+			# 双人战役下 player_lives 是团队共享的生命池, 不再分 P1/P2 两个数。
+			progress_lbl.text = "❤️ 备用生命: %d 条" % GameStateClass.player_lives
 			progress_lbl.add_theme_color_override("font_color", Color(1.0, 0.60, 0.70))
 		elif item_id == "steel_shovel":
 			progress_lbl.text = "🏰 基地工程防御等级: Lv.%d" % GameStateClass.builder_lvl

@@ -11,7 +11,7 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, TITAN_BOSS, SCORPION_BOSS, MAMMOTH_BOSS }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -189,12 +189,18 @@ func remove_shield_source(source: Node) -> void:
 	shield_sources.erase(source)
 	_update_shield_state()
 
+func is_boss_unit() -> bool:
+	return enemy_type in [EnemyType.BOSS, EnemyType.TRAIN_BOSS, EnemyType.TITAN_BOSS, EnemyType.SCORPION_BOSS, EnemyType.MAMMOTH_BOSS]
+
+func is_heavy_scale_unit() -> bool:
+	return is_boss_unit() or enemy_type in [EnemyType.CRUSHER, EnemyType.SPLITTER]
+
 func _update_shield_state() -> void:
 	if is_shielded():
 		if shield_bubble_sprite == null:
 			shield_bubble_sprite = Sprite2D.new()
 			shield_bubble_sprite.z_index = 25
-			var s_scale = Vector2(0.26, 0.26) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER) else (Vector2(0.16, 0.16) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.21, 0.21))
+			var s_scale = Vector2(0.26, 0.26) if is_heavy_scale_unit() else (Vector2(0.16, 0.16) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.21, 0.21))
 			shield_bubble_sprite.scale = s_scale
 			if shield_bubble_textures.size() > 0:
 				shield_bubble_sprite.texture = shield_bubble_textures[0]
@@ -493,6 +499,30 @@ func _setup_tank_type() -> void:
 			fire_interval = 2.4 # 巡航模式射击间隔
 			is_cannon_deployed = false
 			cannon_undeploy_timer = 0.0
+		EnemyType.TITAN_BOSS:
+			prefix = "enemy_titan_boss"
+			speed = 46.0 # 超重装无畏泰坦：行进缓慢但坚不可摧
+			max_health = 16 # 极高血量
+			score_value = 3000
+			xp_value = 500
+			gold_value = 320
+			fire_interval = 2.2 # 双联重型破钢火炮 + 周期性等离子耀斑
+		EnemyType.SCORPION_BOSS:
+			prefix = "enemy_scorpion_boss"
+			speed = 82.0 # 沙漠机械巨蝎：高机动突击
+			max_health = 12
+			score_value = 2600
+			xp_value = 420
+			gold_value = 280
+			fire_interval = 1.6 # 毒刺聚焦等离子射线 + 双螯速射弹幕
+		EnemyType.MAMMOTH_BOSS:
+			prefix = "enemy_mammoth_boss"
+			speed = 40.0 # 极地猛犸重型机甲：重步态踏碎冰原
+			max_health = 18
+			score_value = 3200
+			xp_value = 550
+			gold_value = 350
+			fire_interval = 2.5 # 双联极寒榴弹 + 极寒冰霜新星冲击
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
@@ -568,7 +598,7 @@ func _setup_tank_type() -> void:
 			var tex = TextureHelper.get_tex("res://assets/sprites/tanks/%s_f%d.png" % [prefix, i])
 			if tex:
 				tank_frames.append(tex)
-			if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
+			if is_heavy_scale_unit():
 				sprite.scale = Vector2(0.24, 0.24)
 			elif enemy_type == EnemyType.SPLIT_MINI:
 				sprite.scale = Vector2(0.14, 0.14)
@@ -947,6 +977,78 @@ func _shoot() -> void:
 				mb.shooter_type = "enemy"
 				get_parent().add_child(mb)
 				mb.global_position = global_position + facing_direction * 32.0
+	elif enemy_type == EnemyType.TITAN_BOSS:
+		# 双联超重型破钢巨炮交替齐射
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-1.0, 1.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = facing_direction
+			b.speed = 480.0
+			b.damage = 2
+			b.can_destroy_steel = true
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 34.0 + right_vec * (side * 10.0)
+			b.global_position = m_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+
+		# 周期性触发等离子耀斑爆震 + 扩散能量弹
+		if randf() < 0.40:
+			VFXAnimator.spawn_boss_plasma_nova(get_parent(), global_position, 1.2)
+			SoundManager.play_explosion(get_tree())
+			for angle_offset in [-0.35, 0.35]:
+				var pb = bullet_scene.instantiate()
+				pb.direction = facing_direction.rotated(angle_offset)
+				pb.speed = 360.0
+				pb.damage = 1
+				pb.shooter = self
+				pb.shooter_type = "enemy"
+				get_parent().add_child(pb)
+				pb.global_position = global_position + facing_direction * 28.0
+
+	elif enemy_type == EnemyType.SCORPION_BOSS:
+		# 尾部高能毒刺穿透激光
+		var stinger_pos = global_position + facing_direction * 24.0
+		LaserPiercer.fire_linear_laser(get_parent(), stinger_pos, facing_direction, self, "enemy", 2)
+		VFXAnimator.spawn_muzzle_flash(get_parent(), stinger_pos, rotation)
+
+		# 双前螯机械爪速射夹角散弹
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-1.0, 1.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = (facing_direction + right_vec * (side * 0.25)).normalized()
+			b.speed = 420.0
+			b.damage = 1
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 24.0 + right_vec * (side * 12.0)
+			b.global_position = m_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+
+		if randf() < 0.30:
+			VFXAnimator.spawn_boss_plasma_nova(get_parent(), global_position, 1.0)
+
+	elif enemy_type == EnemyType.MAMMOTH_BOSS:
+		# 双联极寒榴弹
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-1.0, 1.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = facing_direction
+			b.speed = 400.0
+			b.damage = 2
+			b.can_destroy_steel = true
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 30.0 + right_vec * (side * 9.0)
+			b.global_position = m_pos
+			VFXAnimator.spawn_muzzle_flash(get_parent(), m_pos, rotation)
+
+		# 极寒冰霜新星冲击波 (Cryo Blizzard Slam)
+		VFXAnimator.spawn_boss_frost_nova(get_parent(), global_position, 1.25)
+		SoundManager.play_explosion(get_tree())
 	elif enemy_type == EnemyType.MISSILE:
 		var target = _find_player_target()
 		var target_pos = target.global_position if target else (global_position + facing_direction * 180.0)
@@ -1216,16 +1318,16 @@ func take_damage(amount: int) -> void:
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
 	# 按敌人类型追加额外特效
-	if enemy_type == EnemyType.ARMOR or enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
+	if is_heavy_scale_unit() or enemy_type == EnemyType.ARMOR:
 		VFXAnimator.spawn_dust_puff(get_parent(), global_position)
 	elif enemy_type == EnemyType.POWER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
-	if enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER:
+	if is_heavy_scale_unit():
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
 	# 受击形变晃动
-	var base_scale = Vector2(0.24, 0.24) if (enemy_type == EnemyType.BOSS or enemy_type == EnemyType.CRUSHER or enemy_type == EnemyType.SPLITTER or (enemy_type == EnemyType.CANNON and is_cannon_deployed)) else (Vector2(0.14, 0.14) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.196, 0.196))
+	var base_scale = Vector2(0.24, 0.24) if (is_heavy_scale_unit() or (enemy_type == EnemyType.CANNON and is_cannon_deployed)) else (Vector2(0.14, 0.14) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.196, 0.196))
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
 	hit_tween = create_tween()

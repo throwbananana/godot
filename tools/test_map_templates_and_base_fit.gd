@@ -77,34 +77,13 @@ func _run() -> void:
 	var bad := 0
 	for name in templates:
 		var g: Array = templates[name]
-		var errs: Array[String] = []
-		if g.size() != 13:
-			errs.append("行数 %d != 13" % g.size())
-		for r in range(g.size()):
-			if g[r].size() != 13:
-				errs.append("第 %d 行有 %d 列 != 13" % [r, g[r].size()])
-		if errs.is_empty():
-			for r in range(13):
-				for c in range(13):
-					var v = int(g[r][c])
-					# 合法上界跟着 map_templates.gd 顶上那份图例走 (0..44)
-					if v < 0 or v > 44:
-						errs.append("(%d,%d) 地形号 %d 越界 (合法 0-44)" % [r, c, v])
-			# 鹰巢与围墙由 main.gd::_spawn_base_and_walls() 自己生成在
-			# row11 col5-7 / row12 col5,7, 模板必须把这几格留空, 否则会和
-			# 自动生成的围墙叠在一起
-			for c in [5, 6, 7]:
-				if int(g[12][c]) != 0:
-					errs.append("鹰巢格 (12,%d) 必须为空" % c)
-				if int(g[11][c]) != 0:
-					errs.append("鹰巢围墙格 (11,%d) 必须为空" % c)
-			if int(g[12][4]) != 0:
-				errs.append("P1 出生点 (12,4) 必须为空")
-			if int(g[12][8]) != 0:
-				errs.append("P2 出生点 (12,8) 必须为空")
-			for c in [0, 6, 12]:
-				if int(g[0][c]) != 0:
-					errs.append("敌人出生点 (0,%d) 必须为空" % c)
+		# 结构检查 (尺寸/地形号/鹰巢与出生点留空) 现在走共享的
+		# MapTemplates.validate_layout() —— 关卡编辑器保存自定义图时跑的是
+		# 同一个函数, 两处各写一份迟早像 build_*.py 的重复地形判定那样漂移。
+		# 连通性单独判 (见下), 因为这条检查要报的是"哪几张不连通", 不是
+		# "这张连不连通", 汇总格式跟 validate_layout() 的单图错误列表不一样。
+		var errs: Array[String] = MapTemplates.validate_layout(g).filter(
+			func(e: String): return not e.begins_with("到不了鹰巢"))
 		if not errs.is_empty():
 			bad += 1
 			fail("%s: %s" % [name, "; ".join(errs)])
