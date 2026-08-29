@@ -11,7 +11,7 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, TITAN_BOSS, SCORPION_BOSS, MAMMOTH_BOSS }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, TITAN_BOSS, SCORPION_BOSS, MAMMOTH_BOSS, TESLA, TOXIC, DRONE_CARRIER, DRONE_MINI }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -193,14 +193,17 @@ func is_boss_unit() -> bool:
 	return enemy_type in [EnemyType.BOSS, EnemyType.TRAIN_BOSS, EnemyType.TITAN_BOSS, EnemyType.SCORPION_BOSS, EnemyType.MAMMOTH_BOSS]
 
 func is_heavy_scale_unit() -> bool:
-	return is_boss_unit() or enemy_type in [EnemyType.CRUSHER, EnemyType.SPLITTER]
+	return is_boss_unit() or enemy_type in [EnemyType.CRUSHER, EnemyType.SPLITTER, EnemyType.DRONE_CARRIER]
+
+func is_mini_scale_unit() -> bool:
+	return enemy_type in [EnemyType.SPLIT_MINI, EnemyType.DRONE_MINI]
 
 func _update_shield_state() -> void:
 	if is_shielded():
 		if shield_bubble_sprite == null:
 			shield_bubble_sprite = Sprite2D.new()
 			shield_bubble_sprite.z_index = 25
-			var s_scale = Vector2(0.26, 0.26) if is_heavy_scale_unit() else (Vector2(0.16, 0.16) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.21, 0.21))
+			var s_scale = Vector2(0.26, 0.26) if is_heavy_scale_unit() else (Vector2(0.16, 0.16) if is_mini_scale_unit() else Vector2(0.21, 0.21))
 			shield_bubble_sprite.scale = s_scale
 			if shield_bubble_textures.size() > 0:
 				shield_bubble_sprite.texture = shield_bubble_textures[0]
@@ -523,6 +526,38 @@ func _setup_tank_type() -> void:
 			xp_value = 550
 			gold_value = 350
 			fire_interval = 2.5 # 双联极寒榴弹 + 极寒冰霜新星冲击
+		EnemyType.TESLA:
+			prefix = "enemy_tesla"
+			speed = 70.0 # 特斯拉电弧战车：电磁巡航
+			max_health = 4
+			score_value = 500
+			xp_value = 100
+			gold_value = 60
+			fire_interval = 1.8 # 双特斯拉电弧放电
+		EnemyType.TOXIC:
+			prefix = "enemy_toxic"
+			speed = 76.0 # 生化剧毒布雷车：化学动力推进
+			max_health = 3
+			score_value = 450
+			xp_value = 90
+			gold_value = 55
+			fire_interval = 2.2 # 生化酸液喷射
+		EnemyType.DRONE_CARRIER:
+			prefix = "enemy_drone_carrier"
+			speed = 52.0 # 蜂巢航母战车：重甲移动机库
+			max_health = 8
+			score_value = 900
+			xp_value = 180
+			gold_value = 110
+			fire_interval = 3.8 # 蜂巢无人机弹射周期
+		EnemyType.DRONE_MINI:
+			prefix = "enemy_drone_mini"
+			speed = 115.0 # 四旋翼自爆轻型无人机：极速空中突袭
+			max_health = 1
+			score_value = 150
+			xp_value = 30
+			gold_value = 15
+			fire_interval = 999.0 # 无常规射击，接触自爆
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
@@ -600,7 +635,7 @@ func _setup_tank_type() -> void:
 				tank_frames.append(tex)
 			if is_heavy_scale_unit():
 				sprite.scale = Vector2(0.24, 0.24)
-			elif enemy_type == EnemyType.SPLIT_MINI:
+			elif is_mini_scale_unit():
 				sprite.scale = Vector2(0.14, 0.14)
 
 func freeze(duration: float) -> void:
@@ -629,20 +664,23 @@ func _physics_process(delta: float) -> void:
 	else:
 		sprite.modulate = Color(1.0, 1.0, 1.0)
 
-	# 1. Suicide Truck Dedicated High-Speed Intercept AI
-	if enemy_type == EnemyType.SUICIDE:
+	# 1. Suicide Truck & Mini Drone Dedicated High-Speed Intercept AI
+	if enemy_type == EnemyType.SUICIDE or enemy_type == EnemyType.DRONE_MINI:
 		var target = _find_target()
 		if target and is_instance_valid(target):
 			var to_target = target.global_position - global_position
 			var dist = to_target.length()
-			if dist <= 42.0:
+			if dist <= (36.0 if enemy_type == EnemyType.DRONE_MINI else 42.0):
 				_suicide_detonate()
 				return
 
-			if abs(to_target.x) > abs(to_target.y):
-				facing_direction = Vector2.RIGHT if to_target.x > 0 else Vector2.LEFT
+			if enemy_type == EnemyType.DRONE_MINI:
+				facing_direction = to_target.normalized()
 			else:
-				facing_direction = Vector2.DOWN if to_target.y > 0 else Vector2.UP
+				if abs(to_target.x) > abs(to_target.y):
+					facing_direction = Vector2.RIGHT if to_target.x > 0 else Vector2.LEFT
+				else:
+					facing_direction = Vector2.DOWN if to_target.y > 0 else Vector2.UP
 			rotation = facing_direction.angle() + PI / 2.0
 
 			var flash_spd = clampf(600.0 / max(40.0, dist), 8.0, 36.0)
@@ -821,8 +859,8 @@ func _physics_process(delta: float) -> void:
 	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
 	if collision:
 		var col_node = collision.get_collider()
-		if enemy_type == EnemyType.SUICIDE:
-			if col_node and (col_node.is_in_group("player") or col_node.is_in_group("base_eagle") or col_node.is_in_group("buildings")):
+		if enemy_type == EnemyType.SUICIDE or enemy_type == EnemyType.DRONE_MINI:
+			if col_node and (col_node.is_in_group("player") or col_node.is_in_group("base_eagle") or col_node.is_in_group("buildings") or enemy_type == EnemyType.DRONE_MINI):
 				_suicide_detonate()
 				return
 		elif enemy_type == EnemyType.CRUSHER:
@@ -1049,6 +1087,49 @@ func _shoot() -> void:
 		# 极寒冰霜新星冲击波 (Cryo Blizzard Slam)
 		VFXAnimator.spawn_boss_frost_nova(get_parent(), global_position, 1.25)
 		SoundManager.play_explosion(get_tree())
+	elif enemy_type == EnemyType.TESLA:
+		# 双特斯拉高压放电线圈并发闪电冲击
+		var right_vec = facing_direction.rotated(PI / 2.0)
+		for side in [-1.0, 1.0]:
+			var b = bullet_scene.instantiate()
+			b.direction = facing_direction
+			b.speed = 480.0
+			b.damage = 1
+			b.shooter = self
+			b.shooter_type = "enemy"
+			get_parent().add_child(b)
+			var m_pos = global_position + facing_direction * 26.0 + right_vec * (side * 6.0)
+			b.global_position = m_pos
+			VFXAnimator.spawn_tesla_arc_spark(get_parent(), m_pos, 0.9)
+		SoundManager.play_laser(get_tree())
+	elif enemy_type == EnemyType.TOXIC:
+		# 生化剧毒酸液泥弹喷射
+		var b = bullet_scene.instantiate()
+		b.direction = facing_direction
+		b.speed = 390.0
+		b.damage = 1
+		b.shooter = self
+		b.shooter_type = "enemy"
+		get_parent().add_child(b)
+		b.global_position = muzzle_pos
+		VFXAnimator.spawn_toxic_splash(get_parent(), muzzle_pos, 0.85)
+	elif enemy_type == EnemyType.DRONE_CARRIER:
+		# 召唤自爆轻型无人机 + 防御机枪齐射
+		if is_inside_tree() and get_parent():
+			var drone = load("res://scenes/enemy.tscn").instantiate()
+			drone.enemy_type = EnemyType.DRONE_MINI
+			drone.global_position = global_position + facing_direction * 22.0
+			get_parent().add_child(drone)
+			VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+		var b = bullet_scene.instantiate()
+		b.direction = facing_direction
+		b.speed = 440.0
+		b.damage = 1
+		b.shooter = self
+		b.shooter_type = "enemy"
+		get_parent().add_child(b)
+		b.global_position = muzzle_pos
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 	elif enemy_type == EnemyType.MISSILE:
 		var target = _find_player_target()
 		var target_pos = target.global_position if target else (global_position + facing_direction * 180.0)
@@ -1322,12 +1403,16 @@ func take_damage(amount: int) -> void:
 		VFXAnimator.spawn_dust_puff(get_parent(), global_position)
 	elif enemy_type == EnemyType.POWER:
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	elif enemy_type == EnemyType.TESLA:
+		VFXAnimator.spawn_tesla_arc_spark(get_parent(), global_position, 0.8)
+	elif enemy_type == EnemyType.TOXIC:
+		VFXAnimator.spawn_toxic_splash(get_parent(), global_position, 0.8)
 
 	if is_heavy_scale_unit():
 		VFXAnimator.spawn_shockwave(get_parent(), global_position)
 
 	# 受击形变晃动
-	var base_scale = Vector2(0.24, 0.24) if (is_heavy_scale_unit() or (enemy_type == EnemyType.CANNON and is_cannon_deployed)) else (Vector2(0.14, 0.14) if enemy_type == EnemyType.SPLIT_MINI else Vector2(0.196, 0.196))
+	var base_scale = Vector2(0.24, 0.24) if (is_heavy_scale_unit() or (enemy_type == EnemyType.CANNON and is_cannon_deployed)) else (Vector2(0.14, 0.14) if is_mini_scale_unit() else Vector2(0.196, 0.196))
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
 	hit_tween = create_tween()

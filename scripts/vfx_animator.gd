@@ -214,4 +214,27 @@ static func spawn_boss_frost_nova(parent: Node, pos: Vector2, scale_mult: float 
 	create_anim(parent, pos, paths, 0.28 * scale_mult, 16.0)
 	_notify_darkness_flash(parent, pos, 160.0 * scale_mult, 0.30)
 
+static func spawn_tesla_arc_spark(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/tesla_arc_spark_0.png",
+		"res://assets/sprites/effects/tesla_arc_spark_1.png",
+		"res://assets/sprites/effects/tesla_arc_spark_2.png",
+		"res://assets/sprites/effects/tesla_arc_spark_3.png",
+		"res://assets/sprites/effects/tesla_arc_spark_4.png",
+		"res://assets/sprites/effects/tesla_arc_spark_5.png"
+	]
+	create_anim(parent, pos, paths, 0.22 * scale_mult, 18.0)
+	_notify_darkness_flash(parent, pos, 120.0 * scale_mult, 0.25)
+
+static func spawn_toxic_splash(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/toxic_splash_0.png",
+		"res://assets/sprites/effects/toxic_splash_1.png",
+		"res://assets/sprites/effects/toxic_splash_2.png",
+		"res://assets/sprites/effects/toxic_splash_3.png",
+		"res://assets/sprites/effects/toxic_splash_4.png",
+		"res://assets/sprites/effects/toxic_splash_5.png"
+	]
+	create_anim(parent, pos, paths, 0.24 * scale_mult, 16.0)
+
 

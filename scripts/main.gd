@@ -2250,12 +2250,16 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.SPIDER: 4,
 	EnemyTank.EnemyType.SANDWORM: 4,
 	EnemyTank.EnemyType.CANNON: 4,
+	EnemyTank.EnemyType.TESLA: 4,
+	EnemyTank.EnemyType.TOXIC: 4,
 	EnemyTank.EnemyType.AIRCRAFT: 5,
 	EnemyTank.EnemyType.MIRAGE: 5,
 	EnemyTank.EnemyType.BATTLESHIP: 5,
 	EnemyTank.EnemyType.LASER: 5,
 	EnemyTank.EnemyType.CRUSHER: 5,
 	EnemyTank.EnemyType.SPLITTER: 5,
+	EnemyTank.EnemyType.DRONE_CARRIER: 6,
+	EnemyTank.EnemyType.DRONE_MINI: 6,
 	EnemyTank.EnemyType.MISSILE: 8,
 	EnemyTank.EnemyType.WARP: 8,
 }
@@ -2270,9 +2274,11 @@ const GATE_FALLBACK_POOL: Array = [
 	EnemyTank.EnemyType.SHOTGUN, EnemyTank.EnemyType.HUNTER,
 	EnemyTank.EnemyType.BOMBER, EnemyTank.EnemyType.ENGINEER, EnemyTank.EnemyType.FLAMETHROWER, EnemyTank.EnemyType.FIREWALL,
 	EnemyTank.EnemyType.SNIPER, EnemyTank.EnemyType.GATLING, EnemyTank.EnemyType.SPIDER, EnemyTank.EnemyType.SANDWORM, EnemyTank.EnemyType.CANNON,
+	EnemyTank.EnemyType.TESLA, EnemyTank.EnemyType.TOXIC,
 	EnemyTank.EnemyType.AIRCRAFT, EnemyTank.EnemyType.MIRAGE,
 	EnemyTank.EnemyType.BATTLESHIP, EnemyTank.EnemyType.LASER,
 	EnemyTank.EnemyType.CRUSHER, EnemyTank.EnemyType.SPLITTER,
+	EnemyTank.EnemyType.DRONE_CARRIER,
 	EnemyTank.EnemyType.MISSILE, EnemyTank.EnemyType.WARP,
 ]
 
@@ -2427,36 +2433,40 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.10: type = EnemyTank.EnemyType.ENGINEER
 				elif r < 0.15: type = EnemyTank.EnemyType.FIREWALL
 				elif r < 0.20: type = EnemyTank.EnemyType.HUNTER
-				elif r < 0.26: type = EnemyTank.EnemyType.SPIDER
-				elif r < 0.32: type = EnemyTank.EnemyType.SANDWORM
-				elif r < 0.38: type = EnemyTank.EnemyType.CANNON
-				elif r < 0.44: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.51: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.58: type = EnemyTank.EnemyType.GATLING
-				elif r < 0.65: type = EnemyTank.EnemyType.SNIPER
-				elif r < 0.72: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.79: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.89: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.25: type = EnemyTank.EnemyType.SPIDER
+				elif r < 0.30: type = EnemyTank.EnemyType.SANDWORM
+				elif r < 0.35: type = EnemyTank.EnemyType.CANNON
+				elif r < 0.41: type = EnemyTank.EnemyType.TESLA
+				elif r < 0.47: type = EnemyTank.EnemyType.TOXIC
+				elif r < 0.53: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.60: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.67: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.74: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.81: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.88: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.94: type = EnemyTank.EnemyType.SUICIDE
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			_:
-				# floor 5 以后全阵容展开: SPLITTER, CRUSHER, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, GATLING 等。
-				if r < 0.05: type = EnemyTank.EnemyType.SPLITTER
-				elif r < 0.09: type = EnemyTank.EnemyType.CRUSHER
-				elif r < 0.13: type = EnemyTank.EnemyType.ENGINEER
-				elif r < 0.17: type = EnemyTank.EnemyType.FIREWALL
-				elif r < 0.21: type = EnemyTank.EnemyType.HUNTER
-				elif r < 0.26: type = EnemyTank.EnemyType.SPIDER
-				elif r < 0.31: type = EnemyTank.EnemyType.SANDWORM
-				elif r < 0.36: type = EnemyTank.EnemyType.CANNON
-				elif r < 0.42: type = EnemyTank.EnemyType.GATLING
-				elif r < 0.48: type = EnemyTank.EnemyType.SNIPER
-				elif r < 0.54: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.60: type = EnemyTank.EnemyType.BATTLESHIP
-				elif r < 0.67: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.74: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.81: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.88: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.94: type = EnemyTank.EnemyType.BOMBER
+				# floor 5 以后全阵容展开: DRONE_CARRIER, TESLA, TOXIC, SPLITTER, CRUSHER, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, GATLING 等。
+				if r < 0.04: type = EnemyTank.EnemyType.DRONE_CARRIER
+				elif r < 0.08: type = EnemyTank.EnemyType.TESLA
+				elif r < 0.12: type = EnemyTank.EnemyType.TOXIC
+				elif r < 0.16: type = EnemyTank.EnemyType.SPLITTER
+				elif r < 0.20: type = EnemyTank.EnemyType.CRUSHER
+				elif r < 0.24: type = EnemyTank.EnemyType.ENGINEER
+				elif r < 0.28: type = EnemyTank.EnemyType.FIREWALL
+				elif r < 0.33: type = EnemyTank.EnemyType.HUNTER
+				elif r < 0.38: type = EnemyTank.EnemyType.SPIDER
+				elif r < 0.43: type = EnemyTank.EnemyType.SANDWORM
+				elif r < 0.48: type = EnemyTank.EnemyType.CANNON
+				elif r < 0.54: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.60: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.66: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.72: type = EnemyTank.EnemyType.BATTLESHIP
+				elif r < 0.78: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.84: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.90: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.95: type = EnemyTank.EnemyType.SUICIDE
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 
 	# Floor-gate the roll above -- the boss/elite tables (unlike the plain
