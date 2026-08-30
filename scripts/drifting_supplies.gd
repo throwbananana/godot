@@ -60,14 +60,14 @@ func _collect() -> void:
 
 	var main = get_tree().current_scene
 	if main:
-		var gold_amt = randi_range(40, 80)
-		var xp_amt = randi_range(20, 45)
+		# 60-125 = 原来的 40-80 金 + 20-45 XP 折算区间。升级已经不吃经验条了
+		# (只能吃 STAR, 见 rpg_manager.gd::add_level()), 这份奖励折进金币里
+		# 而不是白白消失。
+		var gold_amt = randi_range(60, 125)
 		if main.has_method("add_gold"):
 			main.add_gold(gold_amt)
-		if main.rpg_mgr:
-			main.rpg_mgr.add_xp(xp_amt)
 		if main.has_method("show_toast"):
-			main.show_toast("打捞漂流物资！+%dG & +%d XP！" % [gold_amt, xp_amt])
+			main.show_toast("打捞漂流物资！+%dG！" % gold_amt)
 
 		var coin_scene = load("res://scenes/gold_coin.tscn")
 		if coin_scene and main.actors_container:

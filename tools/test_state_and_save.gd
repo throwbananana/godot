@@ -26,11 +26,11 @@ func _init() -> void:
 		print("  [FAIL] Test 2: Speed reward failed!")
 
 	total += 1
-	if test_cross_scene_level_up():
-		print("  [PASS] Test 3: Cross-scene XP level up emits signal")
+	if test_star_level_up():
+		print("  [PASS] Test 3: Star-driven multi-level jump emits signal & syncs")
 		passed += 1
 	else:
-		print("  [FAIL] Test 3: Cross-scene XP level up failed!")
+		print("  [FAIL] Test 3: Star-driven multi-level jump failed!")
 
 	total += 1
 	if test_save_load_roundtrip():
@@ -88,21 +88,30 @@ func test_speed_reward() -> bool:
 		return false
 	return true
 
-func test_cross_scene_level_up() -> bool:
+## 升级没有经验条了 —— 唯一入口是 RPGManager.add_level(), 战场上吃到一颗
+## STAR 就调一次 (见 player.gd::apply_powerup())。amount > 1 模拟同一帧内
+## 连吃两颗星 (或调试菜单一次补发多级), 必须连续触发两次 leveled_up 且不报错,
+## 还要能正常同步回 GameState.player_level。
+func test_star_level_up() -> bool:
 	GameState.reset_campaign(1)
-	GameState.player_xp += 350
-	
+
 	var rpg = RPGManager.new()
+	rpg.sync_from_game_state()
 	var emitted_levels: Array[int] = []
 	rpg.leveled_up.connect(func(lvl): emitted_levels.append(lvl))
-	
-	rpg.sync_from_game_state()
-	
+
+	rpg.add_level(2)
+
 	if rpg.level != 3:
 		print("    Error: RPG level is %d, expected 3" % rpg.level)
 		return false
 	if emitted_levels.size() != 2 or emitted_levels != [2, 3]:
 		print("    Error: Emitted levels are %s, expected [2, 3]" % str(emitted_levels))
+		return false
+
+	rpg.sync_to_game_state()
+	if GameState.player_level != 3:
+		print("    Error: GameState.player_level is %d, expected 3" % GameState.player_level)
 		return false
 	return true
 

@@ -67,7 +67,7 @@ var ammo_depot_scene: PackedScene
 var command_post_scene: PackedScene
 var sniper_nest_scene: PackedScene
 var emp_tower_scene: PackedScene
-var factory_instances: Array[Node] = [] # tracked for the battle-end gold/XP reward multiplier
+var factory_instances: Array[Node] = [] # tracked for the battle-end gold reward multiplier
 var battle_gold_earned: int = 0 # reset in start_game(), read by the Factory reward multiplier at _game_over()
 var battle_start_msec: int = 0 # reset in start_game(), read by the balance log at _game_over()
 var has_treasure_key: bool = false
@@ -233,7 +233,7 @@ func _apply_layout_offset() -> void:
 ## 隐藏测试模式在战斗内的那一半 (关卡跳转在 debug_test_menu.gd 里)。F1 开关,
 ## 只在 GameState.debug_unlocked 时被 _ready() 建出来 —— "随意调用工具"按
 ## 用户原话理解成一小撮常用作弊动作, 而不是重新做一套控制台, 每个按钮都直接
-## 复用游戏本来就有的路径 (add_gold()/rpg_mgr.add_xp()/enemy._die() 等),
+## 复用游戏本来就有的路径 (add_gold()/rpg_mgr.add_level()/enemy._die() 等),
 ## 不另写一条与正常玩法分叉的成功/失败逻辑。
 func _build_debug_panel() -> void:
 	debug_panel = PanelContainer.new()
@@ -260,7 +260,7 @@ func _build_debug_panel() -> void:
 	vb.add_child(btn_gold)
 
 	var btn_level := _make_debug_button("+1 LEVEL (等级)")
-	btn_level.pressed.connect(func(): rpg_mgr.add_xp(rpg_mgr.xp_to_next))
+	btn_level.pressed.connect(func(): rpg_mgr.add_level(1))
 	vb.add_child(btn_level)
 
 	var btn_god := _make_debug_button("GOD MODE: OFF (无敌)")
@@ -483,7 +483,11 @@ func _ready() -> void:
 	UIThemeHelper.apply_hud_sidepanel($HUD/SidePanel)
 	UIThemeHelper.apply_pause_menu_theme(pause_menu, [btn_resume, btn_settings_pause, btn_restart_stage, btn_quit_menu])
 	UIThemeHelper.apply_clay_progressbar(hud_rpg_xp, Color(0.40, 0.88, 1.0, 1.0))
-	
+	# 经验条已经取消 -- 升级只能靠吃 STAR 道具, 没有可显示的"进度"了, 见
+	# rpg_manager.gd::add_level()。节点留着 (main.tscn 不动), 只是隐藏。
+	if hud_rpg_xp:
+		hud_rpg_xp.visible = false
+
 	if hud_toast:
 		var toast_sb := StyleBoxFlat.new()
 		toast_sb.bg_color = Color(0.18, 0.14, 0.22, 0.95)
@@ -2107,7 +2111,7 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 			coin.position = actors_container.to_local(pos)
 			actors_container.call_deferred("add_child", coin)
 	elif roll < 0.88:
-		# Rare Diamond Gem (+60G + 30XP)
+		# Rare Diamond Gem (+90G)
 		if not diamond_gem_scene:
 			diamond_gem_scene = load("res://scenes/diamond_gem.tscn")
 		if diamond_gem_scene and actors_container:
@@ -2592,34 +2596,32 @@ func _request_spawn_enemy() -> void:
 		type = all_types[randi() % all_types.size()]
 	elif GameState.battle_type == "boss":
 		if enemies_spawned == 0:
-			match GameState.get_visual_act():
-				1:
-					var b_roll = randf()
-					if b_roll < 0.50:
-						type = EnemyTank.EnemyType.TITAN_BOSS
-						show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
-					else:
+			# 一幕一主 Boss, 不再是硬币赌命: 每个视觉主题 (get_visual_act(),
+			# 1-3, 12 幕循环 3 轮) 各自固定一只专属 Boss, 血量/机动/地图三者
+			# 严丝合缝。以前这里是每幕再掷一次硬币, 50%/40%/40% 概率被
+			# TITAN_BOSS (16 血, 该表里第二硬) 顶替, 于是 Act 1 有一半局会在
+			# 玩家还只有 1~3 格血、伤害 1 点时撞上终局级数值, 且 TITAN 三幕
+			# 轮流串场把 SCORPION/MAMMOTH 各自的主题辨识度稀释掉了。
+			#
+			# TITAN_BOSS 改用 get_difficulty_cycle() (0 = 第 1~3 幕, 1+ = 第
+			# 4 幕起的每一轮重复周目) 而不是 get_visual_act() 的 `_` 分支 ——
+			# 后者永远落在 1/2/3 之内 (12 幕循环 3 个主题), 那条 `_` 分支其实
+			# 是从未被执行过的死代码, 之前"Act 4+ 100% Titan"根本没有真的发生
+			# 过。地图侧的匹配见 map_templates.gd::get_layout_for_stage()。
+			if GameState.get_difficulty_cycle() >= 1:
+				type = EnemyTank.EnemyType.TITAN_BOSS
+				show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
+			else:
+				match GameState.get_visual_act():
+					1:
 						type = EnemyTank.EnemyType.BOSS
 						show_toast("👑 WARLORD SUPER-TANK DETECTED! 👑")
-				2:
-					var b_roll = randf()
-					if b_roll < 0.60:
+					2:
 						type = EnemyTank.EnemyType.SCORPION_BOSS
 						show_toast("🦂 DESERT SCORPION MECH DETECTED! 🦂")
-					else:
-						type = EnemyTank.EnemyType.TITAN_BOSS
-						show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
-				3:
-					var b_roll = randf()
-					if b_roll < 0.60:
+					3:
 						type = EnemyTank.EnemyType.MAMMOTH_BOSS
 						show_toast("❄️ GLACIAL MAMMOTH MECH DETECTED! ❄️")
-					else:
-						type = EnemyTank.EnemyType.TITAN_BOSS
-						show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
-				_:
-					type = EnemyTank.EnemyType.TITAN_BOSS
-					show_toast("⚡ DREADNOUGHT TITAN FORTRESS DETECTED! ⚡")
 			add_trauma(0.50)
 		elif r < 0.10: type = EnemyTank.EnemyType.AIRCRAFT
 		elif r < 0.20: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.SUICIDE
@@ -2997,12 +2999,17 @@ func _on_base_destroyed() -> void:
 	hit_stop(0.08)
 	_game_over(false)
 
-## Factory map building: doubles this battle's earned gold+XP if at least one
+## Factory map building: doubles this battle's earned gold if at least one
 ## Factory instance survived to the end, halves it if every Factory on the
 ## map was destroyed. No-op if the map had no Factory. Applies to
-## battle_gold_earned/rpg_mgr.xp_earned_this_battle -- everything earned this
-## battle, including any mission-completion bonus already granted above --
-## not the player's full running totals.
+## battle_gold_earned -- everything earned this battle, including any
+## mission-completion bonus already granted above -- not the player's full
+## running gold total.
+##
+## Used to also double/halve rpg_mgr.xp_earned_this_battle. That field is
+## gone -- leveling no longer comes from an XP pool at all, only from eating
+## a STAR power-up (RPGManager.add_level(), see player.gd::apply_powerup())
+## -- so there is nothing left for this building to multiply on that side.
 func _apply_factory_reward_multiplier() -> void:
 	if factory_instances.is_empty() or not rpg_mgr:
 		return
@@ -3015,15 +3022,10 @@ func _apply_factory_reward_multiplier() -> void:
 
 	var mult = 2.0 if any_factory_alive else 0.5
 	var gold_delta = int(round(battle_gold_earned * (mult - 1.0)))
-	var xp_delta = int(round(rpg_mgr.xp_earned_this_battle * (mult - 1.0)))
 
 	if gold_delta != 0:
 		rpg_mgr.gold = maxi(0, rpg_mgr.gold + gold_delta)
 		rpg_mgr.gold_changed.emit(rpg_mgr.gold)
-	if xp_delta > 0:
-		rpg_mgr.add_xp(xp_delta) # may cascade a level-up, same as any other XP grant
-	elif xp_delta < 0:
-		rpg_mgr.current_xp = maxi(0, rpg_mgr.current_xp + xp_delta) # clamp only -- no delevel mechanic exists
 
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		rpg_mgr.sync_to_game_state()
@@ -3090,10 +3092,11 @@ func _game_over(victory: bool) -> void:
 					btn_action_text = "RETURN TO TITLE"
 					campaign_complete = true
 			elif GameState.battle_type == "challenge":
-				add_gold(150)
-				rpg_mgr.add_xp(100)
+				# 以前这里还发 +100 XP; 升级已经不吃经验条了 (见 rpg_manager.gd
+				# ::add_level() 头上的注释), 折算进金币里而不是白白消失。
+				add_gold(250)
 				modal_title_str = "🏆 CHALLENGE COMPLETE! 🏆"
-				modal_desc_str = "战术极限挑战大成功！额外斩获 +150G 与 +100XP！"
+				modal_desc_str = "战术极限挑战大成功！额外斩获 +250G！"
 				btn_action_text = "CONTINUE CLIMBING"
 			else:
 				modal_title_str = "★ SECTOR SECURED ★"
@@ -3259,9 +3262,6 @@ func _branch_tag(player_id: int) -> String:
 func _update_rpg_hud() -> void:
 	if hud_rpg_level:
 		hud_rpg_level.text = "LV.%d [%s]" % [rpg_mgr.level, _branch_tag(1)]
-	if hud_rpg_xp:
-		hud_rpg_xp.max_value = rpg_mgr.xp_to_next
-		hud_rpg_xp.value = rpg_mgr.current_xp
 	if hud_gold:
 		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
 	if p1_instance and is_instance_valid(p1_instance):

@@ -197,7 +197,7 @@ static func _upgrade_pool() -> Array[Dictionary]:
 		{
 			"id": "landmine_crate",
 			"name": "战术反坦克地雷包 (Mine Crate)",
-			"desc": "解锁布设反坦克地雷战术，+50 战役经验 (50 XP)",
+			"desc": "紧急空投 2 枚反坦克地雷库存，战斗中可用热键放置 (原本的经验值奖励已改为地雷库存 -- 升级只能靠吃 STAR 道具)",
 			"cost": 45,
 			"icon": "res://assets/sprites/powerups/landmine_prop.png",
 			"category": "TACTICAL"
@@ -257,7 +257,7 @@ static func _price_for(base_cost: int) -> int:
 ## 商店卖的是"给队伍"的东西, 不是"给 1 号位"的东西。
 ##
 ## 大多数商品写的是 GameState 上的团队字段 (max_hp_lvl / fire_rate_lvl /
-## speed_lvl / builder_lvl / atk_bonus / player_xp), 两个玩家天然共享。但有
+## speed_lvl / builder_lvl / atk_bonus), 两个玩家天然共享。但有
 ## 三样不是: 升阶模块 (player_tier 与 p2_tier 分开), 以及三个 perk
 ## (unlocked_perks 与 p2_unlocked_perks 分开)。这几样以前一律硬编码
 ## player_id = 1, 于是**双人模式下 2P 永远拿不到**。
@@ -366,8 +366,10 @@ static func apply_item_purchase(item_id: String) -> String:
 			GameState.atk_bonus += 1
 			return "主炮口径扩容，攻击力 +1！"
 		"landmine_crate":
-			GameState.player_xp += 50
-			return "获得地雷战术补给，经验 +50！"
+			# 以前这里发 +50 XP; 升级已经不吃经验条了 (只能吃 STAR, 见
+			# rpg_manager.gd::add_level()), 改发跟名字更贴的地雷库存。
+			GameState.add_structure_stock("landmine", 2)
+			return "获得地雷战术补给，反坦克地雷库存 +2！"
 		"ricochet_rounds":
 			_grant_perk_to_team("ricochet_rounds")
 			var bounces = int(GameState.unlocked_perks.get("ricochet_rounds", 0))

@@ -6,8 +6,9 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
-@export var gold_value: int = 60
-@export var xp_value: int = 30
+## 90 = 原来的 60 金 + 30 XP 折算。升级已经不吃经验条了 (只能吃 STAR,
+## 见 rpg_manager.gd::add_level()), 这份奖励折进金币里而不是白白消失。
+@export var gold_value: int = 90
 
 var lifetime: float = 30.0
 var move_speed: float = 0.0
@@ -70,11 +71,10 @@ func _on_body_entered(body: Node2D) -> void:
 				var picker := TrainFollowHelper.resolve_train_owner(body)
 				if picker and ("player_id" in picker):
 					g_val = int(g_val * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, picker.player_id)))
-				main.rpg_mgr.add_xp(xp_value)
 			if main.has_method("add_gold"):
 				main.add_gold(g_val)
 			if main.has_method("show_toast"):
-				main.show_toast("获得稀有钻石！+%dG & +%d XP！" % [g_val, xp_value])
+				main.show_toast("获得稀有钻石！+%dG！" % g_val)
 
 		SoundManager.play_level_up(get_tree())
 		VFXAnimator.spawn_teleport_burst(get_parent(), global_position)

@@ -66,7 +66,7 @@ func setup(type: String) -> void:
 			"depot":
 				title_label.text = "ABANDONED MUNITIONS DEPOT (MYSTERY)"
 				desc_label.text = "You discovered an intact munitions vault buried beneath the ruins:"
-				btn_1.text = "1. Scavenge High-Caliber Ammo (+100G, +60 XP)"
+				btn_1.text = "1. Scavenge High-Caliber Ammo (+160G)"
 				btn_2.text = "2. Overclock Engine Reactor (+1 SPD Permanent)"
 				btn_3.text = "3. Weapon Star Upgrade (+1 Tier Upgrade)"
 				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/ui_icon_gift.png", Vector2(22, 22))
@@ -85,7 +85,7 @@ func setup(type: String) -> void:
 				title_label.text = "COSMIC SINGULARITY ANOMALY (EVENT)"
 				desc_label.text = "A pulsating dimensional rift hums with unstable spatial energy:"
 				btn_1.text = "1. Siphon Warp Energy (Gain Warp Drive Perk)"
-				btn_2.text = "2. Spatial Transmutation (+150 Gold, +80 XP)"
+				btn_2.text = "2. Spatial Transmutation (+230 Gold)"
 				btn_3.text = "3. Dimensional Blessing (+2 Extra Lives)"
 				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/perk_laser.png", Vector2(22, 22))
 				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/ui_badge_gold.png", Vector2(22, 22))
@@ -102,7 +102,7 @@ func setup(type: String) -> void:
 			"bounty":
 				title_label.text = "ROGUE COMBAT CONTRACT (BLACK OPS)"
 				desc_label.text = "An encrypted distress beacon broadcasts a high-priority bounty assignment:"
-				btn_1.text = "1. Accept Elite Bounty (+140 Gold, +100 XP)"
+				btn_1.text = "1. Accept Elite Bounty (+240 Gold)"
 				btn_2.text = "2. Install Magnetic Salvage Core (Gain Magnetic Salvage)"
 				btn_3.text = "3. Acquire Ferry Artillery Module (Gain Ferry Artillery)"
 				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/ui_badge_gold.png", Vector2(22, 22))
@@ -170,8 +170,10 @@ func _on_choice(idx: int) -> void:
 			"depot":
 				match idx:
 					1:
-						GameState.gold += 100
-						GameState.player_xp += 60
+						# 160 = 原来的 +100G, +60 XP 折算。升级已经不吃经验条了
+						# (只能吃 STAR, 见 rpg_manager.gd::add_level()), 这份
+						# 奖励折进金币里而不是白白消失。
+						GameState.gold += 160
 					2:
 						GameState.speed_lvl += 1
 					3:
@@ -189,8 +191,7 @@ func _on_choice(idx: int) -> void:
 					1:
 						_grant_perk("warp_drive")
 					2:
-						GameState.gold += 150
-						GameState.player_xp += 80
+						GameState.gold += 230 # 原来的 +150G, +80 XP 折算, 见上
 					3:
 						_grant_life(2)
 			"glacier_cache":
@@ -205,8 +206,7 @@ func _on_choice(idx: int) -> void:
 			"bounty":
 				match idx:
 					1:
-						GameState.gold += 140
-						GameState.player_xp += 100
+						GameState.gold += 240 # 原来的 +140G, +100 XP 折算, 见上
 					2:
 						_grant_perk("magnetic_salvage")
 					3:

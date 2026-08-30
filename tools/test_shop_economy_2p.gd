@@ -3,8 +3,8 @@ extends SceneTree
 ## 商店经济与双人分发的回归测试。
 ##
 ## 商店卖的是"给队伍"的东西。大多数商品写的是 GameState 上的团队字段
-## (max_hp_lvl / fire_rate_lvl / speed_lvl / builder_lvl / atk_bonus /
-## player_xp), 两人天然共享; 但有三样不是 —— 升阶模块, 以及三个 perk
+## (max_hp_lvl / fire_rate_lvl / speed_lvl / builder_lvl / atk_bonus),
+## 两人天然共享; 但有三样不是 —— 升阶模块, 以及三个 perk
 ## (unlocked_perks 与 p2_unlocked_perks 分开)。这几样以前一律硬编码
 ## player_id = 1, 双人模式下 2P 永远拿不到, 而且不会报错: 钱照扣、提示照弹,
 ## 只是东西没到。

@@ -35,8 +35,8 @@ const CustomMapStore = preload("res://scripts/custom_map_store.gd")
 # 25 = Electric Wall (High-voltage barrier: shocks & damages any tank touching it)
 # 26 = Explosive Oil Barrel (Volatile fuel drum: explodes when hit, destroys 3x3 surrounding tiles & units)
 # 27 = Signal Jammer Tower (Destructible. Reverses the PLAYER's movement/aim input for anyone standing in its radius -- enemies unaffected. Destroying it frees anyone still caught inside.)
-# 28 = Factory (Destructible escort objective, 16 HP. Surviving to the end of the battle doubles this battle's gold+XP reward; every Factory on the map being destroyed halves it instead.)
-# 29 = Drifting Supplies (Water-look tile that is NOT collision-blocking -- "treated as ground" so any tank can walk onto it -- with a one-time gold+XP crate sitting on top. Doubles as a walkable stepping-stone across an otherwise impassable water tile 3.)
+# 28 = Factory (Destructible escort objective, 16 HP. Surviving to the end of the battle doubles this battle's gold reward; every Factory on the map being destroyed halves it instead.)
+# 29 = Drifting Supplies (Water-look tile that is NOT collision-blocking -- "treated as ground" so any tank can walk onto it -- with a one-time gold crate sitting on top. Doubles as a walkable stepping-stone across an otherwise impassable water tile 3.)
 # 30 = Enemy Shield Tower (Destructible hostile structure, 8 HP. Projects a protective energy barrier covering nearby enemies in a 180px radius with an invulnerable shield. Only when destroyed will the enemy buff be cancelled.)
 # 31 = Conduit Pipe LEFT_TO_UP (Bullet entered from LEFT redirects UP)
 # 32 = Conduit Pipe UP_TO_RIGHT (Bullet entered from UP redirects RIGHT)
@@ -1659,6 +1659,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 	# raw act number.
 	var raw_act = GameState.current_act if act == -1 else act
 	var current_act = GameState.get_visual_act(raw_act)
+	var difficulty_cycle = GameState.get_difficulty_cycle(raw_act)
 	var room_entropy: int = 0 if room_key.is_empty() else abs(hash(room_key))
 
 	# Procedural generation chance (25% chance for a fresh randomized layout during regular battles)
@@ -1680,12 +1681,24 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 		# 出现在 Boss 房, 这里把它包成一个"至少含默认图"的池子再抽 ——
 		# 没有自定义图时池子大小恰好是 1, _pick_from_pool 必然选中它,
 		# 跟改造前的行为完全一致 (tools/test_custom_map_editor.gd 断言这条)。
+		#
+		# 与 main.gd 的 Boss 类型选择 (get_difficulty_cycle() >= 1 时固定
+		# TITAN_BOSS) 对齐: 太阳神泰坦神殿 (TEMPLATE_SOLAR_TITAN_SANCTUM)
+		# 现在专属泰坦, 不再是第 1~3 幕循环里 Act 3 的默认图 —— 它此前被
+		# match current_act 的 1/2/3/_ 四分支占用, 而 current_act 是
+		# get_visual_act() 的结果, 永远落在 1/2/3 之内 (12 幕循环 3 个主题),
+		# 那条 `_` 分支从未被真正执行过。Act 3 (极地/猛犸主题) 换成
+		# TEMPLATE_GLACIER_BUNKER_REDOUBT, 一张已经在 Act 3 挑战图池里验证过
+		# 结构合法性的冰原要塞图, 不再错配到"太阳神泰坦"神殿。
 		var default_boss: Array
-		match current_act:
-			1: default_boss = TEMPLATE_BOSS_ARENA
-			2: default_boss = TEMPLATE_SPEEDWAY
-			3: default_boss = TEMPLATE_SOLAR_TITAN_SANCTUM
-			_: default_boss = TEMPLATE_APEX_TRI_ARMOR_CITADEL
+		if difficulty_cycle >= 1:
+			default_boss = TEMPLATE_SOLAR_TITAN_SANCTUM
+		else:
+			match current_act:
+				1: default_boss = TEMPLATE_BOSS_ARENA
+				2: default_boss = TEMPLATE_SPEEDWAY
+				3: default_boss = TEMPLATE_GLACIER_BUNKER_REDOUBT
+				_: default_boss = TEMPLATE_BOSS_ARENA # unreachable: get_visual_act() only ever returns 1-3
 		var boss_pool: Array = [default_boss] + CustomMapStore.eligible_layouts(current_act, "boss", floor_idx)
 		return _pick_from_pool(boss_pool, floor_idx, room_entropy)
 	elif battle_type == "challenge" or GameState.mode == GameState.GameMode.DAILY_CHALLENGE:

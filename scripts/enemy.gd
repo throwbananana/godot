@@ -135,6 +135,12 @@ var facing_direction: Vector2 = Vector2.DOWN
 var tank_frames: Array[Texture2D] = []
 var current_frame: int = 0
 
+## 履带动画按实际位移量驱动, 不是按挂钟时间 —— 同一套修复见 player.gd 头上的
+## 长注释。move_speed 已经叠了沙地减速/沙漠加速/冰面滑行/潜伏静止等所有修正,
+## 所以这里直接拿它乘 delta 累加, 履带快慢天然跟真实移动速度挂钩。
+const TREAD_PX_PER_FRAME: float = 8.0
+var tread_accum_dist: float = 0.0
+
 @onready var sprite: Sprite2D = $Sprite2D
 
 var bullet_scene: PackedScene
@@ -874,7 +880,8 @@ func _physics_process(delta: float) -> void:
 			_choose_new_direction()
 
 	if tank_frames.size() > 0 and not is_camouflaged:
-		var f_idx = int(Time.get_ticks_msec() / 65) % tank_frames.size()
+		tread_accum_dist += absf(move_speed) * delta
+		var f_idx = int(tread_accum_dist / TREAD_PX_PER_FRAME) % tank_frames.size()
 		if f_idx != current_frame:
 			current_frame = f_idx
 			sprite.texture = tank_frames[current_frame]

@@ -7,10 +7,7 @@ signal gold_changed(new_gold: int)
 signal branch_changed(player_id: int, new_branch: String, new_tier: int)
 
 var level: int = 1
-var current_xp: int = 0
-var xp_to_next: int = 100
 var gold: int = 100
-var xp_earned_this_battle: int = 0 # reset at battle start, read by main.gd's Factory reward multiplier
 
 # 属性点加成
 var atk_bonus: int = 0      # 攻击力加成
@@ -54,10 +51,7 @@ func get_branch_tier(player_id: int = 1) -> int:
 
 func reset() -> void:
 	level = 1
-	current_xp = 0
-	xp_to_next = 100
 	gold = 100
-	xp_earned_this_battle = 0
 	atk_bonus = 0
 	fire_rate_lvl = 0
 	speed_lvl = 0
@@ -77,10 +71,7 @@ func reset() -> void:
 
 func sync_from_game_state() -> void:
 	level = GameState.player_level
-	current_xp = GameState.player_xp
-	xp_to_next = GameState.xp_to_next if GameState.xp_to_next > 0 else int(100.0 * pow(1.22, level - 1))
 	gold = GameState.gold
-	xp_earned_this_battle = 0
 	atk_bonus = GameState.atk_bonus
 	fire_rate_lvl = GameState.fire_rate_lvl
 	speed_lvl = GameState.speed_lvl
@@ -94,14 +85,6 @@ func sync_from_game_state() -> void:
 	p2_branch_tier = GameState.p2_branch_tier
 	p2_unlocked_perks = GameState.p2_unlocked_perks.duplicate()
 
-	# 处理事件或商店增加的 XP 跨场景升级
-	while current_xp >= xp_to_next:
-		current_xp -= xp_to_next
-		level += 1
-		xp_to_next = int(100.0 * pow(1.22, level - 1))
-		_auto_level_bonus()
-		leveled_up.emit(level)
-
 	stats_changed.emit()
 	gold_changed.emit(gold)
 	branch_changed.emit(1, tank_branch, branch_tier)
@@ -109,8 +92,6 @@ func sync_from_game_state() -> void:
 
 func sync_to_game_state() -> void:
 	GameState.player_level = level
-	GameState.player_xp = current_xp
-	GameState.xp_to_next = xp_to_next
 	GameState.gold = gold
 	GameState.atk_bonus = atk_bonus
 	GameState.fire_rate_lvl = fire_rate_lvl
@@ -186,13 +167,13 @@ func spend_gold(amount: int) -> bool:
 		return true
 	return false
 
-func add_xp(amount: int) -> void:
-	xp_earned_this_battle += amount
-	current_xp += amount
-	while current_xp >= xp_to_next:
-		current_xp -= xp_to_next
+## 唯一的升级入口。以撒式经验条已经取消 —— 击杀/道具/事件/商店都不再暗中
+## 攒经验, 战车只能靠吃到 ⭐ STAR 道具升级 (player.gd::apply_powerup()),
+## 一颗星 = 一级, 不设门槛。amount > 1 用于一次性补发多级 (调试菜单、
+## Factory 一类"翻倍奖励"如果以后想按等级发放的话)。
+func add_level(amount: int = 1) -> void:
+	for i in range(amount):
 		level += 1
-		xp_to_next = int(100.0 * pow(1.22, level - 1))
 		_auto_level_bonus()
 		leveled_up.emit(level)
 	stats_changed.emit()

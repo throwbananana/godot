@@ -81,8 +81,6 @@ static func _recompute_current_floor() -> void:
 # RPG Persistent Stats
 static var gold: int = 150
 static var player_level: int = 1
-static var player_xp: int = 0
-static var xp_to_next: int = 100
 static var player_tier: int = 0
 static var player_lives: int = 3
 static var max_hp_lvl: int = 0
@@ -293,8 +291,6 @@ static func reset_campaign(p_count: int = 1) -> void:
 	current_floor = 0
 	gold = 150
 	player_level = 1
-	player_xp = 0
-	xp_to_next = 100
 	player_tier = 0
 	player_lives = 3
 	tank_branch = "default"
@@ -564,8 +560,6 @@ static func save_campaign() -> void:
 		"current_floor": current_floor,
 		"gold": gold,
 		"player_level": player_level,
-		"player_xp": player_xp,
-		"xp_to_next": xp_to_next,
 		"player_tier": player_tier,
 		"player_lives": player_lives,
 		"tank_branch": tank_branch,
@@ -618,8 +612,6 @@ static func load_campaign() -> bool:
 	current_floor = int(d.get("current_floor", 0))
 	gold = int(d.get("gold", 150))
 	player_level = int(d.get("player_level", 1))
-	player_xp = int(d.get("player_xp", 0))
-	xp_to_next = int(d.get("xp_to_next", 100))
 	player_tier = int(d.get("player_tier", 0))
 	player_lives = int(d.get("player_lives", 3))
 	tank_branch = str(d.get("tank_branch", "default"))

@@ -66,6 +66,15 @@ var stun_timer: float = 0.0
 var tank_frames: Array[Texture2D] = []
 var current_frame: int = 0
 
+## 履带动画按实际位移量驱动, 不是按挂钟时间。以前是 int(Time.get_ticks_msec()
+## / 60) % 帧数 —— 只要 velocity 非零就以固定 16.67 帧/秒空转, 陷进流沙 (速度
+## -50%) 履带照样疯转, 吃氮气/滑冰加速 (速度 +30%+) 履带反而显得转慢了,
+## 呈现"太空步"般的廉价感, 和黏土重型坦克该有的机械厚重感相反。
+## TREAD_PX_PER_FRAME 按 base_speed=125 px/s 换算到 60ms/帧的原始手感反推 ——
+## 数值只是风格常数, 不需要精确, 只要"走多远关联换几帧"这个物理关系成立。
+const TREAD_PX_PER_FRAME: float = 8.0
+var tread_accum_dist: float = 0.0
+
 var shield_textures: Array[Texture2D] = []
 var shield_frame: int = 0
 
@@ -240,6 +249,11 @@ func apply_powerup(type: PowerUp.Type) -> void:
 					main.rpg_mgr.stats_changed.emit()
 				VFXAnimator.spawn_shockwave(get_parent(), global_position)
 				powerup_collected.emit("[%s] STAR UPGRADE: +1 永久攻击力!" % p_name)
+			# 战车等级只有这一个入口: 没有经验条, 击杀/拾取/事件/商店都不再暗中
+			# 攒经验, 吃到几颗星就升几级 (RPGManager.add_level, 1 颗 = 1 级)。
+			# 这一份是队伍共享的 (rpg_mgr.level 本来就不分玩家), 谁捡到都一样。
+			if main and main.rpg_mgr:
+				main.rpg_mgr.add_level(1)
 		PowerUp.Type.HELMET:
 			set_invulnerable(10.0)
 			powerup_collected.emit("[%s] HELMET SHIELD (10s)" % p_name)
@@ -424,7 +438,8 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 
 		if tank_frames.size() > 0 and velocity.length_squared() > 0.0:
-			var f_idx = int(Time.get_ticks_msec() / 60) % tank_frames.size()
+			tread_accum_dist += velocity.length() * delta
+			var f_idx = int(tread_accum_dist / TREAD_PX_PER_FRAME) % tank_frames.size()
 			if f_idx != current_frame:
 				current_frame = f_idx
 				sprite.texture = tank_frames[current_frame]
@@ -434,9 +449,10 @@ func _physics_process(delta: float) -> void:
 			facing_direction = input_vec
 			velocity = input_vec * current_speed
 			rotation = facing_direction.angle() + PI / 2.0
-			
+
 			if tank_frames.size() > 0:
-				var f_idx = int(Time.get_ticks_msec() / 60) % tank_frames.size()
+				tread_accum_dist += velocity.length() * delta
+				var f_idx = int(tread_accum_dist / TREAD_PX_PER_FRAME) % tank_frames.size()
 				if f_idx != current_frame:
 					current_frame = f_idx
 					sprite.texture = tank_frames[current_frame]

@@ -201,6 +201,11 @@ func _test_pool_splicing() -> void:
 # ---------------------------------------------------------------------------
 # 4. 回归防护: Boss 分支从"返回单张固定模板"改成"从池子里选"之后, 在没有
 #    任何自定义图时必须原样返回改造前的那张图 —— 池子大小恰好是 1。
+#
+#    Act 1~3 (第一轮周目, get_difficulty_cycle() == 0) 各自固定一张主题
+#    专属图; act 4 (第二轮周目起, cycle >= 1) 换成 TITAN_BOSS 的太阳神泰坦
+#    神殿, 与 main.gd 的 Boss 类型选择 (同样按 difficulty_cycle 切换) 对齐 ——
+#    见 map_templates.gd::get_layout_for_stage() 里的说明。
 # ---------------------------------------------------------------------------
 func _test_boss_branch_regression() -> void:
 	print("\n--- Boss 分支空自定义池回归检查 ---")
@@ -211,7 +216,8 @@ func _test_boss_branch_regression() -> void:
 	var expected := {
 		1: MapTemplates.TEMPLATE_BOSS_ARENA,
 		2: MapTemplates.TEMPLATE_SPEEDWAY,
-		3: MapTemplates.TEMPLATE_SOLAR_TITAN_SANCTUM,
+		3: MapTemplates.TEMPLATE_GLACIER_BUNKER_REDOUBT,
+		4: MapTemplates.TEMPLATE_SOLAR_TITAN_SANCTUM,
 	}
 	var bad := 0
 	for act in expected:
@@ -220,7 +226,7 @@ func _test_boss_branch_regression() -> void:
 			bad += 1
 			fail("act %d 的 boss 图在空自定义池下变了" % act)
 	if bad == 0:
-		ok("三个 act 的 boss 图在空自定义池下都和改造前一致")
+		ok("四个 act 的 boss 图在空自定义池下都符合预期 (含第二轮周目切换)")
 
 	CustomMapStore.save_path = real_path
 	CustomMapStore.invalidate_cache()

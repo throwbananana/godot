@@ -11,7 +11,7 @@ extends SceneTree
 #     drifting_supplies.gd / main.gd::_spawn_drifting_supplies -- no
 #     collision body, "treated as ground"), so every route that was walkable
 #     in the source template is still walkable here; nothing was removed.
-#   - The DriftingSupplies scene grants gold+XP once on touch and doesn't
+#   - The DriftingSupplies scene grants gold once on touch and doesn't
 #     double-fire.
 
 func _init() -> void:
@@ -62,7 +62,7 @@ func _test_salvage_route_only_adds_passability(source: Array, salvage: Array, na
 	print("  [PASS] %s changed %d cell(s), all water(3)->DriftingSupplies(29), nothing else touched." % [name, diffs])
 
 func _test_drifting_supplies_grants_reward_once() -> void:
-	print("\n[STEP] DriftingSupplies grants gold+XP once and doesn't double-fire...")
+	print("\n[STEP] DriftingSupplies grants gold once and doesn't double-fire...")
 	GameState.reset_campaign(1)
 	var main_scene = load("res://scenes/main.tscn")
 	var main_node = main_scene.instantiate()
@@ -74,7 +74,6 @@ func _test_drifting_supplies_grants_reward_once() -> void:
 	root.add_child(crate)
 
 	var gold_before = main_node.rpg_mgr.gold
-	var xp_before = main_node.rpg_mgr.xp_earned_this_battle
 
 	var fake_player = Node2D.new()
 	fake_player.add_to_group("player")
@@ -83,7 +82,6 @@ func _test_drifting_supplies_grants_reward_once() -> void:
 	crate._on_body_entered(fake_player)
 	assert(crate.is_opened, "crate should be marked opened after being touched")
 	assert(main_node.rpg_mgr.gold > gold_before, "touching the crate should grant gold")
-	assert(main_node.rpg_mgr.xp_earned_this_battle > xp_before, "touching the crate should grant XP")
 
 	var gold_after_first = main_node.rpg_mgr.gold
 	crate._on_body_entered(fake_player) # simulate a second overlap signal

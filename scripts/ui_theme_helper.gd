@@ -1080,7 +1080,7 @@ static func update_shop_explanation_card(card: Control, item_id: String, cost: i
 			progress_lbl.text = "💥 武器攻击加成: +%d" % GameStateClass.atk_bonus
 			progress_lbl.add_theme_color_override("font_color", Color(1.0, 0.70, 0.40))
 		elif item_id == "landmine_crate":
-			progress_lbl.text = "🎖️ 战役总经验值: %d XP" % GameStateClass.player_xp
+			progress_lbl.text = "🎖️ 反坦克地雷库存: %d 枚" % GameStateClass.get_structure_stock("landmine")
 			progress_lbl.add_theme_color_override("font_color", Color(0.95, 0.90, 0.50))
 		else:
 			progress_lbl.text = ""

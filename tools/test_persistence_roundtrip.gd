@@ -29,9 +29,7 @@ const EXEMPT := {
 }
 
 ## RPGManager 里不参与 GameState 往返的字段。
-const RPG_EXEMPT := {
-	"xp_earned_this_battle": "每场清零, 供 main.gd 的工厂奖励倍率读取, 有意不跨场",
-}
+const RPG_EXEMPT := {}
 
 var failures: int = 0
 
@@ -162,10 +160,6 @@ func _check_rpg_sync_roundtrip() -> void:
 			_: continue
 		mgr.set(n, v)
 		stamped[n] = v.duplicate(true) if v is Dictionary else v
-
-	# current_xp 必须小于 xp_to_next, 否则 sync_from 会触发升级并改写 level
-	mgr.xp_to_next = 999999
-	stamped["xp_to_next"] = 999999
 
 	mgr.sync_to_game_state()
 
