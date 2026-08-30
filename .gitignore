@@ -10,6 +10,13 @@ scratchpad/
 *.pyc
 __pycache__/
 
+# Blender 渲染中间帧 (assets/blender/frames/frame_XXXX.png)。
+# 60 张 1.2 MB 的过程帧, 共 70 MB, 全项目零引用 —— 没有任何 .gd/.tscn/.py 提到
+# 它们。之前是入库的, 不只是把 .git 撑到 360 MB, 每张还都带 .import, 意味着一旦
+# 真的导出打包, 玩家要下这 70 MB 的废图。文件本身留在磁盘上 (给渲染流程当中间
+# 产物), 只是不再跟踪; 历史里的旧版本仍可用 git 取回。
+assets/blender/frames/
+
 # 平衡性日志 (scripts/balance_log.gd 落盘, tools/analyze_balance_log.py 消费)。
 # 这是本地测量记录, 不是仓库资产 —— 每次调试/测试都会追加, 入库只会让 diff
 # 变成噪音, 而且不同机器/不同次数跑出来的行数天然不一样。

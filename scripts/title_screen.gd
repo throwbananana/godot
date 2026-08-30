@@ -230,9 +230,13 @@ func _setup_button_juice(btn: Button) -> void:
 ## 两条以上的 tween 同时往 scale/modulate 上写值, 结果取决于哪条后结束, 按钮会卡在
 ## 放大或者变亮的状态上下不来。
 func _fresh_juice_tween(btn: Button, parallel: bool = false) -> Tween:
-	var prev = btn.get_meta("juice_tween", null)
-	if prev is Tween and prev.is_valid():
-		prev.kill()
+	# 这里必须 has_meta() 先探一手: get_meta(name, null) 并**不会**静默返回默认值 ——
+	# Object::get_meta() 只在默认值非 NIL 时才走默认分支, 传 null 等于没传, 键不存在
+	# 时照样打一条 ERROR。第一次高亮每颗按钮都会刷一条, 功能正常但日志全是红的。
+	if btn.has_meta("juice_tween"):
+		var prev = btn.get_meta("juice_tween")
+		if prev is Tween and prev.is_valid():
+			prev.kill()
 	var tw = create_tween()
 	if parallel:
 		tw.set_parallel(true)
