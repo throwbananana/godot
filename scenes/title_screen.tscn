@@ -178,7 +178,7 @@ text = "EXIT (退出)"
 
 [node name="TestModeButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
 visible = false
-custom_minimum_size = Vector2(400, 34)
+custom_minimum_size = Vector2(197, 34)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.55, 1, 0.55, 1)

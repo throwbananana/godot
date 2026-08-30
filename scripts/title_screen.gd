@@ -36,23 +36,28 @@ var _all_buttons: Array[Button] = []
 
 ## 隐藏测试模式的解锁暗号。键盘按"throwbanana" (逐字母比对 keycode, 与大小写/
 ## 输入法无关 —— Godot 里字母键的 Key 常量本身就是该字母的大写 ASCII 码);
-## 手柄按 上上下下左左右右 X A B Y (D-pad 方向键 + 四个面键)。
+## 手柄按 上上下下左左右右 X Y X Y (D-pad 方向键 + 两个安全面键)。
 ## 命中任意一种就置 GameState.debug_unlocked = true, 是本进程范围内一次性的——
 ## 见 game_state.gd 里 debug_unlocked 声明处的持久化理由。
+##
+## 尾巴上的四个面键是 X Y X Y 而**不是**经典的 X A B Y, 这不是随手改的:
+## 标题界面永远有按钮持着焦点, 而 A 是 Godot 内置的 ui_accept —— 按下去会直接
+## 激活当前焦点按钮 (多半是 CONTINUE), 场景当场切走, 暗号永远输不完。B 同理是
+## ui_cancel。X/Y 在这个场景里没有任何 UI 绑定, 是仅剩的安全面键。
+## (项目里 LB/X/Y/BACK 绑的是 p1_build_* 这类游戏内动作, 标题场景不监听。)
 const SECRET_KEYWORD := "throwbanana"
 const SECRET_GAMEPAD_SEQUENCE: Array[int] = [
 	JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_UP,
 	JOY_BUTTON_DPAD_DOWN, JOY_BUTTON_DPAD_DOWN,
 	JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_LEFT,
 	JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_RIGHT,
-	JOY_BUTTON_X, JOY_BUTTON_A, JOY_BUTTON_B, JOY_BUTTON_Y,
+	JOY_BUTTON_X, JOY_BUTTON_Y, JOY_BUTTON_X, JOY_BUTTON_Y,
 ]
 var _secret_key_buffer: String = ""
 var _secret_pad_buffer: Array[int] = []
 
 func _ready() -> void:
 	SettingsStore.load_and_apply()
-	TextureHelper._cache.clear()
 
 	# 1. 加载 3D 黏土主界面背景
 	if bg_texture:
@@ -172,50 +177,81 @@ func _process(delta: float) -> void:
 		logo_texture.position.y = float_y
 		logo_texture.rotation_degrees = tilt_deg
 
-	# 3. 周期性在 Logo 金字与徽章上生成 3D 星芒闪烁特效
+	# 3. 周期性在 Logo 金字与徽章上生成 3D 星芒闪烁特效。
+	#    图鉴/设置对话框是全屏盖在标题上的, 那时候整个 Logo 一个像素都看不见,
+	#    再每 0.35-0.75 s 新建一个 Sprite2D + 3 条 tween 纯属白烧 —— 图鉴可以
+	#    翻很久, 这些节点会一直生成一直析构。
+	if _is_dialog_open():
+		return
 	_sparkle_timer -= delta
 	if _sparkle_timer <= 0.0:
 		_sparkle_timer = randf_range(0.35, 0.75)
 		_spawn_logo_sparkle()
 
 
+func _is_dialog_open() -> bool:
+	if encyclopedia_dialog and encyclopedia_dialog.visible:
+		return true
+	if settings_dialog and settings_dialog.visible:
+		return true
+	return false
+
+
 ## 为按钮配置高阶微交互动效 (Elastic Scale Punch, Micro-Glow)
+##
+## 缩放中心 (pivot_offset) 必须在 resized 里按**实际尺寸**重算, 不能在这里拿
+## custom_minimum_size 算一次就完事: 这些按钮都带 size_flags_horizontal = 3,
+## 真实宽度由容器拉伸决定, 而 _ready() 跑的时候容器还没布局。用最小尺寸的一半
+## 当轴心, 按钮就不是"原地放大"而是"朝右下涨出去"。
 func _setup_button_juice(btn: Button) -> void:
-	btn.pivot_offset = btn.custom_minimum_size * 0.5
-	
-	btn.mouse_entered.connect(func():
-		var tw = create_tween().set_parallel(true)
-		tw.tween_property(btn, "scale", Vector2(1.04, 1.04), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_property(btn, "modulate", Color(1.15, 1.15, 1.15, 1.0), 0.15)
-	)
-	
-	btn.mouse_exited.connect(func():
-		var tw = create_tween().set_parallel(true)
-		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tw.tween_property(btn, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.14)
-	)
-	
-	btn.focus_entered.connect(func():
-		var tw = create_tween().set_parallel(true)
-		tw.tween_property(btn, "scale", Vector2(1.04, 1.04), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_property(btn, "modulate", Color(1.15, 1.15, 1.15, 1.0), 0.15)
-	)
-	
-	btn.focus_exited.connect(func():
-		var tw = create_tween().set_parallel(true)
-		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		tw.tween_property(btn, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.14)
-	)
-	
+	btn.pivot_offset = btn.size * 0.5
+	btn.resized.connect(func(): btn.pivot_offset = btn.size * 0.5)
+
+	btn.mouse_entered.connect(func(): _juice_highlight(btn, true))
+	btn.mouse_exited.connect(func(): _juice_highlight(btn, false))
+	btn.focus_entered.connect(func(): _juice_highlight(btn, true))
+	btn.focus_exited.connect(func(): _juice_highlight(btn, false))
+
 	btn.button_down.connect(func():
-		var tw = create_tween()
+		var tw = _fresh_juice_tween(btn)
 		tw.tween_property(btn, "scale", Vector2(0.96, 0.96), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	)
-	
+
 	btn.button_up.connect(func():
-		var tw = create_tween()
+		var tw = _fresh_juice_tween(btn)
 		tw.tween_property(btn, "scale", Vector2(1.04, 1.04), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	)
+
+
+## 同一颗按钮同一时刻只允许有一条动效 tween。
+##
+## 原来 6 个信号各自 create_tween(), 谁都不管别人 —— 鼠标快速划过一排按钮, 或者
+## 手柄焦点扫过去的同时鼠标还悬在上面 (focus_entered + mouse_exited 同帧), 就会有
+## 两条以上的 tween 同时往 scale/modulate 上写值, 结果取决于哪条后结束, 按钮会卡在
+## 放大或者变亮的状态上下不来。
+func _fresh_juice_tween(btn: Button, parallel: bool = false) -> Tween:
+	var prev = btn.get_meta("juice_tween", null)
+	if prev is Tween and prev.is_valid():
+		prev.kill()
+	var tw = create_tween()
+	if parallel:
+		tw.set_parallel(true)
+	btn.set_meta("juice_tween", tw)
+	return tw
+
+
+func _juice_highlight(btn: Button, on: bool) -> void:
+	# 鼠标移开但手柄焦点还在这颗按钮上时不该掉高亮 —— 否则用手柄选中一颗按钮、
+	# 顺手把鼠标挪开, 按钮就暗回去了, 看上去像失去了焦点。
+	if not on and btn.has_focus():
+		return
+	var tw = _fresh_juice_tween(btn, true)
+	if on:
+		tw.tween_property(btn, "scale", Vector2(1.04, 1.04), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(btn, "modulate", Color(1.15, 1.15, 1.15, 1.0), 0.15)
+	else:
+		tw.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw.tween_property(btn, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.14)
 
 
 ## 在 Logo 随机金字/星徽处生成 3D 星芒闪烁
@@ -333,7 +369,19 @@ func _on_quit_pressed() -> void:
 	get_tree().quit()
 
 
-func _unhandled_input(event: InputEvent) -> void:
+## 暗号监听必须挂在 _input() 而不是 _unhandled_input()。
+##
+## 标题界面永远有一颗按钮持有焦点, 而 Godot 的 Viewport 在把事件交给
+## _unhandled_input 之前就会拿 ui_up/ui_down/ui_left/ui_right 去做焦点导航,
+## 只要找得到相邻控件就 set_input_as_handled() —— D-pad 的方向键因此根本走不到
+## _unhandled_input。实测推完整条 12 键序列, 缓冲区只收到 8 条 (顶部按钮没有上
+## 邻居, 所以只有"上"漏了过来), 手柄这条路 100% 解锁不了。键盘那条一直是好的,
+## 因为字母键不参与焦点导航 —— 这也是为什么这个 bug 能带着一个通过的
+## test_title_screen.gd 一起进仓库。
+##
+## 挂 _input() 只是"先看一眼", 不消费事件: 焦点该怎么移还怎么移, 正常手柄
+## 玩家的菜单操作完全不受影响。
+func _input(event: InputEvent) -> void:
 	if GameState.debug_unlocked:
 		return
 
