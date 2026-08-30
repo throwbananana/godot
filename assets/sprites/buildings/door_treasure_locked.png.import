@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://b1g0txo1kcyy8"
+path="res://.godot/imported/door_treasure_locked.png-ef16dbec6560c096f44f244e3ff2660d.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/door_treasure_locked.png"
+dest_files=["res://.godot/imported/door_treasure_locked.png-ef16dbec6560c096f44f244e3ff2660d.ctex"]
 
 [params]
 

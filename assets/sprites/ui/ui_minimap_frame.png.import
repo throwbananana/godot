@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://bn0cw0xrss1g2"
+path="res://.godot/imported/ui_minimap_frame.png-eead93e591bf9a8725e17204b53307c1.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/ui_minimap_frame.png"
+dest_files=["res://.godot/imported/ui_minimap_frame.png-eead93e591bf9a8725e17204b53307c1.ctex"]
 
 [params]
 

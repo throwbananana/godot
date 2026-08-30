@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://bh0705ei4864"
+path="res://.godot/imported/perk_amphibious.png-c9f8ea794af47985a6bfbdca78e417dc.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/perk_amphibious.png"
+dest_files=["res://.godot/imported/perk_amphibious.png-c9f8ea794af47985a6bfbdca78e417dc.ctex"]
 
 [params]
 

@@ -41,7 +41,9 @@ func _physics_process(delta: float) -> void:
 	for p in players:
 		if is_instance_valid(p) and p is Node2D:
 			var main = get_tree().current_scene
-			var magnet_dist = 220.0
+			# 同 gold_coin.gd: 磁吸只应该来自 magnetic_salvage 战术芯片,
+			# 不是每辆坦克白送的被动效果, 否则芯片"自动牵引"的描述就是假的。
+			var magnet_dist = 0.0
 			if main and main.rpg_mgr:
 				magnet_dist += main.rpg_mgr.get_perk_value("magnetic_salvage", 95.0, p.player_id if "player_id" in p else 1)
 

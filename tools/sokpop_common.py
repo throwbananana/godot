@@ -320,9 +320,28 @@ def clear_material_cache():
 
 def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
                     emission=None, emission_str=0.0,
-                    bump_strength=0.28, mottle=0.08, emission_peak=0.85):
-    """黏土材质（带 Material Data-Block 缓存复用与微观指纹印记）。"""
-    cache_key = f"{name}_{col}_{roughness}_{sss_weight}_{emission}_{emission_str}_{bump_strength}_{mottle}_{emission_peak}"
+                    bump_strength=0.28, mottle=0.08, emission_peak=0.85,
+                    reflect_strength=0.0, reflect_roughness=0.08, reflect_min_fac=0.0):
+    """黏土材质（带 Material Data-Block 缓存复用与微观指纹印记）。
+
+    reflect_strength > 0 时叠加一层 Fresnel 驱动的 Glossy 反射 (水面倒影用,
+    见 build_sokpop_water())。反射强度只跟*本地表面法线*相对相机的夹角有关
+    (Fresnel), 不吃任何位置/相机坐标输入 —— 这是它在无缝地形瓦片上能安全
+    使用的原因: 一旦反射强度跟着屏幕/世界坐标走, 拼接处就会出现跟点光源
+    同一类的位置梯度断层 (见 create_sokpop_lighting 的 seamless 参数说明)。
+
+    reflect_min_fac 是纯 Fresnel 在这条管线里不够用的补丁: 正交俯视相机
+    几乎垂直看向水面, 而 IOR=1.33 的 Fresnel 在入射角接近 0° 时物理上只有
+    ~2% 反射率 (贴着水面斜视才会显著变亮) —— 顶视角度下大半块水面因此拿到
+    的反射强度小到实测像素差 (maxdiff) 只有个位数, 肉眼几乎看不出"水在反
+    光"。这里不是要精确复刻物理, Sokpop 的整条管线本来就是"压平光比、靠
+    色块而不是明暗层次"的风格化选择 (见 create_sokpop_lighting 顶部注释),
+    所以给 Fresnel 因子设一个下限是同一种取舍: 让顶视下的水面也能看到基础
+    反光, 浪面倾斜的地方 (Fresnel 天然更高) 再往上叠。
+    """
+    cache_key = (f"{name}_{col}_{roughness}_{sss_weight}_{emission}_{emission_str}_"
+                 f"{bump_strength}_{mottle}_{emission_peak}_{reflect_strength}_"
+                 f"{reflect_roughness}_{reflect_min_fac}")
     if cache_key in _material_cache and _material_cache[cache_key].name in bpy.data.materials:
         return _material_cache[cache_key]
 
@@ -406,7 +425,40 @@ def create_clay_mat(name, col, roughness=0.76, sss_weight=0.08,
 
     out = nodes.new(type='ShaderNodeOutputMaterial')
     out.location = (300, 0)
-    links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
+
+    surface_out = bsdf.outputs['BSDF']
+    if reflect_strength > 0.0:
+        fresnel = nodes.new(type='ShaderNodeFresnel')
+        fresnel.inputs['IOR'].default_value = 1.33  # 水
+        fresnel.location = (-350, 250)
+
+        fresnel_fac = fresnel.outputs['Fac']
+        if reflect_min_fac > 0.0:
+            floor_node = nodes.new(type='ShaderNodeMath')
+            floor_node.operation = 'MAXIMUM'
+            floor_node.inputs[1].default_value = reflect_min_fac
+            floor_node.location = (-200, 250)
+            links.new(fresnel_fac, floor_node.inputs[0])
+            fresnel_fac = floor_node.outputs['Value']
+
+        fresnel_gain = nodes.new(type='ShaderNodeMath')
+        fresnel_gain.operation = 'MULTIPLY'
+        fresnel_gain.inputs[1].default_value = reflect_strength
+        fresnel_gain.location = (-50, 250)
+        links.new(fresnel_fac, fresnel_gain.inputs[0])
+
+        glossy = nodes.new(type='ShaderNodeBsdfGlossy')
+        glossy.inputs['Roughness'].default_value = reflect_roughness
+        glossy.location = (0, 100)
+
+        mix_shader = nodes.new(type='ShaderNodeMixShader')
+        mix_shader.location = (150, 0)
+        links.new(fresnel_gain.outputs['Value'], mix_shader.inputs['Fac'])
+        links.new(bsdf.outputs['BSDF'], mix_shader.inputs[1])
+        links.new(glossy.outputs['BSDF'], mix_shader.inputs[2])
+        surface_out = mix_shader.outputs['Shader']
+
+    links.new(surface_out, out.inputs['Surface'])
 
     _material_cache[cache_key] = mat
     return mat

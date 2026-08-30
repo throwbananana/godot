@@ -1962,7 +1962,7 @@ func _process_hunter_ambush_behavior(delta: float) -> void:
 				facing_direction = Vector2.RIGHT if diff.x > 0 else Vector2.LEFT
 			else:
 				facing_direction = Vector2.DOWN if diff.y > 0 else Vector2.UP
-			rotation = facing_direction.angle() - PI / 2.0
+			rotation = facing_direction.angle() + PI / 2.0
 	else:
 		# 没有草丛或处于冷却，完全恢复为普通坦克逻辑与完全不透明度
 		is_in_ambush = false
@@ -1978,7 +1978,7 @@ func _trigger_hunter_ambush_strike(target_player: Node2D) -> void:
 		facing_direction = Vector2.RIGHT if diff.x > 0 else Vector2.LEFT
 	else:
 		facing_direction = Vector2.DOWN if diff.y > 0 else Vector2.UP
-	rotation = facing_direction.angle() - PI / 2.0
+	rotation = facing_direction.angle() + PI / 2.0
 
 	# 破隐高亮与声光警示
 	is_in_ambush = false
@@ -2075,7 +2075,7 @@ func _start_sandworm_burrow() -> void:
 			facing_direction = Vector2.RIGHT if diff.x > 0 else Vector2.LEFT
 		else:
 			facing_direction = Vector2.DOWN if diff.y > 0 else Vector2.UP
-		rotation = facing_direction.angle() - PI / 2.0
+		rotation = facing_direction.angle() + PI / 2.0
 
 	# 破土弹出动画
 	sprite.scale = Vector2(0.2, 0.2)

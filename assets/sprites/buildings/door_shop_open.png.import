@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://dwtd4uyob5ggi"
+path="res://.godot/imported/door_shop_open.png-7ac0ce9a0d9bb56275d3139d6e9ae6f7.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/door_shop_open.png"
+dest_files=["res://.godot/imported/door_shop_open.png-7ac0ce9a0d9bb56275d3139d6e9ae6f7.ctex"]
 
 [params]
 

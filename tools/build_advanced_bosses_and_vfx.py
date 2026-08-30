@@ -29,7 +29,6 @@ from sokpop_common import (
     apply_uniform_clay_bevel,
     reset_jitter_seed,
     render_and_clean,
-    ORTHO_SCALE_TANK,
     ORTHO_SCALE_DEFAULT,
 )
 
@@ -597,8 +596,13 @@ def main():
             render_and_clean(build_titan_boss(0), os.path.join(SPRITES_TANKS, "enemy_titan_boss.png"))
 
     # 2. Desert Mech Scorpion Boss (6 Frames + Base Icon)
+    # 之前误用了 ORTHO_SCALE_TANK (3.6, 普通坦克的窄镜头), 跟同批的另外两个
+    # boss (titan/mammoth) 不一致 —— 它们都用更宽的 3.85 给魁梧的 boss 几何
+    # 留出画幅余量。镜头太窄导致 scorpion_boss 包围盒吃到画布的 66%
+    # (210x206px), 而 mammoth_boss 只有 44% (162x179px)、经典 enemy_boss
+    # 48% (178x178px) —— 摆在一起 scorpion_boss 明显鼓出来一截。
     print(">>> 2. Rendering Desert Mech Scorpion Boss (6 Frames)...")
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
+    create_sokpop_lighting(ortho_scale=3.85)
     for frame in range(6):
         objs = build_scorpion_boss(frame)
         out_fn = f"enemy_scorpion_boss_f{frame}.png"

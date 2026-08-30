@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://qa2xpyn84mu7"
+path="res://.godot/imported/boss_frost_nova_3.png-5bf1a510ef983d0df36abacee7a15e43.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/effects/boss_frost_nova_3.png"
+dest_files=["res://.godot/imported/boss_frost_nova_3.png-5bf1a510ef983d0df36abacee7a15e43.ctex"]
 
 [params]
 

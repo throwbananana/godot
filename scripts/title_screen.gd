@@ -5,6 +5,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
+const SettingsStore = preload("res://scripts/settings_store.gd")
 
 @onready var banner_sprite: Sprite2D = $CenterContainer/VBox/BannerContainer/BannerSprite
 @onready var btn_continue: Button = $CenterContainer/VBox/ButtonsBox/ContinueButton
@@ -14,10 +15,16 @@ const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 @onready var btn_daily_challenge: Button = $CenterContainer/VBox/ButtonsBox/DailyChallengeButton
 @onready var btn_encyclopedia: Button = $CenterContainer/VBox/ButtonsBox/EncyclopediaButton
 @onready var btn_map_editor: Button = $CenterContainer/VBox/ButtonsBox/MapEditorButton
+@onready var btn_settings: Button = $CenterContainer/VBox/ButtonsBox/SettingsButton
 @onready var btn_quit: Button = $CenterContainer/VBox/ButtonsBox/QuitButton
 @onready var encyclopedia_dialog: EncyclopediaDialog = $EncyclopediaDialog
+@onready var settings_dialog: SettingsDialog = $SettingsDialog
 
 func _ready() -> void:
+	# 分辨率/全屏/音量是引擎级别的状态, 跟场景无关, 只需要在游戏启动的第一个
+	# 场景里应用一次 —— 见 settings_store.gd 头部注释。
+	SettingsStore.load_and_apply()
+
 	var b_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_title_crest.png")
 	if not b_tex:
 		b_tex = TextureHelper.get_tex("res://assets/sprites/ui/title_banner.png")
@@ -32,6 +39,7 @@ func _ready() -> void:
 	UIThemeHelper.apply_icon_button(btn_daily_challenge, "res://assets/sprites/ui/ui_icon_score_trophy.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_encyclopedia, "res://assets/sprites/powerups/star.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_map_editor, "res://assets/sprites/powerups/shovel.png", Vector2(28, 28))
+	UIThemeHelper.apply_icon_button(btn_settings, "res://assets/sprites/ui/ui_icon_wrench.png", Vector2(28, 28))
 	UIThemeHelper.apply_icon_button(btn_quit, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(28, 28))
 
 	var today_best = GameState.get_daily_best_score()
@@ -47,10 +55,13 @@ func _ready() -> void:
 	btn_daily_challenge.pressed.connect(_start_daily_challenge)
 	btn_encyclopedia.pressed.connect(_on_encyclopedia_pressed)
 	btn_map_editor.pressed.connect(_on_map_editor_pressed)
+	btn_settings.pressed.connect(_on_settings_pressed)
 	btn_quit.pressed.connect(_on_quit_pressed)
 
 	if encyclopedia_dialog:
 		encyclopedia_dialog.closed.connect(func(): btn_encyclopedia.grab_focus())
+	if settings_dialog:
+		settings_dialog.closed.connect(func(): btn_settings.grab_focus())
 
 	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
 	UIThemeHelper.focus_first(self)
@@ -97,6 +108,10 @@ func _on_encyclopedia_pressed() -> void:
 func _on_map_editor_pressed() -> void:
 	SoundManager.play_shot(get_tree())
 	get_tree().change_scene_to_file("res://scenes/map_editor.tscn")
+
+func _on_settings_pressed() -> void:
+	if settings_dialog:
+		settings_dialog.open_dialog()
 
 func _on_quit_pressed() -> void:
 	get_tree().quit()

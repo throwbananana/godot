@@ -192,8 +192,43 @@ var base_game_area_pos: Vector2 = Vector2(48.0, 48.0)
 var max_shake_offset: Vector2 = Vector2(10.0, 10.0)
 var trauma_decay: float = 2.4
 
+## 战场是按 1024x768 这块基准画布手搓的固定像素坐标 (GameArea/SidePanel/
+## 热键栏/Boss 血条一开始都以为窗口就是 1024x768)。window/stretch/aspect=
+## "expand" 不会帮它们居中 —— 宽/高分辨率下只会往右/下多显出一截画布, 这些
+## 没有锚定去追踪新边缘的节点仍然贴在原来左上角, 分辨率越宽画面看起来就越
+## 偏左上。_apply_layout_offset() 补上这一半的偏移量, 见该函数注释。
+var layout_offset: Vector2 = Vector2.ZERO
+
 func add_trauma(amount: float) -> void:
 	trauma = clampf(trauma + amount, 0.0, 1.0)
+
+## 把整块 1024x768 设计画布 (战场 + 侧栏 + 热键栏 + Boss 血条) 当一个整体,
+## 居中摆进当前实际显示的画布里, 而不是任由 expand 把它钉在左上角。
+##
+## Background 已经在 main.tscn 里改成 anchors_preset=15 (铺满整个可视矩形),
+## 会自己跟着变, 不需要手动摆。CenterMessage/RestartButton/PauseMenu/
+## VictoryDefeatModal 这几个已经是 anchor=0.5 的居中控件, 本来就跟着窗口
+## 真正的几何中心走, 也不用碰。剩下这几个是当初按固定像素坐标摆在设计画布
+## 左上角附近的, 才需要手动补偏移:
+##   - GameArea: 战场本体, Node2D 没有锚点这回事, 只能手动挪 (x, y 都要)。
+##   - SidePanel: 同理是 offset_left/top 写死的 PanelContainer (x, y 都要)。
+##   - hud_hotbar / hud_boss_bar: 已经分别是 BOTTOM_LEFT / TOP_WIDE 锚点,
+##     纵向早就跟着新边缘自动挪了, 这里只需要补横向 (只动 .position.x,
+##     不能碰 .position.y —— 覆盖掉纵向锚点已经算好的偏移量会前功尽弃)。
+func _apply_layout_offset() -> void:
+	var visible_size := get_viewport().get_visible_rect().size
+	layout_offset = (visible_size - Vector2(1024.0, 768.0)).max(Vector2.ZERO) / 2.0
+
+	base_game_area_pos = Vector2(48.0, 48.0) + layout_offset
+	game_area.position = base_game_area_pos
+
+	if side_panel:
+		side_panel.position = Vector2(736.0, 24.0) + layout_offset
+	if hud_hotbar:
+		hud_hotbar.position.x = 72.0 + layout_offset.x
+	if hud_boss_bar:
+		hud_boss_bar.position.x = 120.0 + layout_offset.x
+		hud_boss_bar.position.y = 3.0 + layout_offset.y
 
 func hit_stop(duration_sec: float = 0.05) -> void:
 	Engine.time_scale = 0.05
@@ -214,7 +249,9 @@ func hit_stop(duration_sec: float = 0.05) -> void:
 @onready var hud_rpg_xp: ProgressBar = $HUD/SidePanel/VBox/XPBar
 @onready var hud_gold: Label = $HUD/SidePanel/VBox/GoldBox/GoldLabel
 @onready var hud_p1_hp: Label = $HUD/SidePanel/VBox/P1HPBox/P1HPLabel
+@onready var hud_p1_hearts: HBoxContainer = $HUD/SidePanel/VBox/P1HPBox/P1Hearts
 @onready var hud_p2_hp: Label = $HUD/SidePanel/VBox/P2HPBox/P2HPLabel
+@onready var hud_p2_hearts: HBoxContainer = $HUD/SidePanel/VBox/P2HPBox/P2Hearts
 @onready var hud_p2_hp_box: HBoxContainer = $HUD/SidePanel/VBox/P2HPBox
 @onready var hud_score_icon: TextureRect = $HUD/SidePanel/VBox/ScoreBox/ScoreIcon
 @onready var hud_lives_icon: TextureRect = $HUD/SidePanel/VBox/LivesBox/LivesIcon
@@ -232,8 +269,10 @@ func hit_stop(duration_sec: float = 0.05) -> void:
 
 @onready var pause_menu: PanelContainer = $HUD/PauseMenu
 @onready var btn_resume: Button = $HUD/PauseMenu/VBox/ResumeButton
+@onready var btn_settings_pause: Button = $HUD/PauseMenu/VBox/SettingsButton
 @onready var btn_restart_stage: Button = $HUD/PauseMenu/VBox/RestartStageButton
 @onready var btn_quit_menu: Button = $HUD/PauseMenu/VBox/QuitToMenuButton
+@onready var pause_settings_dialog: SettingsDialog = $HUD/SettingsDialog
 
 var upgrade_dialog: UpgradeSelectionDialog
 var pending_upgrade_players: Array[int] = []
@@ -242,6 +281,14 @@ var hud_boss_bar: Control = null
 var hud_boss_fill: TextureProgressBar = null
 var hud_boss_label: Label = null
 var active_boss_instance: Node2D = null
+## 上一只 boss 死亡触发的淡出动画。它跑在后台 0.45s, 如果同一时间窗口内下一
+## 只 boss (TRAIN_BOSS 常规填怪也算) 紧接着刷出来, _instantiate_enemy() 会把
+## 血条立刻设回 visible/alpha=1 —— 但没有东西去打断这个残留的 tween, 它照样
+## 会在稍后把 alpha 淡回 0 并在回调里 visible=false, 于是新 boss 明明还活着,
+## 血条却在几帧后自己消失, 而数值 (hud_boss_fill.value) 因为走的是另一条
+## 每帧同步的路径, 底下其实一直在正确刷新, 只是容器被隐藏了看不见。
+## 任何要让血条重新出现的地方都必须先 kill() 掉这个残留 tween。
+var hud_boss_fade_tween: Tween = null
 
 var victory_modal_root: Control = null
 var victory_modal_banner: TextureRect = null
@@ -329,6 +376,7 @@ func _ready() -> void:
 		hud_toast.modulate.a = 0.0
 		hud_toast.visible = false
 	
+	TextureHelper._cache.clear()
 	if hud_score_icon: hud_score_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_score_trophy.png")
 	if hud_lives_icon: hud_lives_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/hp_heart_full.png")
 	if hud_enemies_icon: hud_enemies_icon.texture = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_enemy_radar.png")
@@ -351,7 +399,7 @@ func _ready() -> void:
 	$HUD.add_child(fade_layer)
 
 	minimap = Minimap.new()
-	$HUD.add_child(minimap)
+	$HUD/SidePanel/VBox/MinimapDock.add_child(minimap)
 
 	var ev_scene = load("res://scenes/event_dialog.tscn")
 	if ev_scene:
@@ -378,10 +426,17 @@ func _ready() -> void:
 	btn_restart.pressed.connect(_on_button_action)
 
 	UIThemeHelper.apply_icon_button(btn_resume, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(22, 22))
+	UIThemeHelper.apply_icon_button(btn_settings_pause, "res://assets/sprites/ui/ui_icon_wrench.png", Vector2(22, 22))
 	UIThemeHelper.apply_icon_button(btn_restart_stage, "res://assets/sprites/ui/ui_icon_mode_arcade.png", Vector2(22, 22))
 	UIThemeHelper.apply_icon_button(btn_quit_menu, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(22, 22))
 
 	btn_resume.pressed.connect(_toggle_pause)
+	btn_settings_pause.pressed.connect(func():
+		if pause_settings_dialog:
+			pause_settings_dialog.open_dialog()
+	)
+	if pause_settings_dialog:
+		pause_settings_dialog.closed.connect(func(): btn_settings_pause.grab_focus())
 	btn_restart_stage.pressed.connect(func():
 		_toggle_pause()
 		start_game()
@@ -391,9 +446,8 @@ func _ready() -> void:
 		get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
 	)
 
-	var origin_x = 48.0
-	var origin_y = 48.0
-	game_area.position = Vector2(origin_x, origin_y)
+	_apply_layout_offset()
+	get_viewport().size_changed.connect(_apply_layout_offset)
 
 	enemy_spawn_points = [
 		Vector2(0.5 * TILE_SIZE, 0.5 * TILE_SIZE),
@@ -406,6 +460,18 @@ func _ready() -> void:
 	start_game()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if minimap and is_instance_valid(minimap) and minimap.is_maximized():
+		if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel") or (event is InputEventKey and event.pressed and event.keycode in [KEY_ESCAPE, KEY_SPACE, KEY_M]):
+			minimap.toggle_maximized(false)
+			get_viewport().set_input_as_handled()
+			return
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
+		if minimap and is_instance_valid(minimap):
+			minimap.toggle_maximized()
+			get_viewport().set_input_as_handled()
+			return
+
 	# "pause" = ESC / P / 两个手柄的 START。以前这里是 ui_cancel + 硬编码 KEY_P,
 	# 而 ui_cancel 在手柄上的默认绑定是 B —— B 同时又是菜单里的"返回", 于是手柄
 	# 玩家一按 B 就会在关闭对话框的同时弹出暂停菜单。改用独立 action 后 B 只管
@@ -413,6 +479,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	# 注意 START 也绑着 restart, 但那个只在 is_game_over/is_victory 时读取,
 	# 而这里恰好把那两种状态排除了, 所以同一颗键不会有歧义。
 	if event.is_action_pressed("pause"):
+		# 设置弹窗开着的时候 ESC 同时是 ui_cancel (它自己的关闭键) 和 pause
+		# (这里的暂停/恢复键) —— 跟 builder_controller.gd 里 build_cancel
+		# 刻意不绑 ESC/B 是同一个坑。这里不把两个处理器谁先跑的顺序当保证,
+		# 而是让本处理器在弹窗开着时直接不动 pause 状态, 把 ESC 完全让给
+		# settings_dialog.gd 自己的 ui_cancel 分支去关弹窗。
+		if pause_settings_dialog and pause_settings_dialog.visible:
+			return
 		if not is_game_over and not is_victory:
 			_toggle_pause()
 
@@ -639,6 +712,16 @@ func _clear_all(keep_players: bool = false) -> void:
 	factory_instances.clear()
 	doors.clear()
 	active_boss_instance = null
+	# _process() 的淡出动画只在 "active_boss_instance 从有效变无效" 那一帧触发;
+	# 这里是强制清空 (换房/重开关卡), 不是自然死亡, 上面这行已经把触发条件
+	# 关掉了, 所以血条永远等不到那个分支, 会带着上一场的读数一直挂在屏幕上,
+	# 持续侵占新房间/新一局的画面。直接同步隐藏掉。
+	if hud_boss_fade_tween and hud_boss_fade_tween.is_valid():
+		hud_boss_fade_tween.kill()
+		hud_boss_fade_tween = null
+	if hud_boss_bar and hud_boss_bar.visible:
+		hud_boss_bar.visible = false
+		hud_boss_bar.modulate.a = 1.0
 	if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
 		darkness_fog_instance.queue_free()
 		darkness_fog_instance = null
@@ -2088,11 +2171,35 @@ func _spawn_player(pid: int) -> void:
 	_update_hud()
 	_update_rpg_hud()
 
+func _update_hearts_container(container: HBoxContainer, curr: int, max_hp: int) -> void:
+	if not container:
+		return
+	for child in container.get_children():
+		child.queue_free()
+	
+	var full_tex = TextureHelper.get_tex("res://assets/sprites/ui/hp_heart_full.png")
+	var empty_tex = TextureHelper.get_tex("res://assets/sprites/ui/hp_heart_empty.png")
+	
+	var count = min(max_hp, 8)
+	for i in range(count):
+		var tr = TextureRect.new()
+		tr.custom_minimum_size = Vector2(16, 16)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.texture = full_tex if (i < curr) else empty_tex
+		container.add_child(tr)
+
 func _on_player_hp_changed(pid: int, curr: int, max_hp: int) -> void:
-	if pid == 1 and hud_p1_hp:
-		hud_p1_hp.text = "P1 [YEL] HP: %d / %d [%s]" % [curr, max_hp, _branch_tag(1)]
-	elif pid == 2 and hud_p2_hp:
-		hud_p2_hp.text = "P2 [GRN] HP: %d / %d [%s]" % [curr, max_hp, _branch_tag(2)]
+	if pid == 1:
+		if hud_p1_hp:
+			hud_p1_hp.text = "P1 [%s]:" % _branch_tag(1)
+		if hud_p1_hearts:
+			_update_hearts_container(hud_p1_hearts, curr, max_hp)
+	elif pid == 2:
+		if hud_p2_hp:
+			hud_p2_hp.text = "P2 [%s]:" % _branch_tag(2)
+		if hud_p2_hearts:
+			_update_hearts_container(hud_p2_hearts, curr, max_hp)
 
 ## 丛林隐匿机制:
 ## 树冠 (z_index=10) 默认完全遮盖下方的坦克。
@@ -2174,7 +2281,10 @@ func _process(delta: float) -> void:
 		else:
 			active_boss_instance = null
 			if hud_boss_bar and hud_boss_bar.visible:
-				var tw = create_tween()
+				if hud_boss_fade_tween and hud_boss_fade_tween.is_valid():
+					hud_boss_fade_tween.kill()
+				hud_boss_fade_tween = create_tween()
+				var tw = hud_boss_fade_tween
 				tw.tween_property(hud_boss_bar, "modulate:a", 0.0, 0.45)
 				tw.tween_callback(func():
 					hud_boss_bar.visible = false
@@ -2506,6 +2616,12 @@ func _instantiate_enemy(pos: Vector2, type: EnemyTank.EnemyType, is_bonus: bool,
 	if type in [EnemyTank.EnemyType.BOSS, EnemyTank.EnemyType.TRAIN_BOSS, EnemyTank.EnemyType.TITAN_BOSS, EnemyTank.EnemyType.SCORPION_BOSS, EnemyTank.EnemyType.MAMMOTH_BOSS]:
 		active_boss_instance = enemy
 		if hud_boss_bar and hud_boss_fill and hud_boss_label:
+			# 上一只 boss 的死亡淡出可能还没跑完就轮到这只刷出来 (TRAIN_BOSS
+			# 常规填怪尤其常见); 不 kill 掉残留 tween 的话它会在几百毫秒后把
+			# 这只活着的 boss 的血条又淡出并隐藏掉, 见 hud_boss_fade_tween 声明处。
+			if hud_boss_fade_tween and hud_boss_fade_tween.is_valid():
+				hud_boss_fade_tween.kill()
+				hud_boss_fade_tween = null
 			hud_boss_bar.visible = true
 			hud_boss_bar.modulate.a = 1.0
 			var b_name = "👑 SUMMIT COLOSSUS FORTRESS"
@@ -3006,10 +3122,16 @@ func _update_rpg_hud() -> void:
 		hud_rpg_xp.value = rpg_mgr.current_xp
 	if hud_gold:
 		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
-	if hud_p1_hp and p1_instance and is_instance_valid(p1_instance):
-		hud_p1_hp.text = "P1 [YEL] HP: %d / %d [%s]" % [p1_instance.current_health, p1_instance.max_health, _branch_tag(1)]
-	if hud_p2_hp and p2_instance and is_instance_valid(p2_instance):
-		hud_p2_hp.text = "P2 [GRN] HP: %d / %d [%s]" % [p2_instance.current_health, p2_instance.max_health, _branch_tag(2)]
+	if p1_instance and is_instance_valid(p1_instance):
+		if hud_p1_hp:
+			hud_p1_hp.text = "P1 [%s]:" % _branch_tag(1)
+		if hud_p1_hearts:
+			_update_hearts_container(hud_p1_hearts, p1_instance.current_health, p1_instance.max_health)
+	if p2_instance and is_instance_valid(p2_instance):
+		if hud_p2_hp:
+			hud_p2_hp.text = "P2 [%s]:" % _branch_tag(2)
+		if hud_p2_hearts:
+			_update_hearts_container(hud_p2_hearts, p2_instance.current_health, p2_instance.max_health)
 	if hud_stats:
 		if GameState.player_count == 2:
 			hud_stats.text = "P1 ATK:%d SPD:+%d%% | P2 ATK:%d SPD:+%d%%" % [

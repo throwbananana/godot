@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://byrbmo14uxxer"
+path="res://.godot/imported/ui_badge_key.png-659c81c604788ff10490b8bb5f0d88da.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/ui_badge_key.png"
+dest_files=["res://.godot/imported/ui_badge_key.png-659c81c604788ff10490b8bb5f0d88da.ctex"]
 
 [params]
 

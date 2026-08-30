@@ -9,7 +9,11 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 @onready var sprite: Sprite2D = $Sprite2D
 
 var lifetime: float = 25.0
-var magnet_range: float = 120.0
+## 没有 magnetic_salvage 战术芯片时基础磁吸为 0 —— 该芯片的描述就是
+## "战车自动牵引回收战备物资", 磁吸应该是它给的能力, 不是每个人白送的。
+## 之前这里是 120.0 恒定生效, 芯片只是在这基础上加成, 于是"开局就有磁铁"
+## 和"买了资源芯片"在手感上几乎没区别, 拾取判定形同虚设。
+var magnet_range: float = 0.0
 var move_speed: float = 0.0
 
 func _ready() -> void:

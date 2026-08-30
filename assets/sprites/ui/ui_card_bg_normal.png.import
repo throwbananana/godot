@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://d2vn4yle1rmct"
+path="res://.godot/imported/ui_card_bg_normal.png-7e61163a8c1e68cb512be86f09b03c12.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/ui_card_bg_normal.png"
+dest_files=["res://.godot/imported/ui_card_bg_normal.png-7e61163a8c1e68cb512be86f09b03c12.ctex"]
 
 [params]
 

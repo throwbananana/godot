@@ -457,10 +457,13 @@ static func is_combat_room(room: Dictionary) -> bool:
 ## 没有专属图标的房型退回 node_battle —— 缺图标不该让小地图整块画不出来。
 static func icon_for_type(t: String) -> String:
 	match t:
+		"start": return "node_start"
 		"boss": return "node_boss"
+		"elite": return "node_elite"
 		"shop": return "node_shop"
+		"treasure": return "node_treasure"
+		"challenge": return "node_challenge"
 		"event": return "node_event"
 		"rest": return "node_rest"
-		"challenge": return "node_challenge"
-		"treasure": return "node_elite"
+		"secret": return "node_secret"
 		_: return "node_battle"

@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://nvxialvtrn4g"
+path="res://.godot/imported/enemy_titan_boss_f5.png-4d76cc333ed26975d526b4f5ba9496e0.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_titan_boss_f5.png"
+dest_files=["res://.godot/imported/enemy_titan_boss_f5.png-4d76cc333ed26975d526b4f5ba9496e0.ctex"]
 
 [params]
 

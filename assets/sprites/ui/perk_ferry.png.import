@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://br44m41ik2pfe"
+path="res://.godot/imported/perk_ferry.png-46106336aa2df41aaec9aa3ef7e9ee00.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/perk_ferry.png"
+dest_files=["res://.godot/imported/perk_ferry.png-46106336aa2df41aaec9aa3ef7e9ee00.ctex"]
 
 [params]
 

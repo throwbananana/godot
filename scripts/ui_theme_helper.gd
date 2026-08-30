@@ -491,14 +491,12 @@ static func update_hotbar_selection(dock: Control, struct_id: String) -> void:
 static func create_boss_bar(parent: Node) -> Dictionary:
 	var root = Control.new()
 	root.name = "BossHealthBar"
-	root.custom_minimum_size = Vector2(480, 56)
+	root.custom_minimum_size = Vector2(480, 42)
 	root.anchors_preset = Control.PRESET_TOP_WIDE
-	# y=18 (with the name label's -14 offset) put the bar's top edge at
-	# screen y=4, squarely over the row-0 enemy spawn points (screen y
-	# 48-96, see main.gd::enemy_spawn_points) -- a boss's own spawn got
-	# hidden by its own health bar. 120 clears row 0 the same way the
-	# minimap's ORIGIN does (scripts/minimap.gd).
-	root.position = Vector2(120, 120)
+	# GameArea (战场) 从屏幕 y=48 开始, y<48 是纯 HUD 边距, 从来没有战场内容。
+	# 解法是把整条血条 (含名字) 严格收进这 48px 高的边距里 (y=3..45),
+	# 启用九宫格拉伸使其缩放生效, 绝不侵占战场第一行 (Row 0, y=48..96) 刷新点与视野。
+	root.position = Vector2(120, 3)
 	root.visible = false
 	parent.add_child(root)
 
@@ -512,22 +510,27 @@ static func create_boss_bar(parent: Node) -> Dictionary:
 	prog.texture_progress = fill_tex
 	prog.texture_over = frame_tex
 	prog.fill_mode = TextureProgressBar.FILL_LEFT_TO_RIGHT
-	prog.custom_minimum_size = Vector2(480, 48)
-	prog.position = Vector2(0, 8)
-	# Fixed-size widget (never resized), so nine-patch corner stretching buys
-	# nothing here and previously used margins (24px) that didn't line up
-	# with the actual rendered content bounds -- a plain proportional crop is
-	# simpler and correct now that ui_boss_bar_fill.png has ~1px of padding.
-	prog.nine_patch_stretch = false
+	prog.nine_patch_stretch = true
+	prog.stretch_margin_left = 32
+	prog.stretch_margin_right = 32
+	prog.stretch_margin_top = 8
+	prog.stretch_margin_bottom = 8
+	prog.custom_minimum_size = Vector2(480, 42)
+	prog.size = Vector2(480, 42)
+	prog.position = Vector2(0, 0)
 	root.add_child(prog)
 
+	# 名字与血条同高叠在一起显示, 限制在 42px 内居中
 	var lbl = Label.new()
 	lbl.name = "BossName"
 	lbl.text = "👑 BOSS"
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.position = Vector2(0, -14)
-	lbl.custom_minimum_size = Vector2(480, 20)
-	lbl.add_theme_font_size_override("font_size", 13)
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.position = Vector2(0, 0)
+	lbl.custom_minimum_size = Vector2(480, 42)
+	lbl.size = Vector2(480, 42)
+	lbl.add_theme_font_size_override("font_size", 12)
 	lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35, 1.0))
 	lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	root.add_child(lbl)

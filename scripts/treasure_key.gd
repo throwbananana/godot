@@ -8,8 +8,6 @@ const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 @onready var sprite: Sprite2D = $Sprite2D
 
 var lifetime: float = 60.0
-var magnet_range: float = 160.0
-var move_speed: float = 0.0
 
 func _ready() -> void:
 	add_to_group("collectibles")
@@ -31,17 +29,6 @@ func _physics_process(delta: float) -> void:
 	sprite.rotation = sin(Time.get_ticks_msec() * 0.005) * 0.25
 	var pulse = 0.1875 + sin(Time.get_ticks_msec() * 0.008) * 0.015
 	sprite.scale = Vector2(pulse, pulse)
-
-	# Magnetic pull to player
-	var players = get_tree().get_nodes_in_group("player")
-	for p in players:
-		if is_instance_valid(p) and p is Node2D:
-			var dist = global_position.distance_to(p.global_position)
-			if dist < magnet_range:
-				move_speed = move_toward(move_speed, 480.0, 1400.0 * delta)
-				var dir = (p.global_position - global_position).normalized()
-				position += dir * move_speed * delta
-				break
 
 	if lifetime < 5.0:
 		modulate.a = 0.4 if int(lifetime * 8.0) % 2 == 0 else 1.0

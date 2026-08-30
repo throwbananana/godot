@@ -572,8 +572,14 @@ def main():
         print(f"Rendered: {fn}")
 
     # 4. Assault Mini Drone (6 Frames + Base Icon)
+    # 之前误用了 ORTHO_SCALE_DEFAULT (3.3, 道具用的窄镜头), 跟同批的
+    # tesla/toxic/drone_carrier 三个坦克不一致 (它们都是 ORTHO_SCALE_TANK=3.6)。
+    # ortho_scale 越小镜头拉得越近, 结果 drone_mini 的原始几何在画布里比例
+    # 偏大了约 9% —— 而 enemy.gd::is_mini_scale_unit() 早就靠 sprite.scale
+    # (0.14 对比普通敌人的 0.196) 把"迷你机"缩小了, 这个缩放系数是按"跟其它
+    # 坦克同一套渲染基准"调的, 镜头错了就是在已经缩小的基础上再叠加一层。
     print(">>> 4. Rendering Assault Mini Drone (6 Frames)...")
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_TANK)
     for f in range(6):
         objs = build_drone_mini(f)
         fn = f"enemy_drone_mini_f{f}.png"

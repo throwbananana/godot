@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://irtloshfa7wn"
+path="res://.godot/imported/ui_badge_streak.png-8aa76885ef77ab22ca6d6e6a6569221a.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/ui_badge_streak.png"
+dest_files=["res://.godot/imported/ui_badge_streak.png-8aa76885ef77ab22ca6d6e6a6569221a.ctex"]
 
 [params]
 

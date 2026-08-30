@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://osk6be66817m"
+path="res://.godot/imported/perk_piercing.png-9df7021be0a61a6aa4737c02a89fb257.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/perk_piercing.png"
+dest_files=["res://.godot/imported/perk_piercing.png-9df7021be0a61a6aa4737c02a89fb257.ctex"]
 
 [params]
 

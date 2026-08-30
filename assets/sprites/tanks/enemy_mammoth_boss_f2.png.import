@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://c8qboor4j7pkq"
+path="res://.godot/imported/enemy_mammoth_boss_f2.png-2916f8ebcb6201fd9f6af409a4286cb2.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_mammoth_boss_f2.png"
+dest_files=["res://.godot/imported/enemy_mammoth_boss_f2.png-2916f8ebcb6201fd9f6af409a4286cb2.ctex"]
 
 [params]
 

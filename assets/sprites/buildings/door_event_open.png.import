@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://cj3l5f1rw6c0q"
+path="res://.godot/imported/door_event_open.png-9639bd21c15476a91818fcb6a3ed11f6.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/door_event_open.png"
+dest_files=["res://.godot/imported/door_event_open.png-9639bd21c15476a91818fcb6a3ed11f6.ctex"]
 
 [params]
 

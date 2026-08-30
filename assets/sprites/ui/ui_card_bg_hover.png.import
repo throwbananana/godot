@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://d0b1vuop32b77"
+path="res://.godot/imported/ui_card_bg_hover.png-20ac1019fc79a214618e0cefcfd01f05.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/ui_card_bg_hover.png"
+dest_files=["res://.godot/imported/ui_card_bg_hover.png-20ac1019fc79a214618e0cefcfd01f05.ctex"]
 
 [params]
 

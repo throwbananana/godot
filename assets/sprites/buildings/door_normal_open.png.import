@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://hd7om6j8klv7"
+path="res://.godot/imported/door_normal_open.png-71f80246396e1f4c2c116f389ecbaa03.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/door_normal_open.png"
+dest_files=["res://.godot/imported/door_normal_open.png-71f80246396e1f4c2c116f389ecbaa03.ctex"]
 
 [params]
 

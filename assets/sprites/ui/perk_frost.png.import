@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://c0nvpjyyxuude"
+path="res://.godot/imported/perk_frost.png-59dc1516290caf425444159e5aaec7e0.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/perk_frost.png"
+dest_files=["res://.godot/imported/perk_frost.png-59dc1516290caf425444159e5aaec7e0.ctex"]
 
 [params]
 

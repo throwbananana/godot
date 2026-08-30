@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://tnr6uty8eh7u"
+path="res://.godot/imported/door_challenge_locked.png-9a3366d17250766142dec8f7f2909bed.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/door_challenge_locked.png"
+dest_files=["res://.godot/imported/door_challenge_locked.png-9a3366d17250766142dec8f7f2909bed.ctex"]
 
 [params]
 

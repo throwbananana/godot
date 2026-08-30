@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://nme75e71vypv"
+path="res://.godot/imported/enemy_scorpion_boss.png-44a9cc2e1e97521142d47403a695ebc0.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/tanks/enemy_scorpion_boss.png"
+dest_files=["res://.godot/imported/enemy_scorpion_boss.png-44a9cc2e1e97521142d47403a695ebc0.ctex"]
 
 [params]
 

@@ -226,77 +226,216 @@ def build_clock():
 
     return objs
 
+def create_shield_mesh(name="TacticalShield", width_scale=1.0, height_scale=1.0, thickness=0.35):
+    import bmesh
+    me = bpy.data.meshes.new(name + "_Mesh")
+    bm = bmesh.new()
+    
+    half_profile_2d = [
+        (0.00, -0.90),
+        (0.32, -0.60),
+        (0.68, -0.15),
+        (0.78,  0.35),
+        (0.72,  0.72),
+        (0.40,  0.80),
+        (0.00,  0.74),
+    ]
+    
+    outline_2d = []
+    for pt in half_profile_2d:
+        outline_2d.append(pt)
+    for i in range(len(half_profile_2d) - 2, 0, -1):
+        pt = half_profile_2d[i]
+        outline_2d.append((-pt[0], pt[1]))
+        
+    num_pts = len(outline_2d)
+    
+    v_front_center = bm.verts.new((0.0, 0.0, thickness * 0.5))
+    front_ring = []
+    for (x, y) in outline_2d:
+        front_ring.append(bm.verts.new((x * 0.72 * width_scale, y * 0.72 * height_scale, thickness * 0.40)))
+        
+    rim_ring = []
+    for (x, y) in outline_2d:
+        rim_ring.append(bm.verts.new((x * 1.00 * width_scale, y * 1.00 * height_scale, 0.0)))
+        
+    back_ring = []
+    for (x, y) in outline_2d:
+        back_ring.append(bm.verts.new((x * 0.72 * width_scale, y * 0.72 * height_scale, -thickness * 0.40)))
+        
+    v_back_center = bm.verts.new((0.0, 0.0, -thickness * 0.5))
+    
+    bm.verts.ensure_lookup_table()
+    
+    for i in range(num_pts):
+        next_i = (i + 1) % num_pts
+        bm.faces.new([v_front_center, front_ring[i], front_ring[next_i]])
+        bm.faces.new([front_ring[i], rim_ring[i], rim_ring[next_i], front_ring[next_i]])
+        bm.faces.new([rim_ring[i], back_ring[i], back_ring[next_i], rim_ring[next_i]])
+        bm.faces.new([v_back_center, back_ring[next_i], back_ring[i]])
+        
+    bm.to_mesh(me)
+    bm.free()
+    
+    obj = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    
+    for poly in me.polygons:
+        poly.use_smooth = True
+        
+    sub = obj.modifiers.new("Subsurf", 'SUBSURF')
+    sub.levels = 3
+    sub.render_levels = 3
+    
+    return obj
+
 def build_helmet():
     objs = []
-    mat_olive = create_clay_mat("m_hlm_olive", (0.32, 0.44, 0.28, 1.0), roughness=0.65)
-    mat_rim = create_clay_mat("m_hlm_rim", (0.20, 0.28, 0.18, 1.0), roughness=0.60)
-    mat_goggle = create_clay_mat("m_hlm_goggle", (0.20, 0.70, 0.95, 1.0), emission=(0.20, 0.70, 0.95, 1.0), emission_str=2.2)
-    mat_strap = create_clay_mat("m_hlm_strap", (0.18, 0.16, 0.14, 1.0), roughness=0.70)
-    mat_gold = create_clay_mat("m_hlm_star", (0.98, 0.82, 0.18, 1.0), roughness=0.35)
-
-    # Helmet Dome
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.88, location=(0, 0.05, 0.15))
-    dome = bpy.context.active_object
-    dome.scale = (1.0, 1.15, 0.85)
-    dome.data.materials.append(mat_olive)
+    mat_gold_rim = create_clay_mat("m_sh_gold", (0.98, 0.80, 0.20, 1.0), roughness=0.32)
+    mat_navy_plate = create_clay_mat("m_sh_navy", (0.16, 0.22, 0.35, 1.0), roughness=0.45)
+    mat_cyan_energy = create_clay_mat("m_sh_cyan", (0.20, 0.88, 1.0, 1.0), emission=(0.20, 0.88, 1.0, 1.0), emission_str=3.8)
+    mat_white_core = create_clay_mat("m_sh_white", (1.0, 1.0, 1.0, 1.0), emission=(1.0, 1.0, 1.0, 1.0), emission_str=4.5)
+    mat_rivet = create_clay_mat("m_sh_rivet", (0.88, 0.90, 0.95, 1.0), roughness=0.30)
+    mat_hl = create_clay_mat("m_sh_hl", (1.0, 1.0, 1.0, 1.0), roughness=0.10)
+    
+    # 1. Outer Golden Reinforced Shield Frame
+    outer_shield = create_shield_mesh("ShieldOuterFrame", width_scale=1.05, height_scale=1.05, thickness=0.36)
+    outer_shield.data.materials.append(mat_gold_rim)
+    objs.append(outer_shield)
+    
+    # 2. Inner Cobalt / Navy Shield Armor Plate
+    inner_plate = create_shield_mesh("ShieldInnerPlate", width_scale=0.82, height_scale=0.82, thickness=0.28)
+    inner_plate.location = (0, 0, 0.08)
+    inner_plate.data.materials.append(mat_navy_plate)
+    objs.append(inner_plate)
+    
+    # 3. Glowing Cyan Energy Cross / Star Emblem in Center
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.05, 0.26))
+    e1 = bpy.context.active_object
+    e1.scale = (0.16, 0.64, 0.10)
+    e1.data.materials.append(mat_cyan_energy)
+    apply_uniform_clay_bevel(e1, width=0.03, segments=2)
+    objs.append(e1)
+    
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.12, 0.26))
+    e2 = bpy.context.active_object
+    e2.scale = (0.52, 0.16, 0.10)
+    e2.data.materials.append(mat_cyan_energy)
+    apply_uniform_clay_bevel(e2, width=0.03, segments=2)
+    objs.append(e2)
+    
+    # Luminous Diamond Core Center
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.16, location=(0, 0.12, 0.32))
+    core = bpy.context.active_object
+    core.scale = (1.0, 1.0, 0.7)
+    core.data.materials.append(mat_white_core)
     bpy.ops.object.shade_smooth()
-    objs.append(dome)
-
-    # Extended Flared Brim
-    bpy.ops.mesh.primitive_cylinder_add(radius=1.05, depth=0.14, vertices=32, location=(0, 0.05, -0.22))
-    brim = bpy.context.active_object
-    brim.scale = (1.0, 1.18, 1.0)
-    brim.data.materials.append(mat_rim)
-    apply_uniform_clay_bevel(brim, width=0.04, segments=2)
-    objs.append(brim)
-
-    # Goggles Strap & Lenses on front brow
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.75, 0.08))
-    g_strap = bpy.context.active_object
-    g_strap.scale = (1.30, 0.14, 0.18)
-    g_strap.data.materials.append(mat_strap)
-    apply_uniform_clay_bevel(g_strap, width=0.03, segments=2)
-    objs.append(g_strap)
-
-    for gx in [-0.32, 0.32]:
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.18, depth=0.16, vertices=16, location=(gx, 0.80, 0.08))
-        lens = bpy.context.active_object
-        lens.rotation_euler = (math.radians(90), 0, 0)
-        lens.data.materials.append(mat_goggle)
-        apply_uniform_clay_bevel(lens, width=0.03, segments=2)
-        objs.append(lens)
-
-    # Gold Star Emblem
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(0, 0.78, 0.38))
-    star = bpy.context.active_object
-    star.data.materials.append(mat_gold)
+    objs.append(core)
+    
+    # 4. Corner Heavy Rivets / Bolts
+    rivet_coords = [
+        (-0.52, 0.62, 0.18),
+        ( 0.52, 0.62, 0.18),
+        (-0.58, 0.28, 0.18),
+        ( 0.58, 0.28, 0.18),
+        ( 0.00, -0.62, 0.18),
+    ]
+    for rx, ry, rz in rivet_coords:
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.065, location=(rx, ry, rz))
+        riv = bpy.context.active_object
+        riv.scale = (1.0, 1.0, 0.6)
+        riv.data.materials.append(mat_rivet)
+        bpy.ops.object.shade_smooth()
+        objs.append(riv)
+        
+    # 5. Glossy Reflection Highlight Drop
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.10, location=(-0.36, 0.48, 0.30))
+    hl = bpy.context.active_object
+    hl.scale = (1.2, 0.6, 0.35)
+    hl.rotation_euler = (0, 0, math.radians(35))
+    hl.data.materials.append(mat_hl)
     bpy.ops.object.shade_smooth()
-    objs.append(star)
-
+    objs.append(hl)
+    
     return objs
+
+def build_procedural_organic_heart_base(name="LifeHeart", col=(0.95, 0.18, 0.28, 1.0), roughness=0.28, scale_xyz=(1.0, 1.0, 0.46)):
+    import bmesh
+    me = bpy.data.meshes.new(name + "_Mesh")
+    bm = bmesh.new()
+    
+    half_profile_2d = [
+        (0.00, -0.84),
+        (0.26, -0.52),
+        (0.68, -0.08),
+        (0.78,  0.28),
+        (0.64,  0.64),
+        (0.40,  0.75),
+        (0.18,  0.66),
+        (0.00,  0.38),
+    ]
+    
+    outline_2d = []
+    for pt in half_profile_2d:
+        outline_2d.append(pt)
+    for i in range(len(half_profile_2d) - 2, 0, -1):
+        pt = half_profile_2d[i]
+        outline_2d.append((-pt[0], pt[1]))
+        
+    num_pts = len(outline_2d)
+    
+    v_front_center = bm.verts.new((0.0, 0.06, 0.36 * scale_xyz[2]))
+    front_ring = []
+    for (x, y) in outline_2d:
+        front_ring.append(bm.verts.new((x * 0.68 * scale_xyz[0], y * 0.68 * scale_xyz[1], 0.26 * scale_xyz[2])))
+        
+    rim_ring = []
+    for (x, y) in outline_2d:
+        rim_ring.append(bm.verts.new((x * 1.00 * scale_xyz[0], y * 1.00 * scale_xyz[1], 0.00)))
+        
+    back_ring = []
+    for (x, y) in outline_2d:
+        back_ring.append(bm.verts.new((x * 0.68 * scale_xyz[0], y * 0.68 * scale_xyz[1], -0.26 * scale_xyz[2])))
+        
+    v_back_center = bm.verts.new((0.0, 0.06, -0.36 * scale_xyz[2]))
+    
+    bm.verts.ensure_lookup_table()
+    
+    for i in range(num_pts):
+        next_i = (i + 1) % num_pts
+        bm.faces.new([v_front_center, front_ring[i], front_ring[next_i]])
+        bm.faces.new([front_ring[i], rim_ring[i], rim_ring[next_i], front_ring[next_i]])
+        bm.faces.new([rim_ring[i], back_ring[i], back_ring[next_i], rim_ring[next_i]])
+        bm.faces.new([v_back_center, back_ring[next_i], back_ring[i]])
+        
+    bm.to_mesh(me)
+    bm.free()
+    
+    obj = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    
+    mat = create_clay_mat("m_" + name, col, roughness=roughness)
+    obj.data.materials.append(mat)
+    
+    for poly in me.polygons:
+        poly.use_smooth = True
+        
+    sub = obj.modifiers.new("Subsurf", 'SUBSURF')
+    sub.levels = 3
+    sub.render_levels = 3
+    
+    return obj
 
 def build_life():
     objs = []
-    mat_heart = create_clay_mat("m_lif_heart", (0.95, 0.18, 0.28, 1.0), roughness=0.30)
-    mat_glow = create_clay_mat("m_lif_glow", (1.0, 0.35, 0.45, 1.0), emission=(1.0, 0.35, 0.45, 1.0), emission_str=3.0)
     mat_gold = create_clay_mat("m_lif_gold", (0.98, 0.82, 0.18, 1.0), roughness=0.35)
     mat_cross = create_clay_mat("m_lif_cross", (1.0, 1.0, 1.0, 1.0), emission=(1.0, 1.0, 1.0, 1.0), emission_str=3.5)
 
-    # Dual Lobes of Heart
-    for lx in [-0.36, 0.36]:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.52, location=(lx, 0.24, 0))
-        lobe = bpy.context.active_object
-        lobe.data.materials.append(mat_heart)
-        bpy.ops.object.shade_smooth()
-        objs.append(lobe)
-
-    # Bottom Cone of Heart
-    bpy.ops.mesh.primitive_cone_add(radius1=0.82, radius2=0.08, depth=1.05, vertices=24, location=(0, -0.32, 0))
-    cone = bpy.context.active_object
-    cone.rotation_euler = (math.radians(180), 0, 0)
-    cone.data.materials.append(mat_heart)
-    apply_uniform_clay_bevel(cone, width=0.06, segments=2)
-    objs.append(cone)
+    # Plump Organic Clay Heart
+    heart = build_procedural_organic_heart_base("LifeHeart", col=(0.96, 0.16, 0.26, 1.0), roughness=0.28)
+    objs.append(heart)
 
     # Golden Winglets on sides
     for wx in [-0.85, 0.85]:

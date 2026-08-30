@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://bmvjhqwhmkne6"
+path="res://.godot/imported/boss_plasma_nova_5.png-4395b01444b2f7a5b9816064cfbf1f0a.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/effects/boss_plasma_nova_5.png"
+dest_files=["res://.godot/imported/boss_plasma_nova_5.png-4395b01444b2f7a5b9816064cfbf1f0a.ctex"]
 
 [params]
 

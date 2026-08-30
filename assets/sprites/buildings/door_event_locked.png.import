@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://dhcyr1lpx2tb5"
+path="res://.godot/imported/door_event_locked.png-4cd4fb290629a9c89b0b669924ddd523.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/door_event_locked.png"
+dest_files=["res://.godot/imported/door_event_locked.png-4cd4fb290629a9c89b0b669924ddd523.ctex"]
 
 [params]
 

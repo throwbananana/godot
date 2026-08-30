@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://u5yv7jp2qonh"
+path="res://.godot/imported/ui_card_bg_branch.png-c5a521e3c916896dd387ef137f4083e3.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/ui/ui_card_bg_branch.png"
+dest_files=["res://.godot/imported/ui_card_bg_branch.png-c5a521e3c916896dd387ef137f4083e3.ctex"]
 
 [params]
 

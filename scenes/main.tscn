@@ -1,14 +1,16 @@
-[gd_scene load_steps=3 format=3 uid="uid://main101scene00"]
+[gd_scene load_steps=4 format=3 uid="uid://main101scene00"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/builder_controller.gd" id="2_bld"]
+[ext_resource type="PackedScene" uid="uid://settings101dlg" path="res://scenes/settings_dialog.tscn" id="3_set"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 
 [node name="Background" type="ColorRect" parent="."]
-offset_right = 1024.0
-offset_bottom = 768.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 color = Color(0.2, 0.17, 0.2, 1)
 
 [node name="GameArea" type="Node2D" parent="."]
@@ -128,7 +130,7 @@ text = "GOLD: 100 G"
 
 [node name="P1HPBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="P1HPIcon" type="TextureRect" parent="HUD/SidePanel/VBox/P1HPBox"]
 custom_minimum_size = Vector2(20, 20)
@@ -139,13 +141,17 @@ stretch_mode = 5
 [node name="P1HPLabel" type="Label" parent="HUD/SidePanel/VBox/P1HPBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
-theme_override_font_sizes/font_size = 13
-text = "P1 [YEL] HP: 1 / 1"
+theme_override_font_sizes/font_size = 12
+text = "P1 [CAN]:"
+
+[node name="P1Hearts" type="HBoxContainer" parent="HUD/SidePanel/VBox/P1HPBox"]
+layout_mode = 2
+theme_override_constants/separation = 2
 
 [node name="P2HPBox" type="HBoxContainer" parent="HUD/SidePanel/VBox"]
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="P2HPIcon" type="TextureRect" parent="HUD/SidePanel/VBox/P2HPBox"]
 custom_minimum_size = Vector2(20, 20)
@@ -156,8 +162,12 @@ stretch_mode = 5
 [node name="P2HPLabel" type="Label" parent="HUD/SidePanel/VBox/P2HPBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.55, 0.85, 0.55, 1)
-theme_override_font_sizes/font_size = 13
-text = "P2 [GRN] HP: 1 / 1"
+theme_override_font_sizes/font_size = 12
+text = "P2 [CAN]:"
+
+[node name="P2Hearts" type="HBoxContainer" parent="HUD/SidePanel/VBox/P2HPBox"]
+layout_mode = 2
+theme_override_constants/separation = 2
 
 [node name="StatsLabel" type="Label" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
@@ -195,7 +205,16 @@ theme_override_colors/font_color = Color(0.82, 0.78, 0.74, 1)
 theme_override_font_sizes/font_size = 10
 text = "P1: W/A/S/D + Space (Shoot)
 道具/建造: [Q/E] 切换, [F] 放置
+地图缩放: [M] 键全屏大地图
 P2: 方向键 + [U/O] 切换, [K] 放置"
+
+[node name="HSeparator3" type="HSeparator" parent="HUD/SidePanel/VBox"]
+layout_mode = 2
+
+[node name="MinimapDock" type="Control" parent="HUD/SidePanel/VBox"]
+custom_minimum_size = Vector2(208, 208)
+layout_mode = 2
+size_flags_horizontal = 4
 
 [node name="CenterMessage" type="Label" parent="HUD"]
 visible = false
@@ -274,6 +293,11 @@ custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "RESUME (继续)"
 
+[node name="SettingsButton" type="Button" parent="HUD/PauseMenu/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "SETTINGS (设置)"
+
 [node name="RestartStageButton" type="Button" parent="HUD/PauseMenu/VBox"]
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
@@ -283,4 +307,9 @@ text = "RESTART STAGE (重试本关)"
 custom_minimum_size = Vector2(0, 42)
 layout_mode = 2
 text = "RETURN TO MENU (返回菜单)"
+
+[node name="SettingsDialog" parent="HUD" instance=ExtResource("3_set")]
+process_mode = 2
+visible = false
+layout_mode = 1
 

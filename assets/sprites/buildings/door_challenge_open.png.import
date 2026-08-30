@@ -2,10 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
+uid="uid://dewjd28eoyltd"
+path="res://.godot/imported/door_challenge_open.png-d095aa4de136785d542e0f0800c5b9f1.ctex"
+metadata={
+"vram_texture": false
+}
 
 [deps]
 
 source_file="res://assets/sprites/buildings/door_challenge_open.png"
+dest_files=["res://.godot/imported/door_challenge_open.png-d095aa4de136785d542e0f0800c5b9f1.ctex"]
 
 [params]
 
