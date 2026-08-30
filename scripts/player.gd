@@ -668,3 +668,4 @@ func on_enter_jam() -> void:
 func on_exit_jam() -> void:
 	jam_overlap_count = max(0, jam_overlap_count - 1)
 	is_jammed = (jam_overlap_count > 0)
+

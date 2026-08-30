@@ -6,6 +6,15 @@ enum GameMode { CAMPAIGN, ARCADE, DAILY_CHALLENGE }
 static var mode: GameMode = GameMode.CAMPAIGN
 static var player_count: int = 1 # 1=单人, 2=本地双人
 
+## 隐藏测试模式的解锁状态。title_screen.gd 在标题界面监听键盘序列
+## "throwbanana" 或手柄序列 上上下下左左右右 X A B Y, 命中后置 true, 显示
+## 那颗平时隐藏的 TEST MODE 按钮。**故意是纯运行期状态, 不落盘**: 不写进
+## save_campaign()/load_campaign() 的字段表, 也不在
+## tools/test_persistence_roundtrip.gd 的 EXEMPT 里出现 —— 跟 playtest_layout
+## 是同一个理由, 它是"这次进程要不要显示测试入口"的临时信号, 不是战役存档的
+## 一部分。关掉游戏重开就要重新输入一遍, 这是刻意的默认收敛, 不是遗漏。
+static var debug_unlocked: bool = false
+
 ## 关卡编辑器"试玩"按钮用的一次性图层覆盖: main.gd::_build_map() 一旦读到
 ## 非空值就直接拿去当这个房间的地形, 并立刻清空自己。不是战役存档字段——
 ## 编辑器产物存在 CustomMapStore (user://custom_maps.json), 这里只是"下一个

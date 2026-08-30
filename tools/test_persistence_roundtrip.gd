@@ -25,6 +25,7 @@ const EXEMPT := {
 	"max_acts":            "战役配置, 全项目无人赋值, 等同常量",
 	"max_floors":          "同上",
 	"playtest_layout":     "关卡编辑器试玩用的一次性图层覆盖, main.gd::_build_map() 读到就立刻清空, 不是某一局的存档数据",
+	"debug_unlocked":      "隐藏测试模式是否已解锁, 纯运行期状态 (同一进程内输对一次暗号即保持), 不是某一局战役存档的一部分, 关掉游戏就该恢复隐藏",
 }
 
 ## RPGManager 里不参与 GameState 往返的字段。

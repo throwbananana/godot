@@ -42,6 +42,7 @@ func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(icon_container, Color(0.20, 0.17, 0.22, 1.0), 10)
 
 	UIThemeHelper.apply_clay_button(btn_close_top, false)
+	UIThemeHelper.apply_icon_button(btn_close_top, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(18, 18), false)
 	UIThemeHelper.apply_clay_button(btn_close_bottom, true)
 	UIThemeHelper.apply_icon_button(btn_close_bottom, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(24, 24))
 

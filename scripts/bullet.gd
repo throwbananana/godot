@@ -44,8 +44,12 @@ var armor_piercing: bool = false
 @onready var sprite: Sprite2D = $Sprite2D
 
 func _ready() -> void:
-	body_entered.connect(_on_body_entered)
-	area_entered.connect(_on_area_entered)
+	if not sprite:
+		sprite = get_node_or_null("Sprite2D")
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not area_entered.is_connected(_on_area_entered):
+		area_entered.connect(_on_area_entered)
 	rotation = direction.angle() + PI / 2.0
 
 	if shooter_type == "player" and is_instance_valid(shooter) and ("player_id" in shooter):

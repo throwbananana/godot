@@ -1,8 +1,11 @@
-[gd_scene load_steps=4 format=3 uid="uid://ttl101scene01"]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/title_screen.gd" id="1_ttl"]
-[ext_resource type="PackedScene" uid="uid://encyclopedia101dlg" path="res://scenes/encyclopedia_dialog.tscn" id="2_enc"]
-[ext_resource type="PackedScene" uid="uid://settings101dlg" path="res://scenes/settings_dialog.tscn" id="3_set"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/title_background_clay.png" id="2_bg"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/title_logo_banner.png" id="3_logo"]
+[ext_resource type="Texture2D" path="res://assets/sprites/ui/ui_logo_halo.png" id="4_halo"]
+[ext_resource type="PackedScene" path="res://scenes/encyclopedia_dialog.tscn" id="5_enc"]
+[ext_resource type="PackedScene" path="res://scenes/settings_dialog.tscn" id="6_set"]
 
 [node name="TitleScreen" type="Control"]
 layout_mode = 3
@@ -13,14 +16,25 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_ttl")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="BackgroundTexture" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.24, 0.2, 0.24, 1)
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="VignetteOverlay" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.04, 0.03, 0.07, 0.38)
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -32,108 +46,159 @@ grow_vertical = 2
 
 [node name="VBox" type="VBoxContainer" parent="CenterContainer"]
 layout_mode = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 8
 alignment = 1
 
-[node name="BannerContainer" type="Control" parent="CenterContainer/VBox"]
-custom_minimum_size = Vector2(512, 140)
+[node name="LogoContainer" type="Control" parent="CenterContainer/VBox"]
+custom_minimum_size = Vector2(460, 140)
 layout_mode = 2
+size_flags_horizontal = 4
 
-[node name="BannerSprite" type="Sprite2D" parent="CenterContainer/VBox/BannerContainer"]
-position = Vector2(256, 70)
-scale = Vector2(0.85, 0.85)
+[node name="HaloSprite" type="Sprite2D" parent="CenterContainer/VBox/LogoContainer"]
+position = Vector2(230, 70)
+scale = Vector2(1.1, 1.1)
+texture = ExtResource("4_halo")
 
-[node name="TitleLabel" type="Label" parent="CenterContainer/VBox"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
-theme_override_constants/shadow_offset_x = 4
-theme_override_constants/shadow_offset_y = 4
-theme_override_font_sizes/font_size = 36
-text = "TANK BATTLE: SPIRE"
-horizontal_alignment = 1
+[node name="LogoTexture" type="TextureRect" parent="CenterContainer/VBox/LogoContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(230, 70)
+texture = ExtResource("3_logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="SparkleContainer" type="Control" parent="CenterContainer/VBox/LogoContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="SubTitleLabel" type="Label" parent="CenterContainer/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.6, 0.8, 0.93, 1)
-theme_override_font_sizes/font_size = 16
-text = "TACTICAL ROGUELIKE & 2-PLAYER CO-OP"
+theme_override_colors/font_color = Color(0.72, 0.88, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 13
+text = "★ TACTICAL ROGUELIKE & 2-PLAYER CO-OP ★"
 horizontal_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="CenterContainer/VBox"]
+[node name="MenuPanel" type="PanelContainer" parent="CenterContainer/VBox"]
+custom_minimum_size = Vector2(440, 0)
 layout_mode = 2
+size_flags_horizontal = 4
+pivot_offset = Vector2(220, 160)
 
-[node name="ButtonsBox" type="VBoxContainer" parent="CenterContainer/VBox"]
+[node name="MenuVBox" type="VBoxContainer" parent="CenterContainer/VBox/MenuPanel"]
 layout_mode = 2
-theme_override_constants/separation = 12
-alignment = 1
+theme_override_constants/separation = 6
 
-[node name="ContinueButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 48)
+[node name="PrimaryButtonsBox" type="VBoxContainer" parent="CenterContainer/VBox/MenuPanel/MenuVBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="ContinueButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/PrimaryButtonsBox"]
+custom_minimum_size = Vector2(400, 40)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.88, 0.35, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 15
 text = "CONTINUE CAMPAIGN (继续战役)"
 
-[node name="Campaign1PButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 46)
+[node name="Campaign1PButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/PrimaryButtonsBox"]
+custom_minimum_size = Vector2(400, 38)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.93, 0.7, 1)
-theme_override_font_sizes/font_size = 17
+theme_override_font_sizes/font_size = 14
 text = "1P SINGLE CAMPAIGN (单人战役)"
 
-[node name="Campaign2PButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 46)
+[node name="Campaign2PButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/PrimaryButtonsBox"]
+custom_minimum_size = Vector2(400, 38)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.58, 0.86, 0.6, 1)
-theme_override_font_sizes/font_size = 17
+theme_override_font_sizes/font_size = 14
 text = "2P CO-OP CAMPAIGN (双人战役)"
 
-[node name="Arcade2PButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 44)
+[node name="Arcade2PButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/PrimaryButtonsBox"]
+custom_minimum_size = Vector2(400, 36)
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.9, 0.85, 0.95, 1)
+theme_override_font_sizes/font_size = 13
 text = "2P CO-OP ARCADE (双人街机)"
 
-[node name="DailyChallengeButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 44)
+[node name="DailyChallengeButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/PrimaryButtonsBox"]
+custom_minimum_size = Vector2(400, 36)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.68, 1, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 13
 text = "DAILY CHALLENGE (每日挑战)"
 
-[node name="EncyclopediaButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 44)
+[node name="HSeparator" type="HSeparator" parent="CenterContainer/VBox/MenuPanel/MenuVBox"]
+layout_mode = 2
+
+[node name="SecondaryGrid" type="GridContainer" parent="CenterContainer/VBox/MenuPanel/MenuVBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 4
+columns = 2
+
+[node name="EncyclopediaButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
+custom_minimum_size = Vector2(197, 34)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.6, 0.88, 0.95, 1)
-theme_override_font_sizes/font_size = 16
-text = "COMPENDIUM (战术图鉴百科)"
+theme_override_font_sizes/font_size = 12
+text = "COMPENDIUM (图鉴)"
 
-[node name="MapEditorButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 44)
+[node name="MapEditorButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
+custom_minimum_size = Vector2(197, 34)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.78, 0.62, 1)
-theme_override_font_sizes/font_size = 16
-text = "LEVEL EDITOR (关卡编辑器)"
+theme_override_font_sizes/font_size = 12
+text = "EDITOR (工坊)"
 
-[node name="SettingsButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 44)
+[node name="SettingsButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
+custom_minimum_size = Vector2(197, 34)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.75, 0.8, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 12
 text = "SETTINGS (设置)"
 
-[node name="QuitButton" type="Button" parent="CenterContainer/VBox/ButtonsBox"]
-custom_minimum_size = Vector2(360, 40)
+[node name="QuitButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
+custom_minimum_size = Vector2(197, 34)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.48, 0.44, 1)
-theme_override_font_sizes/font_size = 15
-text = "EXIT GAME (退出游戏)"
+theme_override_font_sizes/font_size = 12
+text = "EXIT (退出)"
 
-[node name="EncyclopediaDialog" parent="." instance=ExtResource("2_enc")]
+[node name="TestModeButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
+visible = false
+custom_minimum_size = Vector2(400, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.55, 1, 0.55, 1)
+theme_override_font_sizes/font_size = 12
+text = "🧪 TEST MODE (测试模式)"
+
+[node name="FooterLabel" type="Label" parent="CenterContainer/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.65, 0.6, 0.75, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.8)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 11
+text = "v1.2.0 • SOKPOP CLAYMATION ROGUELIKE • [W/S/↑/↓] 选择 [SPACE/ENTER] 确定"
+horizontal_alignment = 1
+
+[node name="EncyclopediaDialog" parent="." instance=ExtResource("5_enc")]
 visible = false
 layout_mode = 1
 
-[node name="SettingsDialog" parent="." instance=ExtResource("3_set")]
+[node name="SettingsDialog" parent="." instance=ExtResource("6_set")]
 visible = false
 layout_mode = 1

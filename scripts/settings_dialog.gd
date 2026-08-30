@@ -27,8 +27,12 @@ var _volume: float = SettingsStore.DEFAULT_VOLUME
 
 
 func _ready() -> void:
-	UIThemeHelper.apply_clay_panel(main_panel, Color(0.16, 0.13, 0.18, 0.98), 16)
+	UIThemeHelper.apply_clay_panel(main_panel, Color(0.12, 0.10, 0.16, 0.98), 16)
 	UIThemeHelper.apply_clay_button(btn_close, true)
+	UIThemeHelper.apply_icon_button(btn_close, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(20, 20))
+	UIThemeHelper.apply_clay_option_button(resolution_option)
+	UIThemeHelper.apply_clay_check_box(fullscreen_check)
+	UIThemeHelper.apply_clay_slider(volume_slider)
 
 	for res in SettingsStore.RESOLUTIONS:
 		resolution_option.add_item("%d x %d" % [res.x, res.y])

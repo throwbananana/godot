@@ -230,6 +230,129 @@ func _apply_layout_offset() -> void:
 		hud_boss_bar.position.x = 120.0 + layout_offset.x
 		hud_boss_bar.position.y = 3.0 + layout_offset.y
 
+## 隐藏测试模式在战斗内的那一半 (关卡跳转在 debug_test_menu.gd 里)。F1 开关,
+## 只在 GameState.debug_unlocked 时被 _ready() 建出来 —— "随意调用工具"按
+## 用户原话理解成一小撮常用作弊动作, 而不是重新做一套控制台, 每个按钮都直接
+## 复用游戏本来就有的路径 (add_gold()/rpg_mgr.add_xp()/enemy._die() 等),
+## 不另写一条与正常玩法分叉的成功/失败逻辑。
+func _build_debug_panel() -> void:
+	debug_panel = PanelContainer.new()
+	debug_panel.visible = false
+	debug_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	debug_panel.position = Vector2(-266.0, 8.0)
+	debug_panel.custom_minimum_size = Vector2(256.0, 0)
+	debug_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	UIThemeHelper.apply_clay_panel(debug_panel, Color(0.05, 0.20, 0.05, 0.94), 10)
+	$HUD.add_child(debug_panel)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 5)
+	debug_panel.add_child(vb)
+
+	var title := Label.new()
+	title.text = "🧪 DEBUG TOOLS (F1 关闭)"
+	title.add_theme_font_size_override("font_size", 12)
+	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.55, 1))
+	vb.add_child(title)
+
+	var btn_gold := _make_debug_button("+500 GOLD (金币)")
+	btn_gold.pressed.connect(func(): add_gold(500))
+	vb.add_child(btn_gold)
+
+	var btn_level := _make_debug_button("+1 LEVEL (等级)")
+	btn_level.pressed.connect(func(): rpg_mgr.add_xp(rpg_mgr.xp_to_next))
+	vb.add_child(btn_level)
+
+	var btn_god := _make_debug_button("GOD MODE: OFF (无敌)")
+	btn_god.pressed.connect(func():
+		debug_god_mode = not debug_god_mode
+		btn_god.text = "GOD MODE: %s (无敌)" % ("ON" if debug_god_mode else "OFF")
+		_debug_apply_god_mode(debug_god_mode)
+	)
+	vb.add_child(btn_god)
+
+	var btn_clear := _make_debug_button("☠️ CLEAR ROOM (清空本房)")
+	btn_clear.pressed.connect(_debug_clear_room)
+	vb.add_child(btn_clear)
+
+	var btn_night := _make_debug_button("NIGHT FOG: OFF (夜战雾)")
+	btn_night.pressed.connect(func():
+		_debug_toggle_night_fog()
+		btn_night.text = "NIGHT FOG: %s (夜战雾)" % ("ON" if is_night_mode_active else "OFF")
+	)
+	vb.add_child(btn_night)
+
+	var btn_title := _make_debug_button("🔄 返回标题重选关卡")
+	btn_title.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/title_screen.tscn"))
+	vb.add_child(btn_title)
+
+
+func _make_debug_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(0, 30)
+	UIThemeHelper.apply_clay_button(b, false)
+	return b
+
+
+func _debug_apply_god_mode(on: bool) -> void:
+	for p in [p1_instance, p2_instance]:
+		if not (p and is_instance_valid(p)):
+			continue
+		if on:
+			# 用一个很大的时长当"常驻无敌"用, 不新增一条独立于 invulnerable_timer
+			# 的状态 —— 复用 set_invulnerable() 本来就有的倒计时/护盾贴图逻辑,
+			# 一场测试会话内基本不可能倒计时耗尽。
+			p.set_invulnerable(999999.0)
+		else:
+			p.is_invulnerable = false
+			p.invulnerable_timer = 0.0
+			if p.shield_sprite:
+				p.shield_sprite.visible = false
+
+
+## 杀光本房间当前存活的敌人, 并让spawner 别再补新的 —— 单独杀光存活的那一批
+## 并不会立刻清房: _on_enemy_destroyed() 只有在 enemies_spawned >= total_enemies
+## 且 enemies_alive <= 0 时才会判房间清空, 后续波次还会继续刷。这里把
+## total_enemies 拉平到当前已刷出的数量, 相当于"提前用完这房间的怪"。
+##
+## 击杀走 enemy._die() 而不是 take_damage(999): 后者在 is_shielded() 为真时
+## (比如站在敌方护盾塔范围内) 会直接吞掉伤害, 一个作弊工具打不穿自己游戏里的
+## 防御机制没有意义。_die() 绕开护盾判定直接触发死亡结算, 这也是
+## tools/test_firewall_tank.gd 已经在用的同一条路径, 不是本文件独创的后门。
+##
+## 分帧轮询而不是单次遍历一遍就收工: _request_spawn_enemy() 在丢出 spawn_star
+## 的**那一刻**就已经 enemies_spawned += 1 / enemies_alive += 1 (main.gd::
+## _request_spawn_enemy()), 而实际的坦克要等 spawn_star 的 finished 回调
+## (_instantiate_enemy()) 才会真正加入 "enemies" 组。按下这颗按钮那一帧,
+## 计数器里可能还挂着 1-2 只"已经算数但还没实体化"的怪 —— 只扫一遍
+## get_nodes_in_group("enemies") 会漏掉它们, 房间因此差一只怪永远清不空。
+func _debug_clear_room() -> void:
+	total_enemies = enemies_spawned
+	var waited := 0
+	while enemies_alive > 0 and waited < 180:
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if is_instance_valid(e) and e.has_method("_die"):
+				e._die()
+		if enemies_alive <= 0:
+			break
+		await get_tree().process_frame
+		waited += 1
+
+
+func _debug_toggle_night_fog() -> void:
+	is_night_mode_active = not is_night_mode_active
+	if is_night_mode_active:
+		if not (darkness_fog_instance and is_instance_valid(darkness_fog_instance)):
+			darkness_fog_instance = DarknessFog.new()
+			darkness_fog_instance.setup_trackers(p1_instance, p2_instance, base_instance)
+			game_area.add_child(darkness_fog_instance)
+	else:
+		if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
+			darkness_fog_instance.queue_free()
+			darkness_fog_instance = null
+
+
 func hit_stop(duration_sec: float = 0.05) -> void:
 	Engine.time_scale = 0.05
 	get_tree().create_timer(duration_sec * 0.05, true, false, true).timeout.connect(func():
@@ -289,6 +412,11 @@ var active_boss_instance: Node2D = null
 ## 每帧同步的路径, 底下其实一直在正确刷新, 只是容器被隐藏了看不见。
 ## 任何要让血条重新出现的地方都必须先 kill() 掉这个残留 tween。
 var hud_boss_fade_tween: Tween = null
+
+## 隐藏调试面板 (F1 呼出), 只在 GameState.debug_unlocked 时由 _build_debug_panel()
+## 建出来; 未解锁的正常玩家这个节点根本不存在, 不只是不可见。
+var debug_panel: PanelContainer = null
+var debug_god_mode: bool = false
 
 var victory_modal_root: Control = null
 var victory_modal_banner: TextureRect = null
@@ -352,9 +480,9 @@ func _ready() -> void:
 	rpg_mgr.stats_changed.connect(_update_rpg_hud)
 	rpg_mgr.gold_changed.connect(func(_g): _update_rpg_hud())
 
-	UIThemeHelper.apply_clay_panel($HUD/SidePanel)
-	UIThemeHelper.apply_clay_panel(pause_menu)
-	UIThemeHelper.apply_clay_progressbar(hud_rpg_xp)
+	UIThemeHelper.apply_hud_sidepanel($HUD/SidePanel)
+	UIThemeHelper.apply_pause_menu_theme(pause_menu, [btn_resume, btn_settings_pause, btn_restart_stage, btn_quit_menu])
+	UIThemeHelper.apply_clay_progressbar(hud_rpg_xp, Color(0.40, 0.88, 1.0, 1.0))
 	
 	if hud_toast:
 		var toast_sb := StyleBoxFlat.new()
@@ -457,6 +585,11 @@ func _ready() -> void:
 	p1_spawn_point = Vector2(4.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 	p2_spawn_point = Vector2(8.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 
+	# 只有从标题界面输对暗号解锁过的这次进程才装这块面板 —— 正常玩家的
+	# main.tscn 里压根不存在这些节点, 而不只是"存在但隐藏"。
+	if GameState.debug_unlocked:
+		_build_debug_panel()
+
 	start_game()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -469,6 +602,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		if minimap and is_instance_valid(minimap):
 			minimap.toggle_maximized()
+			get_viewport().set_input_as_handled()
+			return
+
+	# F1 呼出/收起隐藏调试面板。跟 KEY_M 一样是纯键盘的开发者快捷键 (没有
+	# 手柄等价物), 且整条分支挂在 GameState.debug_unlocked 门槛后面 ——
+	# 没在标题界面输过暗号的玩家这里直接短路, 面板节点也根本没被建出来。
+	if GameState.debug_unlocked and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F1:
+		if debug_panel:
+			debug_panel.visible = not debug_panel.visible
 			get_viewport().set_input_as_handled()
 			return
 

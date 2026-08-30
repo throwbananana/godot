@@ -357,6 +357,119 @@ static func apply_clay_progressbar(bar: ProgressBar, fill_color: Color = Color(0
 	fill.corner_radius_bottom_right = 5
 	bar.add_theme_stylebox_override("fill", fill)
 
+static func apply_clay_slider(slider: HSlider) -> void:
+	if not slider: return
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.14, 0.11, 0.18, 0.95)
+	bg.corner_radius_top_left = 6
+	bg.corner_radius_top_right = 6
+	bg.corner_radius_bottom_left = 6
+	bg.corner_radius_bottom_right = 6
+	bg.border_width_left = 1
+	bg.border_width_top = 1
+	bg.border_width_right = 1
+	bg.border_width_bottom = 1
+	bg.border_color = Color(0.48, 0.38, 0.58, 0.85)
+	bg.content_margin_top = 4
+	bg.content_margin_bottom = 4
+	slider.add_theme_stylebox_override("slider", bg)
+	
+	var grab_sb := StyleBoxFlat.new()
+	grab_sb.bg_color = Color(0.98, 0.82, 0.35, 1.0)
+	grab_sb.corner_radius_top_left = 6
+	grab_sb.corner_radius_top_right = 6
+	grab_sb.corner_radius_bottom_left = 6
+	grab_sb.corner_radius_bottom_right = 6
+	grab_sb.border_width_left = 1
+	grab_sb.border_width_top = 1
+	grab_sb.border_width_right = 1
+	grab_sb.border_width_bottom = 1
+	grab_sb.border_color = Color(1.0, 0.95, 0.70, 1.0)
+	grab_sb.content_margin_left = 6
+	grab_sb.content_margin_right = 6
+	grab_sb.content_margin_top = 6
+	grab_sb.content_margin_bottom = 6
+	slider.add_theme_stylebox_override("grabber_area", grab_sb)
+	slider.add_theme_stylebox_override("grabber_area_highlight", grab_sb)
+
+static func apply_clay_check_box(cb: CheckBox) -> void:
+	if not cb: return
+	cb.add_theme_color_override("font_color", Color(0.92, 0.88, 0.95, 1.0))
+	cb.add_theme_color_override("font_hover_color", Color(1.0, 0.92, 0.60, 1.0))
+	cb.add_theme_color_override("font_pressed_color", Color(0.98, 0.85, 0.35, 1.0))
+	cb.add_theme_color_override("font_focus_color", Color(1.0, 0.92, 0.60, 1.0))
+	cb.add_theme_constant_override("h_separation", 10)
+
+static func apply_clay_option_button(opt: OptionButton) -> void:
+	if not opt: return
+	apply_clay_button(opt, true)
+	var popup = opt.get_popup()
+	if popup:
+		var p_sb := StyleBoxFlat.new()
+		p_sb.bg_color = Color(0.12, 0.10, 0.16, 0.98)
+		p_sb.corner_radius_top_left = 10
+		p_sb.corner_radius_top_right = 10
+		p_sb.corner_radius_bottom_left = 10
+		p_sb.corner_radius_bottom_right = 10
+		p_sb.border_width_left = 2
+		p_sb.border_width_top = 2
+		p_sb.border_width_right = 2
+		p_sb.border_width_bottom = 2
+		p_sb.border_color = Color(0.55, 0.45, 0.68, 0.9)
+		p_sb.content_margin_left = 8
+		p_sb.content_margin_right = 8
+		p_sb.content_margin_top = 8
+		p_sb.content_margin_bottom = 8
+		popup.add_theme_stylebox_override("panel", p_sb)
+
+static func apply_hud_sidepanel(panel: Control) -> void:
+	if not panel: return
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.10, 0.08, 0.14, 0.92)
+	sb.corner_radius_top_left = 14
+	sb.corner_radius_top_right = 0
+	sb.corner_radius_bottom_left = 14
+	sb.corner_radius_bottom_right = 0
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 0
+	sb.border_width_bottom = 2
+	sb.border_color = Color(0.48, 0.38, 0.62, 0.85)
+	sb.shadow_color = Color(0, 0, 0, 0.5)
+	sb.shadow_size = 10
+	sb.shadow_offset = Vector2(-2, 2)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	panel.add_theme_stylebox_override("panel", sb)
+
+static func apply_pause_menu_theme(menu_panel: PanelContainer, buttons: Array) -> void:
+	if not menu_panel: return
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.10, 0.08, 0.15, 0.96)
+	sb.corner_radius_top_left = 16
+	sb.corner_radius_top_right = 16
+	sb.corner_radius_bottom_left = 16
+	sb.corner_radius_bottom_right = 16
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.border_color = Color(0.60, 0.48, 0.75, 0.9)
+	sb.shadow_color = Color(0, 0, 0, 0.7)
+	sb.shadow_size = 20
+	sb.shadow_offset = Vector2(0, 8)
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 18
+	sb.content_margin_bottom = 18
+	menu_panel.add_theme_stylebox_override("panel", sb)
+	
+	for b in buttons:
+		if b is Button:
+			apply_clay_button(b, true)
+
 # Full catalog for the hotbar -- "id" must match builder_controller.gd's
 # structure_ids / shop_dialog.gd::BUILDING_ITEMS exactly. Structures are
 # shop-only stock now (GameState.structure_inventory), not a battle-gold
