@@ -5,7 +5,7 @@ extends SceneTree
 ## 之前所有的平衡测试量的都是敌人 —— 刷什么、多少血、掉多少金。玩家侧一直
 ## 没量, 而平衡是两边相除出来的: 敌人曲线再准, 只要玩家的 DPS 或有效血量有
 ## 一处失衡, 结论就全错。tools/probe_player_power.gd 第一次量了之后当场找出
-## 四处, 这个文件把那四处钉住。
+## 四处, 这个文件把那四处钉住, 后来又补了第五处。
 ##
 ##   1. **回复不能压过敌方的全部火力。** 纳米自愈原来无条件每秒结算, 24 级
 ##      1.5 HP/秒, 一场 45 秒回 67.5 血而最大血才 9 —— 有效血量 76, 敌人要
@@ -15,9 +15,16 @@ extends SceneTree
 ##      比 heavy/speed 低三分之一。
 ##   3. **不能卖零。** 射击冷却夹在 0.18/0.32 秒, 到底之后所有射速强化零收益,
 ##      而商店的 autoloader 照卖、升级面板的 rapid_loader 照发。
-##   4. **分支之间不能一开始就分出胜负。** heavy 在 tier 0 白送 +2 伤 +2 血,
-##      1 级 DPS 是 default 的 2.55 倍 (speed 只有 1.70) —— 分支选择发生在
-##      第一次升级且不能跳过, 等于直接告诉玩家选哪个。
+##   4. **分支之间不能在 tier 0 (从来不会真的发生的合成态) 就分出胜负。**
+##      heavy 在 tier 0 白送 +2 伤 +2 血, 1 级 DPS 是 default 的 2.55 倍
+##      (speed 只有 1.70) —— 分支选择发生在第一次升级且不能跳过, 等于直接
+##      告诉玩家选哪个。
+##   5. **分支在 tier 1 (真实会发生的开局状态) 也不能分出胜负。** 4 号那条
+##      测的 tier 0 在游戏里从来到不了 —— set_branch() 选完立刻是 tier 1。
+##      星级改成不设阈值、每颗必升一级之后, 捡到第一颗星就同时触发分支选择
+##      和这份 tier 1 加成, 常常发生在本局最早几个房间; 实测 tier 1 时 heavy
+##      是 default 的 3.40 倍、speed 2.10 倍, 比 4 号量到的 1.70 倍严重得多,
+##      而 4 号那条因为压根没覆盖这个状态, 一直是绿的。
 
 const RPGManager = preload("res://scripts/rpg_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
@@ -56,6 +63,7 @@ func _run() -> void:
 	_check_train_scales()
 	_check_no_selling_zero()
 	_check_branch_opening_parity()
+	_check_branch_tier1_parity()
 	print("==================================================")
 	if failures > 0:
 		print("[FAIL] %d 项失败" % failures)
@@ -256,15 +264,14 @@ func _check_train_scales() -> void:
 func _check_no_selling_zero() -> void:
 	print("\n--- 射速强化在没有效果的时候不能卖 / 不能发 ---")
 
-	# _can_buy_item 是实例方法, 走真实的对话框实例, 不复刻判断逻辑
-	var shop = load("res://scenes/shop_dialog.tscn").instantiate()
-	root.add_child(shop)
+	# can_buy_item 是 ShopDialog 上的 static 方法 (纯读 GameState, 不需要实例),
+	# 走真实的对话框逻辑, 不复刻判断。
 
 	# (a) 没到底的时候必须照常可买 —— 别把闸门写成"永远不卖"
 	GameState.reset_campaign(1)
 	GameState.tank_branch = "default"
 	GameState.fire_rate_lvl = 0
-	if shop._can_buy_item("autoloader"):
+	if ShopDialog.can_buy_item("autoloader"):
 		ok("新档 (射速 0 级) 时 autoloader 正常可买")
 	else:
 		fail("新档时 autoloader 就买不了了 —— 闸门写反了, 这是把有效的强化也挡掉")
@@ -281,13 +288,12 @@ func _check_no_selling_zero() -> void:
 	if not capped:
 		fail("射速 14 级 + rapid_loader x3 居然没撞到冷却地板 —— "
 			+ "is_fire_rate_capped() 的算法和 player.gd::_fire() 的 clamp 对不上了")
-	elif shop._can_buy_item("autoloader"):
+	elif ShopDialog.can_buy_item("autoloader"):
 		fail("冷却已经贴在地板上, autoloader 却还能买 —— 玩家花 90G 买到的是零, "
 			+ "而卡片上写着 '+10% 装填速度'")
 	else:
 		ok("冷却贴地板时 autoloader 不可购买 (和上限检查同一条原则: 不卖零)")
 
-	shop.free()
 	GameState.reset_campaign(1)
 
 
@@ -317,3 +323,34 @@ func _check_branch_opening_parity() -> void:
 			% [spread, OPENING_DPS_SPREAD_CEILING, " / ".join(detail)]
 			+ "分支在第一次升级时选, 而且没有跳过选项, 开局就白送这么多等于"
 			+ "直接告诉玩家选哪个; 差距应该长在 tier 上, 不是送在 tier 0")
+
+
+# ---------------------------------------------------------------- 5. tier1 开局
+
+## 上面那条测的是 tier=0 —— 一个游戏里从来不会真的发生的状态 (set_branch()
+## 选完分支 tier 立刻变成 1)。真正决定"开局强度"的是 tier=1, 而且星级不设
+## 阈值以后, 捡到第一颗星就同时触发分支选择 (第一次升级、不能跳过) 和这份
+## tier=1 加成, 常常发生在本局最早的几个房间。改之前在这里测: heavy 3.40x
+## default, speed 2.10x default —— 比 tier0 那条测到的 1.70x 严重得多, 而
+## tier0 那条一直是绿的, 因为它压根没覆盖这个真实会发生的状态。
+const OPENING_TIER1_DPS_SPREAD_CEILING := 2.0
+
+func _check_branch_tier1_parity() -> void:
+	print("\n--- 分支一旦选定 (tier 1, 真实会发生的状态) 也不能立刻分出胜负 ---")
+	var best := 0.0
+	var worst := 1e9
+	var detail := PackedStringArray()
+	for branch in ["default", "speed", "heavy", "train"]:
+		var m := _mgr_at(1, branch, 1)
+		var dps := float(m.get_atk_damage(1)) / _cd_for(m, branch)
+		detail.append("%s %.2f" % [branch, dps])
+		best = maxf(best, dps)
+		worst = minf(worst, dps)
+	var spread := best / maxf(0.001, worst)
+	if spread <= OPENING_TIER1_DPS_SPREAD_CEILING:
+		ok("tier1 DPS: %s (最大倍差 x%.2f, 上限 x%.2f)"
+			% [" / ".join(detail), spread, OPENING_TIER1_DPS_SPREAD_CEILING])
+	else:
+		fail("tier1 DPS 倍差 x%.2f 超过上限 x%.2f (%s) —— "
+			% [spread, OPENING_TIER1_DPS_SPREAD_CEILING, " / ".join(detail)]
+			+ "分支一选定 tier 就立刻是 1, 这才是真实会发生的开局强度")

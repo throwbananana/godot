@@ -31,17 +31,30 @@ var p2_unlocked_perks: Dictionary = {}
 # 叠 3 层的数值感觉失控，同时仍然让每一次选择都有明确增量。
 const PERK_STACK_CURVE := [1.0, 0.65, 0.45]
 
-## heavy 分支在 tier 0 就拿到的那一份加成 (伤害和最大血各一份)。
+## 分支 tier 1/2 的加成表, 按 [tier0(不可达), tier1, tier2] 索引。
 ##
-## 原来是 2, 而 tier 0 的基准是"伤害 1 / 最大血 1" —— 也就是刚选完分支的那
-## 一刻, heavy 的伤害和血都是别人的 3 倍。实测 1 级时 heavy 的 DPS 是
-## default 的 **2.55 倍**, 而 speed 只有 1.70 倍。分支选择发生在第一次升级、
-## 而且没有跳过选项, 所以这等于直接告诉玩家"开局选 heavy"。
+## 原公式是 "BASE + tier*STEP", 一个和 tier 无关的 BASE 在 tier 1 就整份到账
+## (heavy 伤害/血量 tier1 就有 +3, tier2 只多到 +5 —— tier1 已经吃到 tier2
+## 六成的预算; speed 的开火冷却加成更夸张, tier1 +1.10 对 tier2 的 +1.50)。
+## set_branch() 选完分支 tier 立刻变成 1 (从来到不了 0), 所以这份"tier1 就
+## 送掉大半预算"的爆发, 一直是分支选择那一刻的真实强度。
 ##
-## 收到 1 之后 1 级的 DPS 倍率变成 1.70, 和 speed 齐平; tier 2 时是 +5 而不是
-## +6, 24 级 DPS 34.5 对 speed 38.9 —— heavy 用一点输出换那 +5 血, 这才是
-## "重装"该有的形状。分支之间的差距应该长在 tier 上, 而不是白送在 tier 0。
-const HEAVY_BONUS_BASE := 1
+## 以前这不算太致命: 分支选择发生在"第一次升级", 而升级要攒经验, 通常要打
+## 穿大半个 floor 0 才轮到。现在星星不设阈值、每颗必升一级 (add_level), 命中
+## 第一颗星常常就是本局最早的几次击杀之一 —— 于是这份本该分散在 tier1/tier2
+## 两次晋级之间的爆发, 被整个搬到了全局血量最薄的 floor 0 开局, 一次性打完
+## 就是"一发秒穿一切", 读起来是难度断崖式下跌而不是变强了。
+##
+## 现在 tier1 只保留一小份 (量级对齐 _auto_level_bonus 一次普通加点), tier2
+## 原样不动 —— 分支的终极形态没有被削, 只是不再整份塞进 tier1 那一刻。
+## tools/test_player_power.gd::_check_branch_tier1_parity() 钉住 tier1 (不是
+## 从来不会发生的 tier0) 这个真实开局状态, 验证时对着旧公式量出 heavy 3.40x
+## / speed 2.10x default, 远超 tier0 那条测到的 1.70x。
+const HEAVY_HP_BONUS := [0, 1, 5]
+const HEAVY_DMG_BONUS := [0, 1, 5]
+const TRAIN_HP_BONUS := [0, 1, 3]
+const SPEED_MOVE_BONUS := [0.0, 0.25, 0.60]
+const SPEED_FIRE_BONUS := [0.0, 0.70, 1.50]
 
 func get_branch(player_id: int = 1) -> String:
 	return tank_branch if player_id == 1 else p2_tank_branch
@@ -236,9 +249,9 @@ func get_player_max_hp(player_id: int = 1) -> int:
 	var tier = get_branch_tier(player_id)
 	var hp = 1 + max_hp_lvl
 	if branch == "heavy":
-		hp += HEAVY_BONUS_BASE + tier * 2
+		hp += HEAVY_HP_BONUS[tier]
 	elif branch == "train":
-		hp += 1 + tier
+		hp += TRAIN_HP_BONUS[tier]
 	hp += int(round(get_perk_value("titan_plating", 2.0, player_id)))
 	return hp
 
@@ -247,7 +260,7 @@ func get_speed_multiplier(player_id: int = 1) -> float:
 	var tier = get_branch_tier(player_id)
 	var mult = 1.0 + float(speed_lvl) * 0.04
 	if branch == "speed":
-		mult += 0.30 + float(tier) * 0.15
+		mult += SPEED_MOVE_BONUS[tier]
 	elif branch == "heavy":
 		mult -= 0.10 # 重装型较重，稍显沉稳
 	mult += get_perk_value("nitro_booster", 0.18, player_id)
@@ -258,7 +271,7 @@ func get_fire_cooldown_mult(player_id: int = 1) -> float:
 	var tier = get_branch_tier(player_id)
 	var rate = 1.0 + float(fire_rate_lvl) * 0.10
 	if branch == "speed":
-		rate += 0.70 + float(tier) * 0.40 # 极高射速
+		rate += SPEED_FIRE_BONUS[tier] # 极高射速
 	elif branch == "heavy":
 		rate *= 0.85 # 重型巨炮单发威猛，装填稍慢
 	rate += get_perk_value("rapid_loader", 0.30, player_id)
@@ -301,7 +314,7 @@ func get_atk_damage(player_id: int = 1) -> int:
 	var tier = get_branch_tier(player_id)
 	var dmg = 1 + atk_bonus
 	if branch == "heavy":
-		dmg += HEAVY_BONUS_BASE + tier * 2
+		dmg += HEAVY_DMG_BONUS[tier]
 	dmg += int(round(get_perk_value("high_explosive", 2.0, player_id)))
 	return dmg
 

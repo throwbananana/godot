@@ -84,9 +84,35 @@ func _on_body_entered(body: Node2D) -> void:
 			passengers.append(body)
 		if "is_on_platform" in body:
 			body.is_on_platform = true
+		_set_water_exception(body, true)
 
 func _on_body_exited(body: Node2D) -> void:
 	if passengers.has(body):
 		passengers.erase(body)
 	if "is_on_platform" in body:
 		body.is_on_platform = false
+	_set_water_exception(body, false)
+
+# Water tiles carry a permanently-blocking StaticBody2D (main.gd::_spawn_tile) --
+# the same thing Amphibious Hull bypasses with add_collision_exception_with().
+# _physics_process above carries riders by directly incrementing global_position,
+# not move_and_slide, so nothing stops the *carry* itself -- but the rider's own
+# move_and_slide() call next physics frame depenetrates it out of any solid body
+# it's now overlapping, ejecting it straight back off the platform mid-crossing.
+# Grant the same exception, scoped to however long the body is actually riding.
+func _set_water_exception(body: Node2D, add: bool) -> void:
+	if not (body is PhysicsBody2D):
+		return
+	# Amphibious Hull's exception is permanent (player.gd::_apply_rpg_stats) --
+	# don't strip it back off just because this ride happened to end.
+	if not add and "amphibious_hull_applied" in body and body.amphibious_hull_applied:
+		return
+	var main = get_tree().current_scene
+	if not (main and "water_bodies" in main):
+		return
+	for water_body in main.water_bodies:
+		if is_instance_valid(water_body):
+			if add:
+				body.add_collision_exception_with(water_body)
+			else:
+				body.remove_collision_exception_with(water_body)
