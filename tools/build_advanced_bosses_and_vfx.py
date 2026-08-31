@@ -46,12 +46,27 @@ os.makedirs(SPRITES_EFFECTS, exist_ok=True)
 
 def build_titan_boss(frame=0):
     objs = []
-    # Palette
-    mat_hull  = create_clay_mat(f"tt_hull_{frame}",  (0.18, 0.20, 0.26, 1.0), roughness=0.65)
-    mat_armor = create_clay_mat(f"tt_armor_{frame}", (0.28, 0.32, 0.40, 1.0), roughness=0.55)
-    mat_gold  = create_clay_mat(f"tt_gold_{frame}",  (0.96, 0.78, 0.22, 1.0), roughness=0.40)
-    mat_track = create_clay_mat(f"tt_track_{frame}", (0.16, 0.15, 0.18, 1.0), roughness=0.88)
-    mat_dark  = create_clay_mat(f"tt_dark_{frame}",  (0.08, 0.08, 0.10, 1.0), roughness=0.92)
+    # Palette —— 石墨 + 极地钢白, 刻意*不用*金色。
+    #
+    # 为什么: enemy_boss (Act 1 入门守关, 10 HP) 和 enemy_titan_boss
+    # (Act 4-12 终局, 16 HP) 原本共用同一套配色 —— 两者的金色是逐位相同的
+    # (0.96, 0.78, 0.22), hull 也只差 0.02 (0.16/0.18/0.24 vs 0.18/0.20/0.26)。
+    # 加上双方都是"四组履带舱 + 每侧 4 负重轮 + 双主炮", 在 48px 显示尺寸下实测
+    # 混淆度 0.850 —— 难度曲线两端的两个 Boss 长得几乎一样。
+    #
+    # 分离手段选*明度*而不是色相, 理由与装甲板分级一致 (见 CLAUDE.md
+    # "Plate tiers read by coverage first, value second — never by hue"):
+    # 精灵按 TILE_SCALE 0.1875 缩到 48px, 这个尺寸下能可靠传达的只有剪影大小
+    # 和明暗, 色相细节会被 5.33 倍下采样吃掉大半。
+    #
+    # 于是金色归 enemy_boss 独占 ("Imperial Gold Eagle Crest" 本来就是它的设定),
+    # titan 换成冷调钢白, hull 同时压暗一档拉开明度差。青色核心保留 —— 它是
+    # titan 的身份标识, 也和 boss_plasma_nova 特效对应。
+    mat_hull  = create_clay_mat(f"tt_hull_{frame}",  (0.11, 0.13, 0.18, 1.0), roughness=0.65)
+    mat_armor = create_clay_mat(f"tt_armor_{frame}", (0.20, 0.24, 0.32, 1.0), roughness=0.55)
+    mat_gold  = create_clay_mat(f"tt_gold_{frame}",  (0.80, 0.88, 0.94, 1.0), roughness=0.40)
+    mat_track = create_clay_mat(f"tt_track_{frame}", (0.13, 0.13, 0.16, 1.0), roughness=0.88)
+    mat_dark  = create_clay_mat(f"tt_dark_{frame}",  (0.06, 0.06, 0.08, 1.0), roughness=0.92)
 
     # Core pulse formula
     core_pulse = 2.2 + 1.2 * math.sin(frame * (2.0 * math.pi / 6.0))
@@ -61,17 +76,25 @@ def build_titan_boss(frame=0):
     bob_z = math.sin(frame * (2.0 * math.pi / 6.0)) * 0.015
 
     # 1.1 Massive Hull Chassis
+    #
+    # 刻意做成*横向*战列舰占地 (宽 > 长), 而 enemy_boss 是接近正方的占地。
+    # 光靠配色不够: 改配色后 48px 混淆度只从 0.850 降到 0.773, 拆开看剩下的
+    # 全在剪影上 —— IoU 0.905, 包围盒 33x33 vs 32x32, 覆盖率 37.4% vs 35.7%。
+    # 48px 下剪影是最可靠的通道, 占地比例一变就立刻分得开。
+    #
+    # 加宽的上限由机位定: ortho 3.85 -> 半幅 1.925; 加宽后半宽 = 履带舱中心
+    # 1.28 + 半宽 0.22 + 倒角 0.15 ≈ 1.65, 仍有余量, 不会裁切。
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.05, bob_z))
     hull = bpy.context.active_object
-    hull.scale = (1.68, 1.76, 0.58)
+    hull.scale = (1.98, 1.66, 0.58)
     hull.data.materials.append(mat_hull)
     apply_uniform_clay_bevel(hull, width=0.16, segments=4)
     objs.append(hull)
 
     # Sloped Front Ram Glacis Plate
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.78, 0.04 + bob_z))
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.75, 0.04 + bob_z))
     glacis = bpy.context.active_object
-    glacis.scale = (1.52, 0.44, 0.38)
+    glacis.scale = (1.80, 0.44, 0.38)
     glacis.data.materials.append(mat_armor)
     apply_uniform_clay_bevel(glacis, width=0.10, segments=3)
     objs.append(glacis)
@@ -92,10 +115,11 @@ def build_titan_boss(frame=0):
         objs.append(grille)
 
     # 1.2 Quad Heavy Tread Pods (Left and Right)
-    for x_side in [-1.02, 1.02]:
+    # 外移到 ±1.28 并缩短纵向长度 —— 这两步合起来把占地从"方"拉成"横"。
+    for x_side in [-1.28, 1.28]:
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x_side, 0, 0))
         tpod = bpy.context.active_object
-        tpod.scale = (0.42, 1.95, 0.68)
+        tpod.scale = (0.44, 1.80, 0.68)
         tpod.data.materials.append(mat_track)
         apply_uniform_clay_bevel(tpod, width=0.15, segments=4)
         objs.append(tpod)
@@ -118,7 +142,7 @@ def build_titan_boss(frame=0):
     # 1.3 Heavy Turret Base
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, -0.25, 0.42 + bob_z))
     turret = bpy.context.active_object
-    turret.scale = (1.20, 1.25, 0.46)
+    turret.scale = (1.38, 1.16, 0.46)
     turret.data.materials.append(mat_armor)
     apply_uniform_clay_bevel(turret, width=0.14, segments=3)
     objs.append(turret)
