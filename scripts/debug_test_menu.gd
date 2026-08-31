@@ -171,6 +171,16 @@ func _build_ui() -> void:
 	btn_back.pressed.connect(_on_back_pressed)
 	btn_row.add_child(btn_back)
 
+	var btn_studio := Button.new()
+	btn_studio.text = "🎨 3D STUDIO (3D 黏土工坊)"
+	btn_studio.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_studio.custom_minimum_size = Vector2(0, 40)
+	UIThemeHelper.apply_clay_button(btn_studio, false)
+	btn_studio.pressed.connect(func():
+		OS.shell_open("http://localhost:8080")
+	)
+	btn_row.add_child(btn_studio)
+
 	var btn_jump := Button.new()
 	btn_jump.text = "🚀 JUMP & START (跳转开始)"
 	btn_jump.size_flags_horizontal = Control.SIZE_EXPAND_FILL

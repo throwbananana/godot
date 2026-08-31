@@ -68,9 +68,18 @@ Several build scripts no longer reproduce the committed art, and running them
 will silently restyle assets. Read the "Stale build scripts" section of
 `CLAUDE.md` before re-rendering anything.
 
-## Further reading
+## 3D WebGL Clay Studio & Visual Inspection
 
-`CLAUDE.md` documents the architecture in depth: the two state layers and how
-they are synced, the tile-type dispatch chain, collision-group conventions, the
-texture/mipmap situation, and the render-pipeline invariants (with the reasons
-behind each, including approaches that were tried and rejected).
+You can inspect, explode, test physical animations, and compare Godot's 2D prerendered sprites + normal maps with native 3D PBR models in the interactive 3D WebGL Studio:
+
+```powershell
+python tools/launch_3d_clay_studio.py    # Launches Three.js 3D Studio on http://localhost:8080
+```
+
+## Further reading & Specifications
+
+- `docs/sokpop_3d_clay_pipeline_specification.md` — Sokpop 3D clay modeling & PBR rendering pipeline design standards.
+- `docs/enemy_and_turret_mechanics_design.md` — Specialized enemy mechs, engineer welding repair AI, and defense turrets.
+- `docs/vfx_and_explosion_physics_architecture.md` — 6-stage multi-layer clay explosion dynamics and synthesized Web Audio specs.
+- `docs/webgl_3d_interactive_studio_guide.md` — Three.js WebGL 3D Studio and 2.5D normal mapping comparison guide.
+- `CLAUDE.md` — In-depth architecture, state layers, tile dispatch, test suite, and render invariants.
