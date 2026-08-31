@@ -21,3 +21,24 @@ assets/blender/frames/
 # 这是本地测量记录, 不是仓库资产 —— 每次调试/测试都会追加, 入库只会让 diff
 # 变成噪音, 而且不同机器/不同次数跑出来的行数天然不一样。
 logs/
+
+# Build & Export Artifacts (禁止提交构建二进制、导出包与安装包)
+build/
+builds/
+dist/
+export/
+export_bin/
+*.exe
+*.zip
+*.7z
+*.tar.gz
+*.rar
+*.pck
+*.wasm
+*.tpz
+*.apk
+*.aab
+*.dmg
+*.iso
+*.app
+
