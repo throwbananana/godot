@@ -1494,7 +1494,14 @@ func _suicide_detonate() -> void:
 				p.take_damage(3)
 	for be in get_tree().get_nodes_in_group("base_eagle"):
 		if is_instance_valid(be) and not be.is_destroyed and global_position.distance_to(be.global_position) <= radius:
-			be.take_damage(3)
+			# BaseEagle 没有 take_damage(amount) —— 只有 destroy()/take_damage_hit(),
+			# 跟 bullet.gd::_on_area_entered 打鹰巢时同一套判定。之前这里直接调
+			# take_damage(3) 每次都是 "Nonexistent function" 脚本错误, 自爆车
+			# 贴脸炸鹰巢从未真正造成过伤害。
+			if be.has_method("destroy"):
+				be.destroy()
+			elif be.has_method("take_damage_hit"):
+				be.take_damage_hit()
 	for b in get_tree().get_nodes_in_group("brick"):
 		if is_instance_valid(b) and b is Node2D and global_position.distance_to(b.global_position) <= radius:
 			if main and main.has_method("check_key_drop"):

@@ -91,8 +91,10 @@ func _open_chest(main: Node) -> void:
 				var coin = coin_scene.instantiate()
 				var angle = i * (2.0 * PI / 8.0)
 				var dir = Vector2(cos(angle), sin(angle))
-				main.actors_container.add_child(coin)
-				coin.global_position = global_position + dir * 28.0
+				# _open_chest() 是从 body_entered 里调的, 物理查询 flush 期间——
+				# 同款问题见 drifting_supplies.gd::_collect() 的注释。
+				coin.position = main.actors_container.to_local(global_position + dir * 28.0)
+				main.actors_container.call_deferred("add_child", coin)
 
 func _denial_shake(main: Node) -> void:
 	if shake_cooldown > 0.0:

@@ -297,9 +297,26 @@ static func _upgrade_pool() -> Array[Dictionary]:
 ## 完全没动 —— 早期本来就是教学段, 卡钱只会让人以为系统坏了。
 const PRICE_FLOOR_SLOPE := 0.12
 
+## 货架基准价整体倍率。
+##
+## 这条不是斜率问题, 是量级问题。400 局重新采样(commit 4930d45ec4)测出盈余
+## 倍率均值 1.87x, 而且 floor 0 到 floor 14 每一层单独看都远高于 1 —— 说明
+## 问题不在"涨得多快"(PRICE_FLOOR_SLOPE), 而在"起点定价本来就比收入低一个
+## 数量级"。旧的 0.53x/1.87x 两次测量之所以差了 3.5 倍, 是因为货架价的测量口
+## 之前一直是错的(见 probe_balance_report.gd::_shelf_prices() 的改动说明);
+## 修完测量口之后看到的 1.87x 才是这套 6-12 件真实货架第一次被正确测量过的
+## 数字, 此前没有人在这个量级上调过价。
+##
+## PRICE_BASE_MULT = 2.0 把货架价整体翻倍, 把盈余倍率压到 ~0.9x 附近(超过
+## probe_balance_report.gd 自己报警阈值 1.35x 很远的安全区), 同时不改变
+## PRICE_FLOOR_SLOPE 的曲线形状(早期依旧不卡钱, 只是量级变了)。这是一次性
+## 校准, 不是"越大越好"——改这个数之后必须重新跑 400 局探针确认盈余倍率落
+## 在期望区间, 而不是凭感觉再翻一倍。
+const PRICE_BASE_MULT := 2.0
+
 static func _price_for(base_cost: int) -> int:
 	var floor_mult := 1.0 + float(GameState.current_floor) * PRICE_FLOOR_SLOPE
-	return int(round(float(base_cost) * floor_mult))
+	return int(round(float(base_cost) * PRICE_BASE_MULT * floor_mult))
 
 ## 商店卖的是"给队伍"的东西, 不是"给 1 号位"的东西。
 ##

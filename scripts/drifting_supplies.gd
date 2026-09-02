@@ -75,5 +75,11 @@ func _collect() -> void:
 				var coin = coin_scene.instantiate()
 				var angle = i * (2.0 * PI / 4.0)
 				var dir = Vector2(cos(angle), sin(angle))
-				main.actors_container.add_child(coin)
-				coin.global_position = global_position + dir * 22.0
+				# _collect() 是从 body_entered 里调的, 也就是物理查询 flush 期间——
+				# add_child() 触发 CollisionShape2D 入树初始化会直接报
+				# "Can't change this state while flushing queries"。用 call_deferred
+				# 错开这一帧; position 必须先按 to_local 换算好再排队, 否则节点
+				# 入树前 global_position 会退化成 position, 入树后再叠一次 GameArea
+				# 偏移 (同款注释见 main.gd:2108-2110)。
+				coin.position = main.actors_container.to_local(global_position + dir * 22.0)
+				main.actors_container.call_deferred("add_child", coin)

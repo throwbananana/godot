@@ -186,22 +186,33 @@ func _price_slope() -> float:
 	return (b / maxf(1.0, a) - 1.0) / 10.0
 
 
-## 一整个货架买光要多少钱 (floor 0 基准价)。走真实的 setup_shop(), 所以
-## "6 选 11 的强化 + 11 种建材全上架"这个结构变了这里自动跟着变。
+## 一整个货架买光要多少钱 (floor 0 基准价)。
+##
+## 曾经走 shop_dialog.tscn 的 setup_shop()/current_shop_items —— 但那是"商店是
+## 一个房间, 不是菜单"改造 (见 CLAUDE.md) 之前的对话框 UI 路径, 现在已经没有
+## 任何场景会显示它。真正玩家看到的货架由 main.gd::_ensure_shop_stock() 决定:
+## 从 build_inventory() 的"6 选 11 强化 + 15 种建材全在"里, 再各截取
+## SHOP_UPGRADE_SLOTS(3)/SHOP_BUILD_SLOTS(3), 一共 6 件。旧版本在这里量的是
+## 21 件的虚拟货架(6 强化 + 15 建材全算), 是量出来的价格的 3.28 倍 ——
+## 于是 400 局的盈余倍率被系统性地压低到实际的 ~30%, 不是economy 真的这么紧。
 func _shelf_prices() -> float:
 	GameState.reset_campaign(1)
 	GameState.current_floor = 0
-	var scn: PackedScene = load("res://scenes/shop_dialog.tscn")
-	var shop = scn.instantiate()
-	root.add_child(shop)
-	await process_frame
 	var tot := 0.0
-	var trials := 40
+	var trials := 200
 	for i in range(trials):
-		shop.setup_shop()
-		for it in shop.current_shop_items:
-			tot += float(it["cost"])
-	shop.free()
+		var upgrades: Array = []
+		var builds: Array = []
+		for it in ShopDialog.build_inventory():
+			if str(it.get("category", "")) == "BUILD":
+				builds.append(it)
+			else:
+				upgrades.append(it)
+		builds.shuffle()
+		for j in range(mini(MainGame.SHOP_UPGRADE_SLOTS, upgrades.size())):
+			tot += float(upgrades[j]["cost"])
+		for j in range(mini(MainGame.SHOP_BUILD_SLOTS, builds.size())):
+			tot += float(builds[j]["cost"])
 	return tot / float(trials)
 
 
@@ -324,8 +335,15 @@ func _sample_floor(bt: String, floor_idx: int) -> Dictionary:
 ## ⚠️ 这一改使得旧的盈余倍率基准线 (均值 0.68 / p90 1.01) **不再可比** ——
 ##    收入侧从"一条路线上的十几场"变成"整层十几个房间", 支出侧从"路线上
 ##    保底 3 个商店"变成"整层 1-2 个商店"。需要重新采样定基准。
+##
+## GameState.reset_campaign() 内部硬编码 current_act = 1, 单独调用永远只采样
+## 第 1 幕 (target_room_count(1) = 8 间房, 摸不到 SHOP_SECOND_ROOMS)。之前
+## 400 局跑下来"商店数分布 1商店:100.0%"看着像是保底逻辑坏了, 其实是这个
+## 探针从没生成过 act >= 4 的楼层 (target_room_count 在 act 4 起封顶 11 间房)
+## —— reset 之后手动把 current_act 摊到 1..max_acts 再重新 generate_floor(),
+## 才是"整局跑下来"该有的样本分布, 而不是把 400 次都花在幕 1 上。
 func _report_acts() -> void:
-	print("\n--- 幕经济 (%d 局, 最优路线) ---" % acts)
+	print("\n--- 幕经济 (%d 局, 覆盖 act 1..%d, 走整层) ---" % [acts, GameState.max_acts])
 	var rows: Array = []
 	var shops_hist := {}
 	var inc_sum := 0.0
@@ -334,6 +352,8 @@ func _report_acts() -> void:
 
 	for i in range(acts):
 		GameState.reset_campaign(1)
+		GameState.current_act = 1 + (i % GameState.max_acts)
+		GameState.generate_floor()
 		var res := _floor_econ()
 		var shops := int(res["shops"])
 		var income := float(res["income"])
@@ -347,6 +367,7 @@ func _report_acts() -> void:
 		ratio_sum += ratio
 		rows.append({
 			"run_seed": GameState.run_seed,
+			"act": GameState.current_act,
 			"shops": shops,
 			"income": int(round(income)),
 			"spend_cap": int(round(spend)),

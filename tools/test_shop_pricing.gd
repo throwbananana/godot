@@ -75,7 +75,12 @@ func _check_shop_guaranteed() -> void:
 	var hist := {}
 	var rows: Array = []
 	for i in range(runs):
+		# reset_campaign() 内部把 current_act 硬编码成 1 (target_room_count(1)
+		# = 8 间房), 单独调用永远摸不到 SHOP_SECOND_ROOMS(=ROOM_MAX=11) 这条
+		# 分支——覆盖 act 1..max_acts 才能真的验到"房间数够大时给第 2 个商店"。
 		GameState.reset_campaign(1)
+		GameState.current_act = 1 + (i % GameState.max_acts)
+		GameState.generate_floor()
 		var count := 0
 		var reachable := _reachable_room_keys()
 		for k in GameState.floor_rooms.keys():
@@ -146,10 +151,13 @@ func _check_price_scales_with_floor() -> void:
 	var late := int(shop._price_for(100))
 	shop.free()
 
-	if base == 100:
-		ok("floor 0 的价格等于表里写的基准价 (%d)" % base)
+	# ShopDialog.PRICE_BASE_MULT(=2.0) 把货架价整体翻倍, 所以 floor 0 的价格
+	# 是"表里的基准价 x PRICE_BASE_MULT", 不再等于表里写的原始数字。
+	var expected_base := int(round(100.0 * ShopDialog.PRICE_BASE_MULT))
+	if base == expected_base:
+		ok("floor 0 的价格等于基准价 x PRICE_BASE_MULT (%d)" % base)
 	else:
-		fail("floor 0 的价格是 %d, 应等于基准价 100" % base)
+		fail("floor 0 的价格是 %d, 应等于 100 x PRICE_BASE_MULT = %d" % [base, expected_base])
 
 	if late > base:
 		ok("floor 14 的同一件商品是 %d G (基准 %d, x%.2f)" % [late, base, float(late) / float(base)])

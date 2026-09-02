@@ -447,24 +447,34 @@ This replaced a from-XP model where kills didn't actually grant XP in real gamep
 
 **The gold economy has exactly one sink.** Kills do **not** award gold directly — `enemy.gd::_die()` drops a coin worth `gold_value` with 40% probability, and that coin has to be physically driven over (25 s lifetime, 120 px magnet). Events are net-neutral to net-positive (they charge 60–100 G but hand back 50–150 G). So the shop is the only place gold actually leaves the player. Income per regular-battle floor runs ~89 G on floor 0 to ~719 G on floor 14 (≈8× — enemy composition shifts to richer types *and* `floor_mult` applies), totalling **~5700 G** over an optimally-routed act.
 
-The metric that matters is **surplus ratio = act income ÷ what the act's shops can absorb** (every shelf bought out, at that floor's prices). Above 1 means gold stops being a resource. Measured over 500 generated acts by `tools/probe_balance_report.gd`:
+The metric that matters is **surplus ratio = act income ÷ what the act's shops can absorb** (every shelf bought out, at that floor's prices). Above 1 means gold stops being a resource. Current baseline, 400 acts sampled across the full `act 1..max_acts` range by `tools/probe_balance_report.gd` (commit `4930d45ec4`, room-graph architecture):
 
-| | mean | median | p90 | max |
-|---|---|---|---|---|
-| before | 1.07 | 0.87 | 1.94 | 6.37 |
-| now | **0.68** | 0.66 | 1.01 | 1.34 |
+| | mean | median | p10 | p90 | max |
+|---|---|---|---|---|---|
+| spire DAG (historical) | 1.07 | 0.87 | — | 1.94 | 6.37 |
+| room-graph, **before the three fixes below** | 0.53 / 1.87 | — | — | — | — |
+| room-graph, **current** | **0.93** | 0.85 | 0.66 | 1.35 | 2.50 |
+
+The "before" row is really two numbers, not one, because the room-graph measurement was wrong twice in a row, in opposite directions — worth keeping as a cautionary tale for the next person who re-baselines this:
+
+1. **`probe_balance_report.gd::_shelf_prices()` measured the wrong shelf.** It called the pre-refactor `shop_dialog.tscn::setup_shop()` / `current_shop_items` — the dialog-era UI path that "the shop is a room, not a menu" (below) made dead code. That path draws **6 of 11 upgrades + all 15 buildings** (21 items), not the **3 + 3 = 6** items `main.gd::_ensure_shop_stock()` actually puts on physical stands. Spend cap came out ~3.3× too high, reporting surplus ratio **0.53** (mean), never ≥ 1 — read as "gold is always the bottleneck." It measured a shelf no player has ever seen.
+2. **`_report_acts()` also only ever sampled act 1.** `GameState.reset_campaign()` hardcodes `current_act = 1` internally, and the sampling loop called it with nothing after — so `target_room_count()` never exceeded 8 rooms, `SHOP_SECOND_ROOMS` (see below) never came into reach, and every one of 400 "acts" was really the same 8-room floor with a different seed. Fixing #1 alone against this unfixed loop reported surplus ratio **1.87** — the opposite failure, "gold is never a constraint" — because act-1 floors are the smallest and cheapest in the game and every other act was invisible to the sampler.
+
+Both had to be fixed (`_shelf_prices()` now replicates `_ensure_shop_stock()`'s exact 3-of-11 + 3-of-15 draw; `_report_acts()` and `test_shop_pricing.gd::_check_shop_guaranteed()` now set `GameState.current_act` across `1..max_acts` before calling `generate_floor()`) before the *third*, real finding was even visible:
+
+3. **`SHOP_SECOND_ROOMS` was dead code.** It read `13`, but `FloorMap.ROOM_MAX` is `11` — no floor, at any act, can ever reach 13 rooms, so "a second shop on big floors" could never fire. Fixed by setting `SHOP_SECOND_ROOMS := ROOM_MAX`, so acts 4–12 (`target_room_count` hits the 11-room cap from act 4 onward) get 2 shops; acts 1–3 keep 1. Confirmed by the corrected sampler: shop-count distribution is now `1 shop: 26% / 2 shops: 74%`, matching "3 of 12 acts stay below the room cap" almost exactly.
+
+With all three fixed, the *true* pre-tuning surplus ratio was 1.87 (mean) — gold genuinely too abundant, not too scarce, once measured against the real 6–12-item shelf across a real 12-act spread. `ShopDialog.PRICE_BASE_MULT := 2.0` (a flat multiplier on every item's floor-scaled price, alongside the existing `PRICE_FLOOR_SLOPE`) brought it to the **current** row above. This is a first-pass calibration, not a settled number — re-run `tools/probe_balance_report.gd` after any further shop/reward change and compare with `python tools/analyze_balance_log.py --vs <old commit>` rather than trusting this table once it's stale again.
 
 `tools/test_shop_pricing.gd` locks the structural half of this:
 
-- **Prices scale with floor** (`ShopDialog.PRICE_FLOOR_SLOPE`, 0.12 — floor 14 costs 2.68×). The table's numbers are floor-0 prices. Deliberately steeper than the 0.08 the rewards use: at 0.08 the median act could buy nearly the whole shelf (0.87), i.e. the shop was just handing out everything you could reach. The slope only bites late — floor 0–2 prices are untouched, because the early floors are the tutorial band and being broke there reads as a broken system, not as difficulty.
+- **Prices scale with floor** (`ShopDialog.PRICE_FLOOR_SLOPE`, 0.12 — floor 14 costs 2.68× floor 0, on top of the flat `PRICE_BASE_MULT`). The table's numbers are floor-0 prices. Deliberately steeper than the 0.08 the rewards use: at 0.08 the median act could buy nearly the whole shelf (0.87), i.e. the shop was just handing out everything you could reach. The slope only bites late — floor 0–2 prices are untouched, because the early floors are the tutorial band and being broke there reads as a broken system, not as difficulty.
 - **Reroll escalates within a visit** (`REROLL_BASE` + `REROLL_STEP` × n, reset in `setup_shop()`). It used to be a flat 20 G with no limit, which made the "6 random of 11 upgrades" shelf purely decorative: one late floor's income buys thirty rerolls, so you just spin until the item you want appears.
-- **Every floor guarantees `FloorMap.MIN_SHOPS_PER_FLOOR` (1, plus a second on floors of ≥13 rooms) reachable shop rooms.** `add_structure_stock()` is called **only** from `shop_dialog.gd`, so a shopless floor half-disables the builder while looking to the player like bad luck rather than a bug.
+- **Every floor guarantees `FloorMap.MIN_SHOPS_PER_FLOOR` (1, plus a second once `rooms.size() >= SHOP_SECOND_ROOMS`, i.e. `ROOM_MAX` — acts 4+) reachable shop rooms.** `add_structure_stock()` is called **only** from `shop_dialog.gd`, so a shopless floor half-disables the builder while looking to the player like bad luck rather than a bug.
 
   The guarantee changed shape along with the map. On the spire DAG it had to be "3 shops *on a single route*", because the player climbed one path and shops on unreachable branches were worth nothing — `_ensure_shop_coverage()` DP'd the best route and converted nodes to hit the quota. A room graph is **undirected and fully connected**: the player can backtrack, so every shop on the floor is reachable and "which route" isn't a thing. `tools/test_shop_pricing.gd` accordingly asserts *count plus reachability* — reachability separately, because shops are assigned to dead ends and dead ends are derived from door adjacency, so a door-generation bug would produce a shop room that exists with no way in, which a count-only check passes happily.
 
   Historical measurement, kept because the mechanism still holds: on the old DAG, route shop count alone drove the surplus ratio (1 shop → 3.82, 3 → 1.12, 7 → 0.29), 17.5% of acts drew a 1–2-shop best route, and the guarantee *cost* income because a converted node is a battle you no longer fight (7555 G at 1 shop → 3929 at 7). Farm-or-shop is the intended trade.
-
-⚠️ **The surplus-ratio baselines in the table above are stale and must be re-measured.** They were taken on the spire DAG. Both sides of the ratio moved: income went from "a dozen battles along one route" to "every combat room on the floor", and the spend cap went from "3 guaranteed shops per act" to 1–2. `tools/probe_balance_report.gd::_floor_econ()` has been rewritten to walk the room graph in BFS order (order matters, since prices and rewards both scale with `current_floor` = rooms cleared), but nobody has run the 400-act sampling to set a new baseline. Do that before tuning any price constant.
 
 **Balance is not verifiable by reading these constants — measure it.** Because they're spread across five files and interact multiplicatively, several severe imbalances survived a long time while every constant looked individually reasonable. `tools/test_enemy_balance_curve.gd` drives the *real* `main.gd::_request_spawn_enemy()` path (never a replicated roll table — a copy drifts) and asserts four invariants that had each been violated:
 

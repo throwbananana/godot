@@ -85,11 +85,14 @@ static func target_room_count(act: int) -> int:
 ## 让建造系统 (structure_inventory 只能从商店买) 断粮。折中: 保底 1 个, 房间
 ## 数够大 (>= SHOP_SECOND_ROOMS) 时给第 2 个。
 ##
-## 注意这个数字**没有经过 tools/probe_balance_report.gd 重新测量** —— 那个
-## 探针的 act_econ 模型是建立在尖塔 DAG 上的, 跟着这次改动一起失效了。
-## 见 CLAUDE.md "The gold economy has exactly one sink" 一节。
+## 这个阈值曾经写死 13, 但 target_room_count() 的上限 ROOM_MAX 只有 11 ——
+## 12 幕封顶也摸不到 13, 于是"房间数够大时给第 2 个"从改动落地那天起就是
+## 死分支, 400 局重新采样(tools/probe_balance_report.gd, commit 4930d45ec4)
+## 验证了 100% 的局都只有 1 个商店。改成 ROOM_MAX 本身: target_room_count()
+## 从 act 4 起封顶在 11, 于是 act 4-12(12 幕里的 9 幕、房间数最多的那些)
+## 才拿到第 2 个商店, act 1-3(教学期、房间数天生更少)维持 1 个不变。
 const MIN_SHOPS_PER_FLOOR := 1
-const SHOP_SECOND_ROOMS := 13
+const SHOP_SECOND_ROOMS := ROOM_MAX
 
 ## 挑战房的四种模式, 和 main.gd::start_game() 读的 GameState.challenge_mode
 ## 是同一套字符串。按视觉幕换池子, 沿用原 _generate_spire_map() 的分配。
