@@ -124,6 +124,45 @@ static func apply_clay_upgrade_card(btn: Button, is_branch: bool = false) -> voi
 		btn.add_theme_stylebox_override("focus", style_card_hover)
 		btn.add_theme_stylebox_override("pressed", style_card_hover)
 
+static func apply_clay_upgrade_card_themed(btn: Button, theme_type: String = "normal") -> void:
+	if not btn: return
+	var tex_path = "res://assets/sprites/ui/ui_card_bg_normal.png"
+	match theme_type:
+		"heavy", "red":
+			tex_path = "res://assets/sprites/ui/ui_card_clay_heavy.png"
+		"shield", "blue":
+			tex_path = "res://assets/sprites/ui/ui_card_clay_shield.png"
+		"speed", "green":
+			tex_path = "res://assets/sprites/ui/ui_card_clay_speed.png"
+		"branch":
+			tex_path = "res://assets/sprites/ui/ui_card_bg_branch.png"
+
+	var tex = TextureHelper.get_tex(tex_path)
+	if tex:
+		var sb = StyleBoxTexture.new()
+		sb.texture = tex
+		sb.texture_margin_left = 18
+		sb.texture_margin_right = 18
+		sb.texture_margin_top = 18
+		sb.texture_margin_bottom = 18
+		sb.content_margin_left = 12
+		sb.content_margin_right = 12
+		sb.content_margin_top = 12
+		sb.content_margin_bottom = 12
+		btn.add_theme_stylebox_override("normal", sb)
+		btn.add_theme_stylebox_override("disabled", sb)
+
+		var sb_h = sb.duplicate() as StyleBoxTexture
+		sb_h.modulate_color = Color(1.15, 1.15, 1.05)
+		btn.add_theme_stylebox_override("hover", sb_h)
+		btn.add_theme_stylebox_override("focus", sb_h)
+
+		var sb_p = sb.duplicate() as StyleBoxTexture
+		sb_p.modulate_color = Color(0.92, 0.88, 0.85)
+		btn.add_theme_stylebox_override("pressed", sb_p)
+	else:
+		apply_clay_upgrade_card(btn, theme_type == "branch")
+
 static func apply_clay_event_card(btn: Button) -> void:
 	_init_card_styles()
 	if not btn: return
@@ -134,6 +173,38 @@ static func apply_clay_event_card(btn: Button) -> void:
 		btn.add_theme_stylebox_override("hover", style_card_hover)
 		btn.add_theme_stylebox_override("focus", style_card_hover)
 		btn.add_theme_stylebox_override("pressed", style_card_hover)
+
+static func apply_clay_event_button(btn: Button, opt_index: int = 1) -> void:
+	if not btn: return
+	var tex_name = "btn_event_opt%d_clay.png" % clampi(opt_index, 1, 3)
+	var tex = TextureHelper.get_tex("res://assets/sprites/ui/" + tex_name)
+	if tex:
+		var sb = StyleBoxTexture.new()
+		sb.texture = tex
+		sb.texture_margin_left = 16
+		sb.texture_margin_right = 16
+		sb.texture_margin_top = 10
+		sb.texture_margin_bottom = 10
+		sb.content_margin_left = 14
+		sb.content_margin_right = 14
+		sb.content_margin_top = 8
+		sb.content_margin_bottom = 8
+		btn.add_theme_stylebox_override("normal", sb)
+		btn.add_theme_stylebox_override("disabled", sb)
+
+		var sb_h = sb.duplicate() as StyleBoxTexture
+		sb_h.modulate_color = Color(1.15, 1.15, 1.05)
+		btn.add_theme_stylebox_override("hover", sb_h)
+		btn.add_theme_stylebox_override("focus", sb_h)
+
+		var sb_p = sb.duplicate() as StyleBoxTexture
+		sb_p.modulate_color = Color(0.9, 0.85, 0.8)
+		btn.add_theme_stylebox_override("pressed", sb_p)
+
+		btn.add_theme_color_override("font_color", Color(0.95, 0.90, 0.75, 1.0))
+		btn.add_theme_color_override("font_hover_color", Color(1.0, 0.98, 0.85, 1.0))
+	else:
+		apply_clay_button(btn)
 
 static func apply_clay_tab_button(btn: Button, is_active: bool = false) -> void:
 	if not btn: return

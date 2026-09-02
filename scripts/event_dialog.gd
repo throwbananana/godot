@@ -19,9 +19,9 @@ var dialog_type: String = "rest"
 
 func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(self, Color(0.16, 0.14, 0.18, 0.96), 16)
-	UIThemeHelper.apply_clay_button(btn_1)
-	UIThemeHelper.apply_clay_button(btn_2)
-	UIThemeHelper.apply_clay_button(btn_3)
+	UIThemeHelper.apply_clay_event_button(btn_1, 1)
+	UIThemeHelper.apply_clay_event_button(btn_2, 2)
+	UIThemeHelper.apply_clay_event_button(btn_3, 3)
 
 	btn_1.pressed.connect(func(): _on_choice(1))
 	btn_2.pressed.connect(func(): _on_choice(2))
@@ -73,6 +73,7 @@ func setup(type: String) -> void:
 				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_speed.png", Vector2(22, 22))
 				UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/powerups/star.png", Vector2(22, 22))
 			"mechanic":
+				icon_path = "res://assets/sprites/ui/diorama_event_mechanic.png"
 				title_label.text = "WANDERING COMBAT MECHANIC (ENCOUNTER)"
 				desc_label.text = "A friendly scavenger engineer offers to upgrade your chassis on the spot:"
 				btn_1.text = "1. Heavy Exoskeleton Plating (+2 Max HP)"

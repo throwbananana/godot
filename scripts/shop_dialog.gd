@@ -59,13 +59,56 @@ const BUILDING_ITEMS: Array[Dictionary] = [
 
 func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(self, Color(0.14, 0.12, 0.16, 0.98), 16)
-	UIThemeHelper.apply_icon_button(btn_reroll, "res://assets/sprites/ui/ui_icon_shop_refresh.png", Vector2(20, 20))
-	UIThemeHelper.apply_icon_button(btn_leave, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(20, 20))
+	
+	var reroll_tex = TextureHelper.get_tex("res://assets/sprites/ui/btn_clay_reroll.png")
+	var leave_tex = TextureHelper.get_tex("res://assets/sprites/ui/btn_clay_leave.png")
+
+	if reroll_tex:
+		var sb_r = StyleBoxTexture.new()
+		sb_r.texture = reroll_tex
+		sb_r.texture_margin_left = 16
+		sb_r.texture_margin_right = 16
+		sb_r.texture_margin_top = 10
+		sb_r.texture_margin_bottom = 10
+		sb_r.content_margin_left = 14
+		sb_r.content_margin_right = 14
+		sb_r.content_margin_top = 8
+		sb_r.content_margin_bottom = 8
+		btn_reroll.add_theme_stylebox_override("normal", sb_r)
+		btn_reroll.add_theme_stylebox_override("disabled", sb_r)
+		var sb_rh = sb_r.duplicate() as StyleBoxTexture
+		sb_rh.modulate_color = Color(1.15, 1.15, 1.05)
+		btn_reroll.add_theme_stylebox_override("hover", sb_rh)
+		btn_reroll.add_theme_stylebox_override("focus", sb_rh)
+	else:
+		UIThemeHelper.apply_icon_button(btn_reroll, "res://assets/sprites/ui/ui_icon_shop_refresh.png", Vector2(20, 20))
+
+	if leave_tex:
+		var sb_l = StyleBoxTexture.new()
+		sb_l.texture = leave_tex
+		sb_l.texture_margin_left = 16
+		sb_l.texture_margin_right = 16
+		sb_l.texture_margin_top = 10
+		sb_l.texture_margin_bottom = 10
+		sb_l.content_margin_left = 14
+		sb_l.content_margin_right = 14
+		sb_l.content_margin_top = 8
+		sb_l.content_margin_bottom = 8
+		btn_leave.add_theme_stylebox_override("normal", sb_l)
+		btn_leave.add_theme_stylebox_override("disabled", sb_l)
+		var sb_lh = sb_l.duplicate() as StyleBoxTexture
+		sb_lh.modulate_color = Color(1.15, 1.15, 1.05)
+		btn_leave.add_theme_stylebox_override("hover", sb_lh)
+		btn_leave.add_theme_stylebox_override("focus", sb_lh)
+	else:
+		UIThemeHelper.apply_icon_button(btn_leave, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(20, 20))
 
 	btn_reroll.pressed.connect(_on_reroll_pressed)
 	btn_leave.pressed.connect(_on_leave_pressed)
 
-	var d_tex = TextureHelper.get_tex("res://assets/sprites/ui/diorama_shop.png")
+	var d_tex = TextureHelper.get_tex("res://assets/sprites/ui/ui_banner_shop_title.png")
+	if not d_tex:
+		d_tex = TextureHelper.get_tex("res://assets/sprites/ui/diorama_shop.png")
 	if d_tex and diorama_rect:
 		diorama_rect.texture = d_tex
 

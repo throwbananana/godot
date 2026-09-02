@@ -3,6 +3,7 @@ extends CanvasLayer
 
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const TextureHelper = preload("res://scripts/texture_helper.gd")
 
 signal option_selected(option_data: Dictionary, player_id: int)
 
@@ -39,7 +40,18 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 		card_btn.custom_minimum_size = Vector2(210, 240)
 		card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var is_branch: bool = str(opt.get("type", "")) == "branch"
-		UIThemeHelper.apply_clay_upgrade_card(card_btn, is_branch)
+		var theme_type = "normal"
+		var branch_name = str(opt.get("branch", ""))
+		var perk_id = str(opt.get("id", ""))
+		if branch_name == "heavy" or perk_id in ["titan_plating", "high_explosive", "clay_crusher"]:
+			theme_type = "heavy"
+		elif branch_name == "speed" or perk_id in ["rapid_loader", "nitro_booster", "frost_cleats"]:
+			theme_type = "speed"
+		elif branch_name == "train" or perk_id in ["warp_drive", "nano_repair"]:
+			theme_type = "shield"
+		elif is_branch:
+			theme_type = "branch"
+		UIThemeHelper.apply_clay_upgrade_card_themed(card_btn, theme_type)
 
 		var vbox = VBoxContainer.new()
 		vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
