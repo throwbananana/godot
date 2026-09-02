@@ -66,14 +66,16 @@ func _ready() -> void:
 	if reroll_tex:
 		var sb_r = StyleBoxTexture.new()
 		sb_r.texture = reroll_tex
-		sb_r.texture_margin_left = 16
-		sb_r.texture_margin_right = 16
-		sb_r.texture_margin_top = 10
-		sb_r.texture_margin_bottom = 10
+		sb_r.texture_margin_left = 22
+		sb_r.texture_margin_right = 22
+		sb_r.texture_margin_top = 14
+		sb_r.texture_margin_bottom = 18
+		sb_r.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+		sb_r.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
 		sb_r.content_margin_left = 14
 		sb_r.content_margin_right = 14
 		sb_r.content_margin_top = 8
-		sb_r.content_margin_bottom = 8
+		sb_r.content_margin_bottom = 10
 		btn_reroll.add_theme_stylebox_override("normal", sb_r)
 		btn_reroll.add_theme_stylebox_override("disabled", sb_r)
 		var sb_rh = sb_r.duplicate() as StyleBoxTexture
@@ -86,14 +88,16 @@ func _ready() -> void:
 	if leave_tex:
 		var sb_l = StyleBoxTexture.new()
 		sb_l.texture = leave_tex
-		sb_l.texture_margin_left = 16
-		sb_l.texture_margin_right = 16
-		sb_l.texture_margin_top = 10
-		sb_l.texture_margin_bottom = 10
+		sb_l.texture_margin_left = 22
+		sb_l.texture_margin_right = 22
+		sb_l.texture_margin_top = 14
+		sb_l.texture_margin_bottom = 18
+		sb_l.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+		sb_l.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
 		sb_l.content_margin_left = 14
 		sb_l.content_margin_right = 14
 		sb_l.content_margin_top = 8
-		sb_l.content_margin_bottom = 8
+		sb_l.content_margin_bottom = 10
 		btn_leave.add_theme_stylebox_override("normal", sb_l)
 		btn_leave.add_theme_stylebox_override("disabled", sb_l)
 		var sb_lh = sb_l.duplicate() as StyleBoxTexture

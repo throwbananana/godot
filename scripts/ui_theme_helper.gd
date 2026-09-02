@@ -141,14 +141,16 @@ static func apply_clay_upgrade_card_themed(btn: Button, theme_type: String = "no
 	if tex:
 		var sb = StyleBoxTexture.new()
 		sb.texture = tex
-		sb.texture_margin_left = 18
-		sb.texture_margin_right = 18
-		sb.texture_margin_top = 18
-		sb.texture_margin_bottom = 18
-		sb.content_margin_left = 12
-		sb.content_margin_right = 12
-		sb.content_margin_top = 12
-		sb.content_margin_bottom = 12
+		sb.texture_margin_left = 26
+		sb.texture_margin_right = 26
+		sb.texture_margin_top = 26
+		sb.texture_margin_bottom = 26
+		sb.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+		sb.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+		sb.content_margin_left = 14
+		sb.content_margin_right = 14
+		sb.content_margin_top = 14
+		sb.content_margin_bottom = 14
 		btn.add_theme_stylebox_override("normal", sb)
 		btn.add_theme_stylebox_override("disabled", sb)
 
@@ -181,12 +183,14 @@ static func apply_clay_event_button(btn: Button, opt_index: int = 1) -> void:
 	if tex:
 		var sb = StyleBoxTexture.new()
 		sb.texture = tex
-		sb.texture_margin_left = 16
-		sb.texture_margin_right = 16
-		sb.texture_margin_top = 10
-		sb.texture_margin_bottom = 10
-		sb.content_margin_left = 14
-		sb.content_margin_right = 14
+		sb.texture_margin_left = 20
+		sb.texture_margin_right = 20
+		sb.texture_margin_top = 14
+		sb.texture_margin_bottom = 16
+		sb.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+		sb.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+		sb.content_margin_left = 16
+		sb.content_margin_right = 16
 		sb.content_margin_top = 8
 		sb.content_margin_bottom = 8
 		btn.add_theme_stylebox_override("normal", sb)
