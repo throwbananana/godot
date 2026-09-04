@@ -111,6 +111,16 @@ static var has_iff_flag: bool = false      # Friendly IFF Flag: player attacks n
 static var unlocked_perks: Dictionary = {}
 static var p2_unlocked_perks: Dictionary = {}
 
+# id (EncyclopediaData entry id, e.g. "enemy_sniper") -> true, once the
+# player has actually encountered that enemy/item/building/terrain in a
+# real battle. Deliberately NOT cleared by reset_campaign() below — this is
+# a meta-unlock across runs (like a bestiary), not per-campaign state, so a
+# new campaign should not re-fog entries the player has already seen.
+static var discovered_encyclopedia: Dictionary = {}
+
+static func discover_encyclopedia_entry(id: String) -> void:
+	discovered_encyclopedia[id] = true
+
 # How many times each perk can be picked. Perks with an existing numeric
 # hook (HP/damage/rate/range/duration) scale per stack via
 # RPGManager.get_perk_value(); perks that are pass/fail mechanical gates
