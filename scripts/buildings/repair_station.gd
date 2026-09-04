@@ -28,7 +28,9 @@ func _pulse_heal() -> void:
 		if is_instance_valid(p) and global_position.distance_to(p.global_position) < heal_radius:
 			if p.has_method("heal"):
 				p.heal(1)
-				VFXAnimator.spawn_dust_puff(get_parent(), p.global_position)
+				# 上飘的绿色光点, 不是扬尘 —— 增益一律走上行运动, 伤害一律
+				# 走向外放射, 这样玩家不用读数字就知道刚才是好事还是坏事。
+				VFXAnimator.spawn_heal_pulse(get_parent(), p.global_position)
 
 	var blds = get_tree().get_nodes_in_group("buildings")
 	for b in blds:

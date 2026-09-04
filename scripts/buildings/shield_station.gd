@@ -47,7 +47,9 @@ func _process(delta: float) -> void:
 		if recharge_timer >= recharge_cooldown:
 			is_charged = true
 			SoundManager.play_pickup(get_tree())
-			VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+			# 充能完成 = 增益可领取, 走上行光点。take_damage() 里挨打那次
+			# 仍然是 spawn_shockwave, 两者必须区分开。
+			VFXAnimator.spawn_heal_pulse(get_parent(), global_position)
 			var tw = create_tween()
 			tw.tween_property(sprite, "scale", Vector2(0.24, 0.24), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 			tw.tween_property(sprite, "scale", Vector2(0.1875, 0.1875), 0.10)
@@ -67,8 +69,8 @@ func _grant_shield_to(player_body: Node2D) -> void:
 		player_body.set_invulnerable(shield_duration)
 	
 	SoundManager.play_shield_hit(get_tree())
-	VFXAnimator.spawn_shockwave(get_parent(), global_position)
-	VFXAnimator.spawn_dust_puff(get_parent(), player_body.global_position)
+	VFXAnimator.spawn_heal_pulse(get_parent(), global_position)
+	VFXAnimator.spawn_heal_pulse(get_parent(), player_body.global_position, 0.85)
 
 	# 充能所震动弹跳特效
 	var tw = create_tween()

@@ -41,5 +41,5 @@ func _on_body_entered(body: Node2D) -> void:
 		if main and main.has_method("obtain_treasure_key"):
 			main.obtain_treasure_key()
 		SoundManager.play_level_up(get_tree())
-		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+		VFXAnimator.spawn_reward_burst(get_parent(), global_position)
 		queue_free()

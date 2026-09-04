@@ -47,12 +47,13 @@ func _process(delta: float) -> void:
 		scan_timer = 0.0
 		_trigger_radar_sweep()
 
+## 扫描用断续弧段 (spawn_emp_pulse), destroy() 里才用实心冲击波 —— 见 emp_tower。
 func _trigger_radar_sweep() -> void:
 	if not is_inside_tree():
 		return
 	var p = get_parent()
 	if p:
-		VFXAnimator.spawn_shockwave(p, global_position)
+		VFXAnimator.spawn_emp_pulse(p, global_position, 1.15)
 	if is_inside_tree() and get_tree():
 		SoundManager.play_hit_steel(get_tree())
 

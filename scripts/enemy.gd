@@ -645,6 +645,14 @@ func _setup_tank_type() -> void:
 				sprite.scale = Vector2(0.14, 0.14)
 
 func freeze(duration: float) -> void:
+	# 中招方原本没有任何提示: 冰霜新星只在 boss 自己脚下画一次, 被冻住的单位
+	# 仅仅是 modulate 变蓝, 混在一堆同时闪烁的坦克里根本读不出来。这里给每个
+	# 中招者补一次碎冰。
+	#
+	# 只在"从没冻到冻"的那一下播 —— freeze() 会被重复调用来续时长, 不设这个
+	# 闸门的话同一个目标会每帧叠一层特效。
+	if freeze_timer <= 0.0 and is_inside_tree() and not is_dying:
+		VFXAnimator.spawn_frost_shatter(get_parent(), global_position, 0.9)
 	freeze_timer = duration
 
 func _physics_process(delta: float) -> void:
@@ -2040,9 +2048,13 @@ func _start_sandworm_burrow() -> void:
 	is_burrowing = true
 
 	# 1. 钻地前兆：沙尘碎屑扬起、车身收缩下潜入地表
+	#
+	# 用专门的破土特效而不是通用扬尘+碎块: 沙虫一共有三个沙尘时刻 (下潜、
+	# 目标点预警、破土), 全用 dust_puff 的话玩家分不出哪一下是"它要出来了"。
+	# 现在下潜和破土是 sand_burst (土丘鼓起再塌成抛飞土块), 中间那次预警
+	# 仍然留着轻量的 dust_puff —— 预警本来就该比实际破土弱。
 	SoundManager.play_hit_steel(get_tree())
-	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
-	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+	VFXAnimator.spawn_sand_burst(get_parent(), global_position)
 
 	var burrow_tw = create_tween().set_parallel(true)
 	burrow_tw.tween_property(sprite, "scale:y", 0.05, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
@@ -2076,6 +2088,8 @@ func _start_sandworm_burrow() -> void:
 
 	# 4. 破土而出！(Breach Emerge)
 	global_position = target_pos
+	# 破土这一下原本没有任何特效 —— 整段演出里最关键的一帧反而是最安静的。
+	VFXAnimator.spawn_sand_burst(get_parent(), target_pos, 1.25)
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(1, true)
 	is_burrowed = false

@@ -64,9 +64,9 @@ func _open_chest(main: Node) -> void:
 	if lock_indicator:
 		lock_indicator.visible = false
 
-	# Victory Sound & Massive Shockwave Burst
+	# 开箱走四角星芒, 不再和"建筑被炸掉"共用同一个灰色冲击波环。
 	SoundManager.play_level_up(get_tree())
-	VFXAnimator.spawn_shockwave(get_parent(), global_position)
+	VFXAnimator.spawn_reward_burst(get_parent(), global_position, 1.2)
 	VFXAnimator.spawn_teleport_burst(get_parent(), global_position)
 
 	# Open Chest scale pop

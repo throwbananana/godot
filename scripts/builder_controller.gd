@@ -3,6 +3,7 @@ extends Node2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const BunkerScript = preload("res://scripts/buildings/bunker.gd")
 
 enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL, PIPE, BUNKER, WOODEN_WALL }
@@ -455,6 +456,9 @@ func _try_place_current(pid: int) -> void:
 	if new_struct:
 		main.actors_container.add_child(new_struct)
 		new_struct.global_position = place_pos
+		# 落成特效: 全项目唯一向内收敛的一组, 末帧最实 —— "东西被造出来了"
+		# 靠收束感传达, 和所有向外炸开的效果正好相反。
+		VFXAnimator.spawn_build_assemble(main.actors_container, place_pos)
 		SoundManager.play_build(get_tree())
 		if main.has_method("show_toast"):
 			main.show_toast("PLACED %s (剩余库存 x%d)" % [name_str, GameState.get_structure_stock(struct_id)])

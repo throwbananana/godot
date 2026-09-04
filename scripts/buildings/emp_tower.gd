@@ -55,8 +55,10 @@ func _emit_emp_pulse() -> void:
 		return
 	var p = get_parent()
 	if p:
-		VFXAnimator.spawn_shockwave(p, global_position)
-		VFXAnimator.spawn_dust_puff(p, global_position)
+		# 断续弧段而不是实心冲击波: 这一下瘫痪的是电子设备, 不是物理推力。
+		# destroy() 里那次仍然是 spawn_shockwave —— 塔"被炸掉"和塔"放脉冲"
+		# 必须长得不一样, 否则玩家分不清刚才是自己的塔响了还是没了。
+		VFXAnimator.spawn_emp_pulse(p, global_position)
 	if is_inside_tree() and get_tree():
 		SoundManager.play_hit_steel(get_tree())
 

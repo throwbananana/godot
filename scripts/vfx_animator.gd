@@ -226,6 +226,96 @@ static func spawn_tesla_arc_spark(parent: Node, pos: Vector2, scale_mult: float 
 	create_anim(parent, pos, paths, 0.22 * scale_mult, 18.0)
 	_notify_darkness_flash(parent, pos, 120.0 * scale_mult, 0.25)
 
+## ---------------------------------------------------------------- 语义化特效
+##
+## 这六组存在的理由是量出来的, 不是想出来的: 统计过本文件全部 spawn_* 的调用点,
+## 12 个函数 240 处调用, 而 spawn_shockwave / spawn_clay_debris / spawn_dust_puff
+## 三个就占了 198 处。单是 spawn_shockwave 一个就同时在演 —— 胜利爆发、EMP 瘫痪、
+## 雷达扫描、护盾站充能、宝箱开启、跳板弹射、钥匙拾取、虫洞、建筑爆破、鹰旗阵亡。
+## 语义完全不同, 画面完全一样, 玩家没法从画面学到刚发生了什么。
+##
+## 美术侧的区分**不靠颜色**: 世界精灵按 TILE_SCALE=0.1875 画 (256px -> 48px),
+## 那个尺寸下色相分辨力很差, 能读出来的是形状语法和运动方向。所以每组换的是
+## 几何母题 —— 增益向上飘、伤害向外炸、电子是断续弧段、奖励是四角星芒、建造
+## 是向内收敛。详见 tools/build_semantic_vfx.py 顶部。
+
+## 治疗/补给脉冲。向上飘的绿色光点 —— 上行是这套俯视视角里唯一不会和"爆炸
+## 向外炸开"混淆的方向, 所以增益类一律走上行。
+static func spawn_heal_pulse(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_heal_pulse_f0.png",
+		"res://assets/sprites/effects/vfx_heal_pulse_f1.png",
+		"res://assets/sprites/effects/vfx_heal_pulse_f2.png",
+		"res://assets/sprites/effects/vfx_heal_pulse_f3.png",
+		"res://assets/sprites/effects/vfx_heal_pulse_f4.png",
+		"res://assets/sprites/effects/vfx_heal_pulse_f5.png"
+	]
+	create_anim(parent, pos, paths, 0.22 * scale_mult, 15.0)
+
+## EMP / 干扰 / 雷达扫描。断开的青色弧段 —— "断"是它和通用冲击波的关键区别:
+## 实心圆环读作物理冲击, 断续弧段读作电流。缺口是剪影级特征, 48px 下仍成立。
+static func spawn_emp_pulse(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_emp_pulse_f0.png",
+		"res://assets/sprites/effects/vfx_emp_pulse_f1.png",
+		"res://assets/sprites/effects/vfx_emp_pulse_f2.png",
+		"res://assets/sprites/effects/vfx_emp_pulse_f3.png",
+		"res://assets/sprites/effects/vfx_emp_pulse_f4.png",
+		"res://assets/sprites/effects/vfx_emp_pulse_f5.png"
+	]
+	create_anim(parent, pos, paths, 0.26 * scale_mult, 18.0)
+	_notify_darkness_flash(parent, pos, 130.0 * scale_mult, 0.22)
+
+## 战利品爆发。四角星芒 —— 靠形状而不是金色承担辨识, 因为金色在本项目里
+## 已经是*敌人*词汇 (见 CLAUDE.md 关于 tile_steel 那段)。
+static func spawn_reward_burst(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_reward_burst_f0.png",
+		"res://assets/sprites/effects/vfx_reward_burst_f1.png",
+		"res://assets/sprites/effects/vfx_reward_burst_f2.png",
+		"res://assets/sprites/effects/vfx_reward_burst_f3.png",
+		"res://assets/sprites/effects/vfx_reward_burst_f4.png",
+		"res://assets/sprites/effects/vfx_reward_burst_f5.png"
+	]
+	create_anim(parent, pos, paths, 0.20 * scale_mult, 16.0)
+
+## 冰霜碎裂。带棱角的碎片, 和 clay_debris 的圆润碎块刻意相反 —— 冰要"锐"。
+static func spawn_frost_shatter(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_frost_shatter_f0.png",
+		"res://assets/sprites/effects/vfx_frost_shatter_f1.png",
+		"res://assets/sprites/effects/vfx_frost_shatter_f2.png",
+		"res://assets/sprites/effects/vfx_frost_shatter_f3.png",
+		"res://assets/sprites/effects/vfx_frost_shatter_f4.png",
+		"res://assets/sprites/effects/vfx_frost_shatter_f5.png"
+	]
+	create_anim(parent, pos, paths, 0.22 * scale_mult, 17.0)
+
+## 破土喷发。土丘鼓起再塌成抛飞的土块 —— SANDWORM 钻地/破土专用。
+static func spawn_sand_burst(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_sand_burst_f0.png",
+		"res://assets/sprites/effects/vfx_sand_burst_f1.png",
+		"res://assets/sprites/effects/vfx_sand_burst_f2.png",
+		"res://assets/sprites/effects/vfx_sand_burst_f3.png",
+		"res://assets/sprites/effects/vfx_sand_burst_f4.png",
+		"res://assets/sprites/effects/vfx_sand_burst_f5.png"
+	]
+	create_anim(parent, pos, paths, 0.26 * scale_mult, 16.0)
+
+## 建筑落成。**唯一向内收敛的一组** —— 别的都向外扩散并消散, 它末帧最实,
+## 因为"东西被造出来了"这件事要靠收束感传达。别拿爆炸那条消散断言套它。
+static func spawn_build_assemble(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_build_assemble_f0.png",
+		"res://assets/sprites/effects/vfx_build_assemble_f1.png",
+		"res://assets/sprites/effects/vfx_build_assemble_f2.png",
+		"res://assets/sprites/effects/vfx_build_assemble_f3.png",
+		"res://assets/sprites/effects/vfx_build_assemble_f4.png",
+		"res://assets/sprites/effects/vfx_build_assemble_f5.png"
+	]
+	create_anim(parent, pos, paths, 0.24 * scale_mult, 16.0)
+
 static func spawn_toxic_splash(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/toxic_splash_0.png",

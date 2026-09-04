@@ -48,6 +48,19 @@ func _init() -> void:
 	_check_sequence("boss_frost_nova", "res://assets/sprites/effects/boss_frost_nova_%d.png")
 	_check_sequence("tesla_arc_spark", "res://assets/sprites/effects/tesla_arc_spark_%d.png")
 	_check_sequence("toxic_splash", "res://assets/sprites/effects/toxic_splash_%d.png")
+
+	# 语义化特效组 (tools/build_semantic_vfx.py)。它们不是爆炸, 但"先胀后消"
+	# 这条规矩对任何向外扩散的瞬时特效都成立 —— 末帧最大 = 动画以全序列最实的
+	# 一团收尾, 看起来像卡住而不是散掉。
+	#
+	# 注意 vfx_build_assemble **故意不在这个列表里**: 它演的是建筑落成, 运动
+	# 方向是向内收敛, 末帧本来就该最实。拿这里的断言去套它会把它改坏, 它的
+	# 反向断言在 tools/test_semantic_vfx.gd。
+	_check_sequence("heal_pulse", "res://assets/sprites/effects/vfx_heal_pulse_f%d.png")
+	_check_sequence("emp_pulse", "res://assets/sprites/effects/vfx_emp_pulse_f%d.png")
+	_check_sequence("reward_burst", "res://assets/sprites/effects/vfx_reward_burst_f%d.png")
+	_check_sequence("frost_shatter", "res://assets/sprites/effects/vfx_frost_shatter_f%d.png")
+	_check_sequence("sand_burst", "res://assets/sprites/effects/vfx_sand_burst_f%d.png")
 	_check_legacy_asset_gone()
 	await _check_runtime()
 

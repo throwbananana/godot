@@ -36,6 +36,14 @@ from sokpop_common import (
 from build_all_sokpop_assets_unified import build_sokpop_explosion, SPRITES_EFFECTS
 from build_suicide_and_mirage_assets import build_suicide_blast_vfx, ORTHO_SCALE_BLAST
 from build_sokpop_animations import build_dust_puff, build_muzzle_flash
+from build_semantic_vfx import (
+    build_heal_pulse,
+    build_emp_pulse,
+    build_reward_burst,
+    build_frost_shatter,
+    build_sand_burst,
+    build_build_assemble,
+)
 
 JITTER_SEED = 3100
 
@@ -45,6 +53,15 @@ GROUPS = {
     "suicide_blast": (build_suicide_blast_vfx,  6, "vfx_suicide_blast_f{i}.png", ORTHO_SCALE_BLAST),
     "dust_puff":     (build_dust_puff,          6, "dust_puff_{i}.png",         ORTHO_SCALE_DEFAULT),
     "muzzle_flash":  (build_muzzle_flash,       6, "muzzle_flash_{i}.png",      ORTHO_SCALE_DEFAULT),
+
+    # 语义化特效组 (build_semantic_vfx.py)。存在的理由见那个脚本的顶部注释:
+    # 通用冲击波一个人演了 79 处语义不同的事件, 这六组是把它拆开。
+    "heal_pulse":     (build_heal_pulse,     6, "vfx_heal_pulse_f{i}.png",     ORTHO_SCALE_DEFAULT),
+    "emp_pulse":      (build_emp_pulse,      6, "vfx_emp_pulse_f{i}.png",      ORTHO_SCALE_DEFAULT),
+    "reward_burst":   (build_reward_burst,   6, "vfx_reward_burst_f{i}.png",   ORTHO_SCALE_DEFAULT),
+    "frost_shatter":  (build_frost_shatter,  6, "vfx_frost_shatter_f{i}.png",  ORTHO_SCALE_DEFAULT),
+    "sand_burst":     (build_sand_burst,     6, "vfx_sand_burst_f{i}.png",     ORTHO_SCALE_DEFAULT),
+    "build_assemble": (build_build_assemble, 6, "vfx_build_assemble_f{i}.png", ORTHO_SCALE_DEFAULT),
 }
 
 
