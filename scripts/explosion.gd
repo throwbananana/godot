@@ -12,11 +12,36 @@ var frame_timer: float = 0.0
 var frame_duration: float = 0.055
 var light: PointLight2D = null
 
+## 爆炸差分。三套图是同一种火球的三次实例 (换角相位 + 换 wobble 种子, 见
+## build_all_sokpop_assets_unified.py 的 EXPLOSION_VARIANTS), 不是三种爆炸。
+const VARIANT_PREFIXES := ["explosion", "explosion_v1", "explosion_v2"]
+
+## 轮流取, **不掷随机数**。两个理由:
+##
+## 1. 每日挑战在 start_game() 里 seed() 了全局 RNG, 之后整场战斗的敌人生成
+##    (_request_spawn_enemy) 一直在从那条流里取数 —— 全服同一个种子跑出同一局
+##    是这个模式的全部意义。爆炸是战斗中触发最频繁的事件之一, 在这里每次抽一个
+##    randi 会让后续所有人的随机序列整体错位, 而且不报任何错。
+##    (同 BalanceLog.session_id() 为什么用 ticks 而不是 randi。)
+## 2. 轮流比随机**更符合目的**: 差分要解决的是"连着炸三辆车、三团火一模一样"
+##    这个观感, 轮流保证相邻的爆炸必定不同, 随机则有 1/3 的概率撞上。
+static var _variant_cursor: int = 0
+
 func _ready() -> void:
+	var v_idx := _variant_cursor % VARIANT_PREFIXES.size()
+	_variant_cursor += 1
 	for i in range(6):
-		var tex = TextureHelper.get_tex("res://assets/sprites/effects/explosion_%d.png" % i)
+		var tex = TextureHelper.get_tex(
+			"res://assets/sprites/effects/%s_%d.png" % [VARIANT_PREFIXES[v_idx], i])
 		if tex:
 			textures.append(tex)
+	# 变体图缺失 (没渲/没导入) 就退回基础序列。宁可全场同一朵火球, 也不要没有爆炸。
+	if textures.size() < 6:
+		textures.clear()
+		for i in range(6):
+			var tex = TextureHelper.get_tex("res://assets/sprites/effects/explosion_%d.png" % i)
+			if tex:
+				textures.append(tex)
 	if textures.size() > 0:
 		sprite.texture = textures[0]
 	SoundManager.play_explosion(get_tree())

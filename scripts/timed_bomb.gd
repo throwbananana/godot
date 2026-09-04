@@ -209,6 +209,9 @@ func _resolve_flame_impact(pos: Vector2) -> bool:
 	for be in get_tree().get_nodes_in_group("base_eagle"):
 		if is_instance_valid(be) and not be.is_destroyed:
 			if pos.distance_to(be.global_position) <= hit_radius:
+				var iff_active: bool = (be.get("is_iff_active") == true) or (main and main.has_method("is_iff_flag_active") and main.is_iff_flag_active()) or ("has_iff_flag" in GameState and GameState.has_iff_flag)
+				if team == "player" and iff_active:
+					continue
 				be.take_damage_hit()
 
 	return stop_flame

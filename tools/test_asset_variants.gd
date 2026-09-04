@@ -78,6 +78,7 @@ func _run() -> void:
 	print("==================================================")
 	_check_all_files_present()
 	_check_variants_are_distinct()
+	_check_variant_borders_match()
 	_check_tank_overlay_keepout()
 	_check_building_decal_reach()
 	_check_damage_tiers_grow()
@@ -121,6 +122,36 @@ func _image_of(path: String) -> Image:
 	if tex == null:
 		return null
 	return tex.get_image()
+
+
+## 取四条边的像素 (按 alpha 合成到中灰底上, 同 qa_style_consistency 的口径)。
+func _border_pixels(img: Image) -> PackedColorArray:
+	var out := PackedColorArray()
+	var w := img.get_width()
+	var h := img.get_height()
+	for x in range(w):
+		out.append(img.get_pixel(x, 0))
+		out.append(img.get_pixel(x, h - 1))
+	for y in range(h):
+		out.append(img.get_pixel(0, y))
+		out.append(img.get_pixel(w - 1, y))
+	return out
+
+
+## 两组边缘像素的平均差 (0..255 口径)。alpha 参与合成 —— 透明处按中灰算,
+## 这样"一边不透明一边透明"也会被算成差异, 而不是被当成 0。
+func _border_delta(a: PackedColorArray, b: PackedColorArray) -> float:
+	if a.size() != b.size() or a.size() == 0:
+		return 999.0
+	var total := 0.0
+	for i in range(a.size()):
+		var ca := a[i]
+		var cb := b[i]
+		for ch in 3:
+			var va: float = ca[ch] * ca.a + 0.5 * (1.0 - ca.a)
+			var vb: float = cb[ch] * cb.a + 0.5 * (1.0 - cb.a)
+			total += absf(va - vb)
+	return 255.0 * total / float(a.size() * 3)
 
 
 ## 覆盖面积 (%) —— 和 test_armor_plating.gd 用同一个量, 好横向比较。
@@ -190,6 +221,79 @@ func _check_variants_are_distinct() -> void:
 					dupes += 1
 	if dupes == 0:
 		ok("%d 组变体族内两两不同" % families.size())
+
+
+# ---------------------------------------------------------------- 2b. 边缘一致
+
+## 同族变体的**边缘**必须一致 —— 变体系统独有的失效模式。
+##
+## 每张瓦片自己铺开是无缝的 (那是 qa_style_consistency 的 tileseam 在管), 不
+## 等于两张**不同变体**贴在一起也无缝。而同一张地图上相邻两格本来就可能抽到
+## 不同变体, 所以真正要守的是: 一族里所有变体在四条边上逐像素一致。
+##
+## 这条以前只写在 build_terrain_variants.py 的注释里, 没有任何东西在检查它,
+## 于是漏过了两类问题:
+##   - 装饰件本身越过画幅边 (中心在界内, 但自身体积 + 35° 太阳的影子够了出去);
+##   - 装饰件没越界, 但它的**间接光**越界了 —— 一整块贴着下边缘的暗砖让弹到
+##     边缘砖缝上的光少了一截, 实测下边缘互差 6.97/255, 而左右只有 1.7~2.3。
+##
+## 阈值 4.0 的来历: 修完之后实测各族 0.08 ~ 2.65 (最高那个是 a1 的饱和绿苔藓
+## 往奶白砖缝上的颜色渗染, 物理上真实且消不掉); 而 qa_style_consistency 判
+## "肉眼可见接缝"的地板是 6.0。4.0 卡在两者中间, 抓得住新引入的越界, 又不会
+## 被渲染噪声和残余渗染误伤。
+const BORDER_MAX_DELTA := 4.0
+
+func _check_variant_borders_match() -> void:
+	print("\n--- 2b. 同族变体的边缘逐像素一致 (相邻格可能是不同变体) ---")
+	var worst := 0.0
+	var worst_label := ""
+	var checked := 0
+	for kind in TerrainVariants.VARIANT_TABLE:
+		# trees 不参加 —— 它不是满幅瓦片。它没有底板, 四周透明, main.gd 把它
+		# 当 z_index=10 的独立 Sprite2D 画在坦克*上面*, 从不和自己拼接。变体
+		# 整体转个角度是合法的美术手段, 却必然改变靠近画幅边的树冠轮廓; 把它
+		# 圈进来只会制造一条谁也不该遵守的约束。
+		if kind == "trees":
+			continue
+		for theme in TerrainVariants.VARIANT_TABLE[kind]:
+			var paths: Array = []
+			for f in TerrainVariants.VARIANT_TABLE[kind][theme]:
+				paths.append(TerrainVariants.TILES + str(f))
+			var borders: Array = []
+			for p in paths:
+				var img := _image_of(str(p))
+				borders.append(_border_pixels(img) if img else PackedColorArray())
+			for i in range(borders.size()):
+				for j in range(i + 1, borders.size()):
+					var d := _border_delta(borders[i], borders[j])
+					checked += 1
+					if d > worst:
+						worst = d
+						worst_label = "%s/a%d: %s vs %s" % [
+							kind, theme, str(paths[i]).get_file(), str(paths[j]).get_file()]
+					if d > BORDER_MAX_DELTA:
+						fail("%s/a%d: %s 与 %s 的边缘互差 %.2f (上限 %.1f) —— "
+							% [kind, theme, str(paths[i]).get_file(),
+							   str(paths[j]).get_file(), d, BORDER_MAX_DELTA]
+							+ "这两个变体贴在一起会露出一道沿格子边的台阶。"
+							+ "检查装饰件是否越过画幅边 (含自身体积与 35° 太阳的"
+							+ "影长), 或者有大面积暗/饱和色块贴着边缘改变了间接光")
+
+	# 自检: 这个度量必须真的分得出边缘不同的两张图, 否则上面全绿也说明不了
+	# 任何事。拿两个**不同主题**的砖去比 —— 它们配色不同, 边缘理应差很多。
+	var a1 := _image_of(TerrainVariants.TILES + "tile_brick.png")
+	var a2 := _image_of(TerrainVariants.TILES + "tile_brick_a2.png")
+	if a1 and a2:
+		var cross := _border_delta(_border_pixels(a1), _border_pixels(a2))
+		if cross <= BORDER_MAX_DELTA:
+			fail("自检失败: 两个不同主题的砖 (tile_brick vs tile_brick_a2) "
+				+ "边缘互差只有 %.2f, 没有超过 %.1f —— " % [cross, BORDER_MAX_DELTA]
+				+ "说明这个度量根本分不出边缘差异, 上面的全绿是假的")
+		else:
+			ok("自检: 跨主题对照差 %.2f, 远大于阈值 %.1f, 度量有效"
+				% [cross, BORDER_MAX_DELTA])
+	if worst <= BORDER_MAX_DELTA:
+		ok("%d 对变体边缘一致, 最差 %.2f (%s)" % [checked, worst, worst_label])
 
 
 # ---------------------------------------------------------------- 3. 炮塔禁区

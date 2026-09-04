@@ -765,17 +765,52 @@ def build_sokpop_trees():
     return objs
 
 def build_sokpop_ice():
+    """冰面瓦片。
+
+    这张图曾经是全项目铺开后最难看的一张 —— 上下拼接梯度 30.41 (砖/钢/水都在
+    2 以下), 铺成一片冰湖就是一格一格的明暗方块, 像贴了张格子壁纸。三个缺陷
+    叠在一起, 每一个在 CLAUDE.md 里都早有记载, 只是从没应用到这张图上:
+
+    1. **底板用 TILE_FULL_BLEED (3.34) 而倒角宽 0.10。** 相机只看 3.30, 3.34
+       只多出 0.02 的外伸, 于是那圈被压暗的倒角边**留在了画幅里**, 每块瓦片
+       自带一道镶边, 铺开就是绗缝被子。规矩是 half >= 1.65 + bevel, 所以满幅
+       底板必须用 TILE_PLATE_BLEED (3.64)。这不会改变可见图案的比例 —— 裂纹
+       和星芒的坐标独立于底板, 变大的只有本来就该溢出画幅的那块板子。
+    2. **点光源布光。** 点光源照度随距离平方衰减, 在瓦片内造出位置梯度, 铺开
+       就是网格线 (当年实测冰 20.96)。砖/钢/水后来都改由 rerender_tiles.py 用
+       seamless 布光重渲过, 冰因为被误判成"孤儿资源"而漏掉了 —— 见下。
+    3. **底板被 shade_smooth 渲成枕形曲面。** 立方体顶面的顶点法线朝四角上翘,
+       平滑着色把它们在整个顶面上插值, 于是几何上平的板子被着色成一个枕头,
+       压出一条纵向渐变。同 build_desert_mechanics.py::build_desert_sand_tile。
+
+    **顺带纠正一条记录: 这张图不是孤儿资源。** CLAUDE.md 曾把 tile_ice 列进
+    "16 张无脚本可复现"的名单 (本函数 d_rgb 24.08)。那个数字是拿**点光源年代
+    的已提交 PNG** 去比**无缝布光的重渲**得到的 —— 比错了口。用当年的渲法
+    (点光源 + 3.34 + 平滑着色) 重跑本函数, d_rgb = 0.20, d_cov = 0.0000,
+    连拼接梯度都对到小数点后两位 (30.41 / 9.23 / 9.90 / 5.60)。也就是说本函数
+    一直忠实复现着已提交的美术, 只是那份美术本身是坏的。
+
+    修完实测: 上下 30.41 -> 1.83, 左右 9.90 -> 2.10, 而整图平均亮度只从
+    184.71 动到 184.53 (0.18/255), d_rgb 2.75, alpha 覆盖率不变 —— 形和色都
+    没动, 消掉的正好只有那条网格线。
+    """
     objs = []
     mat_sugar = create_clay_mat("m_ui_s", (0.76, 0.90, 0.96, 1.0), roughness=0.22, sss_weight=0.12)
     mat_fracture = create_clay_mat("m_ui_fr", (0.60, 0.78, 0.88, 1.0))
     mat_sparkle = create_clay_mat("m_ui_sp", (0.95, 0.98, 1.0, 1.0))
 
-    # 1. Full-Bleed Main Ice Block
+    # 1. Full-Bleed Main Ice Block —— 必须 TILE_PLATE_BLEED, 见函数注释第 1 条
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0, 0))
     ice = bpy.context.active_object
-    ice.scale = (TILE_FULL_BLEED, TILE_FULL_BLEED, 0.30)
+    ice.scale = (TILE_PLATE_BLEED, TILE_PLATE_BLEED, 0.30)
     ice.data.materials.append(mat_sugar)
     apply_uniform_clay_bevel(ice, width=0.10, segments=3, jitter=0.0)
+    # 平面着色 —— 见函数注释第 3 条。放在倒角之后: apply_uniform_clay_bevel()
+    # 内部会调 shade_smooth(), 顺序反了就被它覆盖回去。
+    bpy.ops.object.select_all(action='DESELECT')
+    ice.select_set(True)
+    bpy.context.view_layer.objects.active = ice
+    bpy.ops.object.shade_flat()
     objs.append(ice)
 
     # 2. Crystalline Fracture Veins
@@ -1855,10 +1890,32 @@ def _puff_wobble(seed, span):
     return (h / 1000.0 - 0.5) * span * 0.42
 
 
-def build_sokpop_explosion(frame_idx):
+## 爆炸差分的相位/种子偏移。
+##
+## 爆炸是全游戏触发最频繁的特效之一 (光 spawn_shockwave + spawn_clay_debris
+## 就有 156 处调用点在演各种"炸/毁"), 而以前每一次都是**逐像素相同**的一朵
+## 火球 —— 连着炸三辆车, 三团火一模一样, 读起来像盖章而不像爆炸。
+##
+## 差分**不新建几何**: 这个构建器本来就是参数化的 (角相位由 frame_idx 驱动、
+## 不规则由 _puff_wobble 的整数散列驱动), 所以换一组相位和种子就够了。这样
+## 三套图共用同一套火球语言 —— 它们该看起来是同一种爆炸的三次, 不是三种爆炸。
+##
+## 也因此逐帧的 span / r_puff / n / core 表完全没动, "先胀后消"那三条断言
+## (tools/test_explosion_vfx.gd) 对每个变体自动成立, 不需要单独调。
+## 半径微调只做 ±7%: 再大就会影响"末帧低于峰值一半"的余量。
+EXPLOSION_VARIANTS = [
+    # (角相位偏移, wobble 种子偏移, 半径系数)
+    (0.00, 0, 1.00),
+    (0.83, 101, 0.94),
+    (1.97, 233, 1.07),
+]
+
+
+def build_sokpop_explosion(frame_idx, variant=0):
     objs = []
     cfg = EXPLOSION_FRAMES[frame_idx]
     glow = cfg["glow"]
+    v_ang, v_seed, v_rad = EXPLOSION_VARIANTS[variant % len(EXPLOSION_VARIANTS)]
 
     # 火焰带自发光: 这个管线用的是 Standard view transform + 刻意压平的光照,
     # 靠明暗是拉不出"烫"的感觉的, 热度只能靠 emission 给。烟不发光。
@@ -1876,9 +1933,9 @@ def build_sokpop_explosion(frame_idx):
     span = cfg["span"]
     n = cfg["n"]
     for i in range(n):
-        ang = i * (2.0 * math.pi / float(n)) + frame_idx * 0.27
-        d = span + _puff_wobble(i + frame_idx * 17, span)
-        r = cfg["r_puff"] * (1.0 + (0.16 if i % 3 == 0 else -0.10))
+        ang = i * (2.0 * math.pi / float(n)) + frame_idx * 0.27 + v_ang
+        d = span + _puff_wobble(i + frame_idx * 17 + v_seed, span)
+        r = cfg["r_puff"] * v_rad * (1.0 + (0.16 if i % 3 == 0 else -0.10))
         # 火和烟交错分布而不是"前一半火后一半烟", 免得出现一半橘一半灰的分界
         is_fire = ((i * 7) % 10) < int(cfg["fire"] * 10.0)
         if is_fire:
@@ -1896,9 +1953,9 @@ def build_sokpop_explosion(frame_idx):
 
     # 内圈: 把中心填实, 顺便让团块变得凹凸不平而不是一颗光滑大球
     for i in range(cfg["inner"]):
-        ang = i * (2.0 * math.pi / float(cfg["inner"])) - frame_idx * 0.41
-        d = span * 0.45 + _puff_wobble(i * 3 + frame_idx * 11, span) * 0.5
-        r = cfg["r_puff"] * (0.92 if i % 2 == 0 else 0.78)
+        ang = i * (2.0 * math.pi / float(cfg["inner"])) - frame_idx * 0.41 - v_ang
+        d = span * 0.45 + _puff_wobble(i * 3 + frame_idx * 11 + v_seed, span) * 0.5
+        r = cfg["r_puff"] * v_rad * (0.92 if i % 2 == 0 else 0.78)
         mat = mat_fire if ((i * 3) % 10) < int(cfg["fire"] * 10.0) else mat_smoke
         bpy.ops.mesh.primitive_uv_sphere_add(
             radius=r, location=(math.cos(ang) * d, math.sin(ang) * d, 0.05))
@@ -1909,7 +1966,7 @@ def build_sokpop_explosion(frame_idx):
 
     # 白热核心。f4/f5 没有 (core=0), 中心就此掏空 —— 这正是烟环该有的样子。
     if cfg["core"] > 0.0:
-        bpy.ops.mesh.primitive_uv_sphere_add(radius=cfg["core"], location=(0, 0, 0.10))
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=cfg["core"] * v_rad, location=(0, 0, 0.10))
         core = bpy.context.active_object
         core.data.materials.append(mat_hot if glow > 1.0 else mat_fire)
         bpy.ops.object.shade_smooth()
@@ -1918,7 +1975,7 @@ def build_sokpop_explosion(frame_idx):
     # 放射状尖刺: 只在头两三帧出现, 是"炸开的一瞬间"的读法。
     # 老版本把它们摆在 0.48*scale, 全被火球吞了, 等于没画。
     for i in range(cfg["spikes"]):
-        ang = i * (2.0 * math.pi / float(cfg["spikes"])) + frame_idx * 0.5
+        ang = i * (2.0 * math.pi / float(cfg["spikes"])) + frame_idx * 0.5 + v_ang
         ln = cfg["spike_len"]
         # 圆锥以中心定位、沿轴向伸出 depth, 所以尖端在 d + ln/2。把中心放在
         # span + ln/2 上, 尖端正好落在 span + ln —— 这样 spike_len 就是"露在
@@ -2096,23 +2153,47 @@ def main():
             render_and_clean(objs, os.path.join(SPRITES_TANKS, f"{name}_f{frame}.png"))
 
     print(">>> 2. Rendering Unified Sokpop Tiles (6-Frame Water Flow, Ortho Scale 3.3)...")
-    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
-    tiles = {
+
+    # === 满幅地形瓦片必须走 seamless 布光, 老鹰不能 ===
+    #
+    # 这两批以前共用一次 create_sokpop_lighting() (无参数, 也就是**带点光源**),
+    # 而已提交的 brick / steel / trees / water 早就换成了 rerender_tiles.py 的
+    # seamless 版本。也就是说这个脚本已经渲不出它自己名义上拥有的那四张图了 ——
+    # 谁跑一次 unified, 就会静默地把当年修掉的网格线塞回全游戏最常用的四种地形。
+    # 这正是 CLAUDE.md "Stale build scripts" 那一节讲的失效方式, 只是这一处
+    # 之前没被记进去。
+    #
+    # 点光源的照度随距离平方衰减, 在瓦片内部造出一条位置梯度; 瓦片是自己挨着
+    # 自己铺的, 任何位置梯度铺开后都是一条网格线 (当年实测上下边色差: 砖 23.73
+    # / 钢 21.87 / 冰 20.96)。太阳是平行光, 每个 (x,y) 照度相同, 只随法线变化,
+    # 所以倒角和凹凸的立体感全部保留。
+    #
+    # 老鹰**不是**满幅瓦片: 它是四周透明的独立物件, 不和自己拼接, 没有网格线
+    # 问题; 而 seamless 会拿掉两盏塑形补光, 让它变平。所以它单独一批。
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT, seamless=True)
+    seamless_tiles = {
         "tile_brick.png": build_sokpop_brick,
         "tile_steel.png": build_sokpop_steel,
         "tile_trees.png": build_sokpop_trees,
         "tile_ice.png": build_sokpop_ice,
-        "base_eagle.png": lambda: build_sokpop_eagle(False),
-        "base_destroyed.png": lambda: build_sokpop_eagle(True),
     }
-    for fname, builder in tiles.items():
+    for fname, builder in seamless_tiles.items():
         objs = builder()
         render_and_clean(objs, os.path.join(SPRITES_TILES, fname))
 
-    # 6-Frame Continuous Looping Water River
+    # 6-Frame Continuous Looping Water River (同样是满幅瓦片, 沿用 seamless 布光)
     for w_f in range(6):
         objs = build_sokpop_water(w_f)
         render_and_clean(objs, os.path.join(SPRITES_TILES, f"tile_water_f{w_f}.png"))
+
+    # 老鹰: 独立物件, 要塑形补光
+    create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT)
+    for fname, builder in {
+        "base_eagle.png": lambda: build_sokpop_eagle(False),
+        "base_destroyed.png": lambda: build_sokpop_eagle(True),
+    }.items():
+        objs = builder()
+        render_and_clean(objs, os.path.join(SPRITES_TILES, fname))
 
     print(">>> 3. Rendering Unified Sokpop Buildings...")
     render_and_clean(build_sokpop_turret_base(), os.path.join(SPRITES_BUILDINGS, "turret_base.png"))

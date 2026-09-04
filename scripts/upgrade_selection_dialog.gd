@@ -50,7 +50,7 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 			theme_type = "speed"
 		elif branch_name == "train" or perk_id in ["warp_drive", "nano_repair"]:
 			theme_type = "shield"
-		elif branch_name == "counter":
+		elif branch_name == "counter" or branch_name == "trench":
 			theme_type = "branch"
 		elif is_branch:
 			theme_type = "branch"
@@ -162,6 +162,15 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 			"tag": "【精准盾反·升阶逆转】",
 			"desc": "搭载能量反冲盾！开火瞬间部署能量盾反弹敌弹并反射激光，完美弹反令炮弹升阶破钢！攻速极慢。"
 		})
+
+		choices.append({
+			"type": "branch",
+			"branch": "trench",
+			"icon": "trench",
+			"name": "壕沟先锋型\n(Trench Raider)",
+			"tag": "【短距环刃·破钢切弹】",
+			"desc": "改装前向高频激光环形切刀！近身短距环刃横扫，瞬间切割拦截敌方炮弹并粉碎掩体，切割等级与当前炮弹等级相等！"
+		})
 	else:
 		# In branch: offer Branch Tier 2 promotion + Tactical Perks
 		if title_label:
@@ -202,6 +211,14 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 					"name": "超导破阵要塞\n(Counter Tier 2)",
 					"tag": "【流派二阶进化】",
 					"desc": "进阶为超导反弹重盾，弹反完美判定窗口扩宽，反弹激光升阶为三向扇面棱镜全反射！"
+				})
+			elif branch == "trench":
+				choices.append({
+					"type": "tier_up",
+					"icon": "⚔️⚡",
+					"name": "超导破阵战壕堡垒\n(Trench Tier 2)",
+					"tag": "【流派二阶进化】",
+					"desc": "升级为双重高频超导等离子环刃，切割半径大幅扩张，切割等级提升至破钢级，秒杀掩体与敌阵！"
 				})
 
 		# Perk pool

@@ -97,7 +97,12 @@ func take_damage(amount: int) -> void:
 		SoundManager.play_hit_steel(get_tree())
 	var p = get_parent()
 	if p:
-		VFXAnimator.spawn_clay_debris(p, global_position)
+		# "还能打" 和 "已经没了" 不能是同一张图 —— 活着走崩落, 死了才走碎屑。
+		# 见 VFXAnimator.spawn_hit_spall 的注释。
+		if current_health > 0:
+			VFXAnimator.spawn_hit_spall(p, global_position)
+		else:
+			VFXAnimator.spawn_clay_debris(p, global_position)
 
 	if sprite:
 		var tw = create_tween()

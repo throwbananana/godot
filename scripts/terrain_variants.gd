@@ -62,6 +62,14 @@ const VARIANT_TABLE := {
 		2: ["tile_trees.png", "tile_trees_v1.png", "tile_trees_v2.png"],
 		3: ["tile_trees.png", "tile_trees_v1.png", "tile_trees_v2.png"],
 	},
+	# 冰是冰川本地地形, 同沙/树没有主题差分。它反而是最需要变体的一张:
+	# 底板是一整块均质浅冰蓝, 可辨识信息全来自那几条裂纹和星芒, 位置又固定,
+	# 铺开就是一张壁纸 (砖钢没这问题 —— 它们的图案本来就是周期性的, 重复是对的)。
+	"ice": {
+		1: ["tile_ice.png", "tile_ice_v1.png", "tile_ice_v2.png"],
+		2: ["tile_ice.png", "tile_ice_v1.png", "tile_ice_v2.png"],
+		3: ["tile_ice.png", "tile_ice_v1.png", "tile_ice_v2.png"],
+	},
 }
 
 ## 基础图 50%, 两个变体各 25%。累计权重, 和 VARIANT_TABLE 的列表等长。

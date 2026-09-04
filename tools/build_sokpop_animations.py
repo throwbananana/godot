@@ -14,6 +14,9 @@ SPRITES_TILES = os.path.join(PROJECT_DIR, "assets", "sprites", "tiles")
 for folder in [SPRITES_EFFECTS, SPRITES_TILES]:
     os.makedirs(folder, exist_ok=True)
 
+# 鹰巢本体的建模属于 unified —— 这里只做待机位移, 不重写几何。
+from build_all_sokpop_assets_unified import build_sokpop_eagle  # noqa: E402
+
 # 渲染管线统一在 sokpop_common —— 见该文件顶部说明。
 from sokpop_common import (  # noqa: E402
     srgb_to_linear,
@@ -268,6 +271,99 @@ def build_base_damaged():
 
     return objs
 
+## 鹰巢待机动画的固定抖动种子。见函数内的说明 —— 全 6 帧共用同一个值。
+EAGLE_IDLE_JITTER_SEED = 7100
+
+
+def build_base_eagle_idle(frame_idx, n_frames=6):
+    """鹰巢待机动画的一帧 —— 呼吸起伏 + 双翼微振 + 眼神光轻闪。
+
+    为什么要给它做动画: 鹰巢是整局游戏的防守核心, 玩家全程都在盯着它, 而它
+    一直是**一张完全静止的单图**。战场上其它东西 (水面、传送带、风机、坦克履带)
+    全都在动, 唯独要保护的那个不动 —— 读起来像块布景, 不像"活的、会没的东西"。
+
+    === 底座逐帧必须完全一致 ===
+
+    这是这段动画唯一的硬约束。鹰巢压在固定的格子上 (main.gd::_spawn_base_and_walls
+    把它摆在 cols 5-7 x rows 11-12), 底座只要有一点点位移或缩放, 播放时整个
+    基地就会看起来在地上漂 —— 而且因为周围五块砖是静止的, 这个漂移会非常显眼。
+    所以这里**只动底座以上的部分**, 底座本身一帧都不碰。
+
+    === 走包装器, 不重写几何 ===
+
+    调属主的 build_sokpop_eagle(False) 拿到对象列表再做位移, 一行几何都不抄。
+    理由同 build_terrain_variants.py: 重复的几何会变成第二个会漂移的属主。
+
+    翅膀靠**坐标**认而不是靠下标认: 下标依赖属主的建模顺序, 属主插一个部件就
+    会静默错位 (动到眼睛而不是翅膀, 而且不会报错)。翅膀是全身唯一 |x| > 0.5 的
+    部件, 用这个判据; 找不到正好两片就抛异常, 让属主的改动当场暴露而不是渲出
+    一批错误的动画。
+    """
+    # **整段动画必须用同一个抖动种子。**
+    #
+    # apply_uniform_clay_bevel() 默认带 jitter=0.014 的顶点抖动, 而
+    # rerender_vfx.py 是按 `reset_jitter_seed(JITTER_SEED + i)` 逐帧播种的 ——
+    # 于是底座的边缘每一帧被捏成不一样的形状。实测底座外圈 (r 88~104px, 小鸟
+    # 够不到的地方) 的 alpha 掩码逐帧要变 160~240 个像素, 而且四个象限都在变
+    # (排除了"是小鸟的投影在动"这个解释)。播放出来就是整个基座的轮廓在沸腾,
+    # 比小鸟本身的动静还大 —— 恰好违反了本函数唯一的硬约束。
+    #
+    # 在这里就地重置而不是去改调用方: 一段循环动画的逐帧一致性是**它自己的**
+    # 性质, 不该取决于谁来渲、怎么播种。
+    reset_jitter_seed(EAGLE_IDLE_JITTER_SEED)
+
+    objs = build_sokpop_eagle(False)
+    if not objs:
+        return objs
+
+    phase = 2.0 * math.pi * (frame_idx / float(n_frames))
+
+    # === 幅度是标定出来的, 不是拍的 ===
+    #
+    # 拿现役的循环动画做参照 (相邻帧整图 RGB 均差的中位数):
+    #   tile_water 0.33 (最轻的环境动效) / roller_wall 1.55 / bunker 3.62 /
+    #   wind_blower 3.97 (旋转的风机, 最重)
+    # 第一版 dz=0.05 只有 0.21 —— **比全项目最轻的动效还轻**, 换算到 48px
+    # 显示尺寸不足 1 像素, 等于白做。现在落在水面和滚墙之间: 鹰巢是待机呼吸,
+    # 不该跟机器一样显眼, 但也必须看得见。
+    #
+    # 三个通道叠加, 而不是把单一的起伏量拉大: 光靠竖直位移要做到同样的可见度
+    # 得挪到 3~4 像素, 那就读成"鹰在原地跳"了。位移 + 扇翅 + 呼吸缩放各出一点,
+    # 总的可见度够, 每一项都还在"轻微"的范围内。
+    dz = 0.16 * math.sin(phase)                        # ≈ 2.3px @48
+    wing_extra = math.radians(10.0) * math.sin(phase + 0.7)
+    breathe = 1.0 + 0.030 * math.sin(phase + math.pi * 0.5)
+
+    pedestal = objs[0]
+    wings = [o for o in objs[1:]
+             if abs(o.location.x) > 0.5 and o.location.z > 0.4]
+    if len(wings) != 2:
+        raise RuntimeError(
+            f"[鹰巢待机] 按 |x|>0.5 只认出 {len(wings)} 片翅膀, 期望 2 片 —— "
+            f"build_sokpop_eagle() 的建模大概改了, 请核对判据, 否则动画会动错部件")
+
+    # 呼吸缩放的支点放在底座顶面 (z=0.175) 而不是小鸟的重心 —— 支点在脚下,
+    # 缩放读起来是"鼓起来"; 支点在重心的话上下同时胀缩, 读成整只鸟在忽大忽小。
+    PIVOT = (0.0, 0.05, 0.175)
+
+    for o in objs:
+        if o is pedestal:
+            continue          # 底座一帧都不动, 见函数注释
+        o.location = (
+            PIVOT[0] + (o.location.x - PIVOT[0]) * breathe,
+            PIVOT[1] + (o.location.y - PIVOT[1]) * breathe,
+            PIVOT[2] + (o.location.z - PIVOT[2]) * breathe + dz,
+        )
+        o.scale = (o.scale.x * breathe, o.scale.y * breathe, o.scale.z * breathe)
+        if o in wings:
+            # 翅膀比身体多一点行程, 并绕 Z 轴微扇 —— 顶视下扇动只能靠这个轴,
+            # 绕 X/Y 转在正交俯视里几乎看不出来。
+            o.location.z += dz * 0.6
+            o.rotation_euler.z += wing_extra * (1.0 if o.location.x > 0 else -1.0)
+
+    return objs
+
+
 def main():
     clear_scene()
     setup_render_settings(rx=256, ry=256)
@@ -302,6 +398,13 @@ def main():
     # 6. Damaged Base Eagle
     objs = build_base_damaged()
     render_and_clean(objs, os.path.join(SPRITES_TILES, "base_damaged.png"))
+
+    # 7. 鹰巢待机动画 (6 帧循环)。
+    #    base_eagle.png 保持不动 —— 它是 base_eagle.gd 取不到帧序列时的兜底,
+    #    也是 unified 那边的产物, 不该由这个脚本覆盖。
+    for i in range(6):
+        objs = build_base_eagle_idle(i)
+        render_and_clean(objs, os.path.join(SPRITES_TILES, f"base_eagle_f{i}.png"))
 
     print("All Sokpop Clay Animations Rendered Successfully!")
 

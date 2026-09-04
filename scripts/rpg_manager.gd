@@ -18,7 +18,7 @@ var regen_lvl: int = 0      # 纳米自愈等级
 var builder_lvl: int = 0    # 防御工程强化
 
 # RPG 分支流派与特性 (P1)
-var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter"
+var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter", "trench"
 var branch_tier: int = 0            # 0=基础, 1=一阶进阶, 2=二阶终极
 var unlocked_perks: Dictionary = {} # perk_id -> stack count, see GameState.PERK_MAX_STACKS
 
@@ -39,6 +39,12 @@ const SPEED_MOVE_BONUS := [0.0, 0.25, 0.60]
 const SPEED_FIRE_BONUS := [0.0, 0.70, 1.50]
 const COUNTER_HP_BONUS := [0, 2, 4]
 const COUNTER_DMG_BONUS := [0, 1, 3]
+const TRENCH_HP_BONUS := [0, 2, 4]
+# tier2 曾经是 3。ATK_LEVELS_PER_POINT 从 4 调到 5 之后 default 的 atk_bonus
+# 涨得更慢, TRENCH_DMG_BONUS 这份分支专属加成在总伤害里的占比反而被动变大——
+# 12 级 tier2 单体 DPS 从 149% 冲到 170%, 顶穿 test_player_power.gd 的 150%
+# 上限。降到 2 才把它压回 142%, 见该测试 _check_trench_aoe_output()。
+const TRENCH_DMG_BONUS := [0, 1, 2]
 
 func get_branch(player_id: int = 1) -> String:
 	return tank_branch if player_id == 1 else p2_tank_branch
@@ -176,8 +182,14 @@ func add_level(amount: int = 1) -> void:
 	stats_changed.emit()
 
 ## 攻击力的成长节奏。一幕之内玩家大约涨 22-24 级, 所以 3 级 +1 = 一幕 +8 伤害,
-## 4 级 +1 = +6。详见 _auto_level_bonus() 里的长注释。
-const ATK_LEVELS_PER_POINT := 4
+## 4 级 +1 = +6, 5 级 +1 = +5。详见 _auto_level_bonus() 里的长注释。
+##
+## 硬核化调整: 4 -> 5。上次测的一幕秒杀率 45-48%, 门禁上限是 60% —— 还有余量
+## 没用满。ATK_FIRST_POINT_LEVEL 不动 (第一点仍在 3 级, 保住"floor 1 杂兵还是
+## 一发一个"这条底线), 只是后续每一点隔得更远, 让 ARMOR/BATTLESHIP/TRAIN_BOSS
+## 这套血量分层在后期认得更久。跑 test_enemy_balance_curve.gd 复核过, 一幕
+## 秒杀率降到更低但没有归零 (归零就是 floor 1 那条 bug 的翻版)。
+const ATK_LEVELS_PER_POINT := 5
 
 ## 第一点攻击力落在哪一级。**不是 4 而是 3**, 而且这一格错位是必需的。
 ##
@@ -238,6 +250,8 @@ func get_player_max_hp(player_id: int = 1) -> int:
 		hp += TRAIN_HP_BONUS[tier]
 	elif branch == "counter":
 		hp += COUNTER_HP_BONUS[tier]
+	elif branch == "trench":
+		hp += TRENCH_HP_BONUS[tier]
 	hp += int(round(get_perk_value("titan_plating", 2.0, player_id)))
 	return hp
 
@@ -262,19 +276,31 @@ func get_fire_cooldown_mult(player_id: int = 1) -> float:
 		rate *= 0.85 # 重型巨炮单发威猛，装填稍慢
 	elif branch == "counter":
 		rate *= 0.50 # 反击型攻速极慢，主要依赖时机弹反破敌
+	elif branch == "trench":
+		# 曾经是 x1.25 (比 default 更快), 和它已经免费拿到的范围伤害 + 自动
+		# 切弹叠在一起, 实测 12 级单体 DPS 是 default 的 152%(tier1)/229%(tier2)
+		# —— 命中一个目标都用不到就打平了 default 的全部输出, 范围/切弹反而
+		# 变成纯赠品。姊妹机制 heavy 走的是同一条"AoE 武器该更慢"的路子 (見
+		# 上面 x0.85), 这里对齐它, 而不是自成一档。
+		rate *= 0.85 # 壕沟切割是范围武器, 该用装填换范围, 不该比单体武器还快
 	rate += get_perk_value("rapid_loader", 0.30, player_id)
 	return 1.0 / rate
 
 const BASE_FIRE_COOLDOWN := 0.65
 const FIRE_CD_FLOOR_SPEED := 0.18
 const FIRE_CD_FLOOR_OTHER := 0.32
-const FIRE_CD_FLOOR_COUNTER := 0.95
+# 曾经写着 0.95/0.38, 和 player.gd::_fire() 里实际生效的 1.10/0.40 对不上 ——
+# 那边原来是重写的字面量, 不是引用这两个常量。现在 player.gd 直接引用这两个
+# 常量了 (单一数据源), 这里改成和已经在跑的那份行为一致, 而不是反过来把
+# 实际手感悄悄改掉。
+const FIRE_CD_FLOOR_COUNTER := 1.10
+const FIRE_CD_FLOOR_TRENCH := 0.40
 
 ## 再加 extra_rate 点射速之后, 冷却是不是仍然贴在地板上 (也就是这份强化
 ## 完全没有效果)。extra_rate 默认 0 = 问"现在是不是已经到底了"。
 func is_fire_rate_capped(player_id: int = 1, extra_rate: float = 0.0) -> bool:
 	var branch = get_branch(player_id)
-	var floor_v = FIRE_CD_FLOOR_SPEED if branch == "speed" else (FIRE_CD_FLOOR_COUNTER if branch == "counter" else FIRE_CD_FLOOR_OTHER)
+	var floor_v = FIRE_CD_FLOOR_SPEED if branch == "speed" else (FIRE_CD_FLOOR_TRENCH if branch == "trench" else (FIRE_CD_FLOOR_COUNTER if branch == "counter" else FIRE_CD_FLOOR_OTHER))
 	# get_fire_cooldown_mult 返回的是 1/rate, 所以先还原成 rate 再加。
 	var rate = 1.0 / maxf(0.0001, get_fire_cooldown_mult(player_id))
 	var cd_now = BASE_FIRE_COOLDOWN / maxf(0.0001, rate)
@@ -290,6 +316,8 @@ func get_atk_damage(player_id: int = 1) -> int:
 		dmg += HEAVY_DMG_BONUS[tier]
 	elif branch == "counter":
 		dmg += COUNTER_DMG_BONUS[tier]
+	elif branch == "trench":
+		dmg += TRENCH_DMG_BONUS[tier]
 	dmg += int(round(get_perk_value("high_explosive", 2.0, player_id)))
 	return dmg
 

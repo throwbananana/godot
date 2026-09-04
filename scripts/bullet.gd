@@ -312,7 +312,15 @@ func _on_body_entered(body: Node2D) -> void:
 				_trigger_aoe_explosion()
 			if is_inside_tree() and get_tree():
 				SoundManager.play_hit_steel(get_tree())
-			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+			# 这一发**能不能打穿这堵钢**决定了该给玩家哪一种反馈。打不动的话
+			# 走冷钢火星 (spawn_ricochet_spark) —— 它说的是"换个目标"; 打得动
+			# 就沿用碎屑, 因为下面几行马上会把它拆掉, 那是"继续推进"。
+			# 拆分前两种情况共用同一张图, 玩家从画面上读不出该往哪走。
+			var will_break_this := can_destroy_steel and not body.is_in_group("border")
+			if will_break_this:
+				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+			else:
+				VFXAnimator.spawn_ricochet_spark(get_parent(), global_position)
 			if pierces_this_steel:
 				pass # keeps flying -- doesn't consume a ricochet bounce
 			elif _try_ricochet():
@@ -332,7 +340,9 @@ func _on_body_entered(body: Node2D) -> void:
 				_trigger_aoe_explosion()
 			if is_inside_tree() and get_tree():
 				SoundManager.play_hit_steel(get_tree())
-			VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+			# 地图边界**永远**打不穿 —— 这是全游戏最该被一眼读懂的"打不动",
+			# 所以无条件走冷钢火星。
+			VFXAnimator.spawn_ricochet_spark(get_parent(), global_position)
 			# The map boundary always stops a bullet outright, even a piercing
 			# one -- ricochet can still save it from dying here, armor-piercing
 			# cannot (it only pierces destructible/steel walls, not the edge).
@@ -436,6 +446,10 @@ func _on_area_entered(area: Area2D) -> void:
 			queue_free()
 		return
 	if area.is_in_group("base") or area.is_in_group("base_eagle"):
+		var main = get_tree().current_scene if (is_inside_tree() and get_tree()) else null
+		var iff_active: bool = (area.get("is_iff_active") == true) or (main and main.has_method("is_iff_flag_active") and main.is_iff_flag_active()) or ("has_iff_flag" in GameState and GameState.has_iff_flag)
+		if shooter_type == "player" and iff_active:
+			return
 		is_destroyed = true
 		if is_aoe:
 			_trigger_aoe_explosion()

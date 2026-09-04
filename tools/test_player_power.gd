@@ -64,6 +64,9 @@ func _run() -> void:
 	_check_no_selling_zero()
 	_check_branch_opening_parity()
 	_check_branch_tier1_parity()
+	_check_six_branch_hp_speed_parity()
+	_check_counter_baseline_and_payoff()
+	_check_trench_aoe_output()
 	print("==================================================")
 	if failures > 0:
 		print("[FAIL] %d 项失败" % failures)
@@ -87,8 +90,13 @@ func _mgr_at(lvl: int, branch: String, tier: int) -> RPGManager:
 
 
 func _cd_for(m: RPGManager, branch: String) -> float:
-	var floor_v: float = RPGManager.FIRE_CD_FLOOR_SPEED if branch == "speed" \
-		else RPGManager.FIRE_CD_FLOOR_OTHER
+	var floor_v: float = RPGManager.FIRE_CD_FLOOR_SPEED
+	if branch == "trench":
+		floor_v = RPGManager.FIRE_CD_FLOOR_TRENCH
+	elif branch == "counter":
+		floor_v = RPGManager.FIRE_CD_FLOOR_COUNTER
+	elif branch != "speed":
+		floor_v = RPGManager.FIRE_CD_FLOOR_OTHER
 	return maxf(floor_v, RPGManager.BASE_FIRE_COOLDOWN * m.get_fire_cooldown_mult(1))
 
 
@@ -335,6 +343,24 @@ func _check_branch_opening_parity() -> void:
 ## tier0 那条一直是绿的, 因为它压根没覆盖这个真实会发生的状态。
 const OPENING_TIER1_DPS_SPREAD_CEILING := 2.0
 
+## RPGManager 后来又加了两个分支 ("counter"/"trench"), 但上面两条 tier0/tier1
+## 平价检查从来没把它们收进循环 —— 这正是本文件开头列的那类问题会复发的
+## 地方: 新内容上线了, 量它的闸门却还是照着旧名单跑, 于是新分支实际有没有
+## "在第一次升级就分出胜负"这件事从来没人测过。
+##
+## 没有直接把它们塞进上面两条循环, 是因为它们的武器根本不是"伤害/冷却"这种
+## 单目标 DPS 能公平比较的形状:
+##   - counter 每次开火都会打开一段 0.34 秒的弹反判定窗口, 命中"完美窗口"
+##     (窗口内最后 0.14~0.18 秒) 会把弹反的敌弹和玩家下一发都强化数倍, 并把
+##     冷却立即清零 —— 真实输出高度依赖弹反时机, 不是一个确定的数。
+##   - trench 每次开火是一个小半径 (42-54px) 的范围切割, 命中范围内*所有*
+##     敌人, 而不是一发子弹打一个目标, 并且自动切碎飞入判定圈的敌弹 —— 目标
+##     数量直接改变它相对单体武器的产出。
+## 硬套上面那条"最大倍差 x2.0"的单目标 DPS 断言, 对这两个分支要么量错东西
+## (counter 不摸最佳路径的话看着像残废), 要么根本没在测它们真正的强度轴
+## (trench 打不打得到多个目标)。所以下面两条改成算清楚的量, 不是硬掰成同一
+## 把尺子。
+
 func _check_branch_tier1_parity() -> void:
 	print("\n--- 分支一旦选定 (tier 1, 真实会发生的状态) 也不能立刻分出胜负 ---")
 	var best := 0.0
@@ -354,3 +380,188 @@ func _check_branch_tier1_parity() -> void:
 		fail("tier1 DPS 倍差 x%.2f 超过上限 x%.2f (%s) —— "
 			% [spread, OPENING_TIER1_DPS_SPREAD_CEILING, " / ".join(detail)]
 			+ "分支一选定 tier 就立刻是 1, 这才是真实会发生的开局强度")
+
+
+# ---------------------------------------------------------------- 6. 六分支 HP/机动 (含 counter/trench)
+
+## HP 和移速不像伤害那样有"必须追上敌人血量"的硬约束, 但沿用同一条 x2.0 的
+## 分寸线是有依据的: 当初 heavy 在 tier1 就把 DPS 拉到 default 的 3.40 倍
+## 正是靠"这个数字看起来没有伤害那么显眼, 所以没人管"才滑过去的。这里同一把
+## 尺子量 HP 和移速, 不是说 2.0 就是唯一正确阈值, 是不想让"不是伤害所以没
+## 关系"成为下一次滑过去的理由。
+const HP_SPREAD_CEILING := 2.0
+const SPEED_SPREAD_CEILING := 2.0
+const ALL_BRANCHES := ["default", "speed", "heavy", "train", "counter", "trench"]
+
+func _check_six_branch_hp_speed_parity() -> void:
+	print("\n--- 六分支 (含 counter/trench) 的血量与机动倍差 ---")
+	for tier in [1, 2]:
+		var hp_best := 0.0
+		var hp_worst := 1e9
+		var spd_best := 0.0
+		var spd_worst := 1e9
+		var hp_detail := PackedStringArray()
+		var spd_detail := PackedStringArray()
+		for branch in ALL_BRANCHES:
+			var m := _mgr_at(12, branch, tier) # 12 级: 一幕中段, HP 相关加成已经过半解锁
+			var hp := float(m.get_player_max_hp(1))
+			var spd := m.get_speed_multiplier(1)
+			hp_detail.append("%s %.0f" % [branch, hp])
+			spd_detail.append("%s %.2f" % [branch, spd])
+			hp_best = maxf(hp_best, hp)
+			hp_worst = minf(hp_worst, hp)
+			spd_best = maxf(spd_best, spd)
+			spd_worst = minf(spd_worst, spd)
+		var hp_spread := hp_best / maxf(0.001, hp_worst)
+		var spd_spread := spd_best / maxf(0.001, spd_worst)
+		if hp_spread <= HP_SPREAD_CEILING:
+			ok("tier%d 12级 HP: %s (最大倍差 x%.2f)" % [tier, " / ".join(hp_detail), hp_spread])
+		else:
+			fail("tier%d 12级 HP 倍差 x%.2f 超过 x%.2f (%s)"
+				% [tier, hp_spread, HP_SPREAD_CEILING, " / ".join(hp_detail)])
+		if spd_spread <= SPEED_SPREAD_CEILING:
+			ok("tier%d 12级 移速: %s (最大倍差 x%.2f)" % [tier, " / ".join(spd_detail), spd_spread])
+		else:
+			fail("tier%d 12级 移速倍差 x%.2f 超过 x%.2f (%s)"
+				% [tier, spd_spread, SPEED_SPREAD_CEILING, " / ".join(spd_detail)])
+
+
+# ---------------------------------------------------------------- 7. counter: 基线 + 弹反收益
+
+## counter 的真实产出不是一个确定的数, 取决于弹反时机——这条不装作能裁决
+## "平衡不平衡", 只把两个能算清楚的量摆出来:
+##   (a) 基线 DPS: 完全不弹反、纯按 1.10 秒地板打空炮的下限。
+##   (b) 收支平衡点: 要打平 default 的 DPS, 每次开火需要多大概率命中"完美
+##       窗口"。用和回复检查同一种不动点技巧 (窗口开着的时候更可能命中,
+##       但命中之后冷却清零又立刻打开新窗口, 两者互相耦合)。
+## 这两个数不能证明分支平衡与否——那是设计判断, 需要真人试玩数据 (main.gd
+## 的 battle_result 日志) 而不是这条测试来回答。这里只保证"基线不是荒谬地
+## 弱到聊胜于无"这一条能被工具钉住, 顺带把经济学摆出来供人工判断。
+const COUNTER_BASELINE_DPS_FLOOR_RATIO := 0.30 # 基线不该低于 default 的 3 成
+
+func _check_counter_baseline_and_payoff() -> void:
+	print("\n--- counter: 零弹反基线 + 弹反收支平衡点 ---")
+	for tier in [1, 2]:
+		var mc := _mgr_at(12, "counter", tier)
+		var md := _mgr_at(12, "default", 0)
+		var counter_dps := float(mc.get_atk_damage(1)) / _cd_for(mc, "counter")
+		var default_dps := float(md.get_atk_damage(1)) / _cd_for(md, "default")
+		var ratio := counter_dps / maxf(0.001, default_dps)
+
+		# 弹反窗口每次开火占用 0.34 秒 (PlayerTank.parry_total_duration), 冷却
+		# 周期是当前 _cd_for() 算出来的实际冷却。命中完美窗口那一刻会把冷却
+		# 立即清零并重开一轮窗口, 所以"命中率越高, 窗口开启的时间占比也越高"——
+		# 和回复检查里"打得越准, 锁定越频繁"是同一种正反馈结构, 用同一种
+		# 不动点去解。
+		var cd := _cd_for(mc, "counter")
+		var window: float = 0.34 # PlayerTank.parry_total_duration
+		var reflect_dmg := maxf(4.0, 2.0 + float(tier)) # 反弹的通常是敌方 1 点弹, 2.2x+2+tier
+		var charged_dmg := maxf(4.0, float(mc.get_atk_damage(1)) * 2.0 + 2.0 + float(tier))
+
+		var lo := 0.0
+		var hi := 1.0
+		for _i in range(40):
+			var mid := (lo + hi) * 0.5
+			# 命中完美窗口的这一刻: 拿到 reflect_dmg + charged_dmg, 冷却清零。
+			# 没命中的周期: 只拿基础一发 counter_dps*cd 的伤害。
+			# 每个"周期"长度按 (命中率*窗口 + (1-命中率)*cd) 近似 —— 命中会
+			# 立刻重开窗口, 相当于把周期压缩到窗口本身。
+			var cycle_len := mid * window + (1.0 - mid) * cd
+			var cycle_dmg := mid * (reflect_dmg + charged_dmg) + (1.0 - mid) * (counter_dps * cd)
+			var achieved_dps := cycle_dmg / maxf(0.001, cycle_len)
+			if achieved_dps < default_dps:
+				lo = mid
+			else:
+				hi = mid
+		var breakeven := (lo + hi) * 0.5
+
+		if ratio >= COUNTER_BASELINE_DPS_FLOOR_RATIO:
+			ok("tier%d 基线 DPS %.2f (default %.2f 的 %.0f%%) —— 打平 default 需要约 %.0f%% 的完美弹反命中率"
+				% [tier, counter_dps, default_dps, ratio * 100.0, breakeven * 100.0])
+		else:
+			fail("tier%d counter 基线 DPS %.2f 只有 default %.2f 的 %.0f%% (下限 %.0f%%) —— "
+				% [tier, counter_dps, default_dps, ratio * 100.0, COUNTER_BASELINE_DPS_FLOOR_RATIO * 100.0]
+				+ "完全不弹反的话这个分支形同虚设")
+
+
+# ---------------------------------------------------------------- 8. trench: 范围产出
+
+## trench 每次开火是命中半径内*所有*敌人的范围切割, 不是单发子弹。这里算的是
+## "打平 default 单体 DPS 需要命中几个目标", 以及自动切弹的正常运行时间占比
+## (这个是确定的, 不吃时机技巧, 因为切割拦截判定每帧都在跑, 不需要玩家
+## 主动瞄准)。
+## 单体 DPS 相对 default 的上限。trench 的范围伤害 + 自动切弹本来就该比单体
+## 武器"值钱"一些, 但不该连*单体*都比专精单体输出的分支更能打——那样范围/
+## 切弹就成了纯赠品, 不是拿什么去换的。x1.5 留了实打实的余量 (default 自己
+## 在 tier1 时 speed/heavy 就已经站到 x1.70), 只用来卡住这次实测到的
+## x1.52~x2.29 这种量级, 不是想把 trench 削成和 default 完全打平。
+const TRENCH_SINGLE_TARGET_RATIO_CEILING := 1.5
+
+## 真开一炮去问 LaserRingCutter 拿到的伤害/半径, 不在测试里复刻
+## maxi(dmg+N, M) 那条公式——复刻的必然发散, 这个文件开头train那条检查
+## 已经因为同样的理由改成"真实例化一节车厢"了, 这里踩过一次坑才补上同一
+## 处理: 第一版试图手抄公式, 后来 player.gd 把 +1/+2 去掉之后这条测试却还在
+## 用旧公式算基线, 数字没跟着代码变, 看着像"没测出改动"。
+func _check_trench_aoe_output() -> void:
+	print("\n--- trench: 范围切割产出 + 切弹正常运行时间 ---")
+	var host := Node.new()
+	host.set_script(load("res://tools/_player_power_host.gd"))
+	root.add_child(host)
+	var prev_scene = current_scene
+	current_scene = host
+
+	for tier in [1, 2]:
+		var mt := _mgr_at(12, "trench", tier)
+		var md := _mgr_at(12, "default", 0)
+		host.rpg_mgr = mt
+
+		var p = load("res://scenes/player.tscn").instantiate()
+		root.add_child(p)
+		p.facing_direction = Vector2.UP
+		p.global_position = Vector2(200, 200)
+		p._shoot()
+
+		var cutter: Node2D = null
+		for c in root.get_children():
+			if c.is_in_group("laser_ring_cutter"):
+				cutter = c
+		var found := cutter != null
+		var cut_dmg: int = cutter.damage if found else 0
+		p.queue_free()
+		if found:
+			# 立即 free 而不是 queue_free: 下一轮 tier 循环马上又要按
+			# "laser_ring_cutter" 组搜一遍 root 的子节点, deferred 释放会让
+			# 上一轮那个还没真正消失的节点被当成这一轮的结果。
+			#
+			# 注意 free() 之后不能再用 `cutter == null` 判断"找没找到"——
+			# Godot 对已 free 的 Object 引用做了特殊处理, 让它在这类比较里
+			# 表现得和 null 一样, 所以 found 必须在 free() *之前*就存好。
+			cutter.free()
+
+		if not found:
+			fail("tier%d trench 开火之后场上找不到 LaserRingCutter —— 武器分支没有真的触发" % tier)
+			continue
+
+		var cd := _cd_for(mt, "trench")
+		var single_target_dps := float(cut_dmg) / cd
+		var default_dps := float(md.get_atk_damage(1)) / _cd_for(md, "default")
+		var ratio := single_target_dps / maxf(0.001, default_dps)
+		var targets_to_match := default_dps / maxf(0.001, single_target_dps)
+
+		# LaserRingCutter.duration=0.26s, 每次开火的冷却是 cd —— 切弹判定只在
+		# 这 0.26 秒的窗口内跑, 且不需要玩家做任何操作 (自动生效), 所以是
+		# 确定的正常运行时间占比, 不是像 counter 那样要解不动点。
+		var cutter_duration := 0.26
+		var uptime := minf(1.0, cutter_duration / cd)
+
+		if ratio <= TRENCH_SINGLE_TARGET_RATIO_CEILING:
+			ok("tier%d 单体 DPS %.2f (default %.2f 的 %.0f%%, 上限 %.0f%%), 命中 %.1f 个目标即可打平; 自动切弹运行时间占比 %.0f%%"
+				% [tier, single_target_dps, default_dps, ratio * 100.0, TRENCH_SINGLE_TARGET_RATIO_CEILING * 100.0,
+				   targets_to_match, uptime * 100.0])
+		else:
+			fail("tier%d trench 单体 DPS %.2f 是 default %.2f 的 %.0f%% (上限 %.0f%%) —— "
+				% [tier, single_target_dps, default_dps, ratio * 100.0, TRENCH_SINGLE_TARGET_RATIO_CEILING * 100.0]
+				+ "范围伤害和自动切弹在这个比例下成了纯赠品, 不是拿单体输出去换的")
+
+	current_scene = prev_scene
+	host.free()

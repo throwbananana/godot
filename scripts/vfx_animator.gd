@@ -303,6 +303,40 @@ static func spawn_sand_burst(parent: Node, pos: Vector2, scale_mult: float = 1.0
 	]
 	create_anim(parent, pos, paths, 0.26 * scale_mult, 16.0)
 
+## 弹开 / 打不穿。冷钢火星 —— 子弹命中 border / steel / 有壳建筑时用。
+##
+## 和 spawn_shockwave 的分工是**结果不同**, 不是强度不同: 这个说"你打不动它",
+## 冲击波说"它被打没了"。玩家看到之后的下一步动作完全相反 (换目标 vs 继续推进),
+## 所以这两件事不能共用一张图。拆分前 spawn_shockwave 的 82 处调用里, 命中
+## border/steel/buildings 占 17 处、建筑被摧毁占 10 处, 全是同一个灰环。
+static func spawn_ricochet_spark(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_ricochet_spark_f0.png",
+		"res://assets/sprites/effects/vfx_ricochet_spark_f1.png",
+		"res://assets/sprites/effects/vfx_ricochet_spark_f2.png",
+		"res://assets/sprites/effects/vfx_ricochet_spark_f3.png",
+		"res://assets/sprites/effects/vfx_ricochet_spark_f4.png",
+		"res://assets/sprites/effects/vfx_ricochet_spark_f5.png"
+	]
+	# 比别的组快: 火星是瞬时事件, 拖长了会读成"持续燃烧"。
+	create_anim(parent, pos, paths, 0.17 * scale_mult, 18.0)
+
+## 受伤未死。偏心的崩落团 —— 目标掉血但还站着时用。
+##
+## 和 spawn_clay_debris 的分工同上: 那个现在专表"被摧毁"。"还能打"和"已经没了"
+## 是玩家最需要区分的一对反馈, 拆分前它们是同一张图 (clay_debris 的 74 处调用里
+## take_damage 占 14 处、destroy 占 13 处)。
+static func spawn_hit_spall(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+	var paths: Array[String] = [
+		"res://assets/sprites/effects/vfx_hit_spall_f0.png",
+		"res://assets/sprites/effects/vfx_hit_spall_f1.png",
+		"res://assets/sprites/effects/vfx_hit_spall_f2.png",
+		"res://assets/sprites/effects/vfx_hit_spall_f3.png",
+		"res://assets/sprites/effects/vfx_hit_spall_f4.png",
+		"res://assets/sprites/effects/vfx_hit_spall_f5.png"
+	]
+	create_anim(parent, pos, paths, 0.20 * scale_mult, 15.0)
+
 ## 建筑落成。**唯一向内收敛的一组** —— 别的都向外扩散并消散, 它末帧最实,
 ## 因为"东西被造出来了"这件事要靠收束感传达。别拿爆炸那条消散断言套它。
 static func spawn_build_assemble(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:

@@ -7,6 +7,7 @@ const PowerUp = preload("res://scripts/power_up.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 const LaserPiercer = preload("res://scripts/laser_piercer.gd")
+const LaserRingCutter = preload("res://scripts/laser_ring_cutter.gd")
 
 signal destroyed(pid: int)
 signal fired_bullet
@@ -44,7 +45,12 @@ var regen_accumulator: float = 0.0
 ## 加锁之后回复从"被动数值"变成"脱离交火才拿得到的奖励": 想回血就得退出去,
 ## 而退出去意味着让出场面。这才是坦克大战该有的取舍, 而不是站桩对射。
 ## 3 秒是量出来的 —— 见 tools/probe_player_power.gd 里按命中率折算的有效血量表。
-const REGEN_COMBAT_LOCKOUT := 3.0
+##
+## 硬核化调整: 3.0 -> 4.0。上次测的最难档 (30 级) 只需要 25% 命中率就能压过
+## 回复, 而门禁上限留到 45% —— 中间那段余量意味着回复比"能被打穿"这条底线
+## 还宽松不少。锁定拉长到 4 秒直接压缩这个余量, 不改变"打完就走能回血"的
+## 基本设计, 只是让脱离交火这件事更值钱。
+const REGEN_COMBAT_LOCKOUT := 4.0
 var regen_lockout: float = 0.0
 var is_on_sand: bool = false
 var sand_overlap_count: int = 0
@@ -133,7 +139,11 @@ func _ready() -> void:
 
 	_apply_rpg_stats()
 	_update_tier_appearance()
-	set_invulnerable(3.5)
+	# 硬核化调整: 开局无敌 3.5 -> 2.5 秒。这只在战车第一次实例化时跑一次
+	# (房间切换靠 _clear_all(keep_players=true) 保留玩家节点, 不会重新触发
+	# _ready()), 所以缩短它影响的是"这一局怎么起手", 不会让每次开门都变得
+	# 更危险。
+	set_invulnerable(2.5)
 
 func _on_branch_changed(changed_player_id: int, _branch: String, _tier: int) -> void:
 	if changed_player_id != player_id:
@@ -200,6 +210,10 @@ func _update_tier_appearance() -> void:
 		_clear_train_carriages()
 		var t_str = "t1" if b_tier <= 1 else "t2"
 		prefix = "%s_counter_%s" % [p_prefix, t_str]
+	elif branch == "trench":
+		_clear_train_carriages()
+		var t_str = "t1" if b_tier <= 1 else "t2"
+		prefix = "%s_trench_%s" % [p_prefix, t_str]
 	else:
 		_clear_train_carriages()
 		prefix = "%s_tier%d" % [p_prefix, upgrade_tier]
@@ -277,8 +291,12 @@ func apply_powerup(type: PowerUp.Type) -> void:
 			if main and main.rpg_mgr:
 				main.rpg_mgr.add_level(1)
 		PowerUp.Type.HELMET:
-			set_invulnerable(10.0)
-			powerup_collected.emit("[%s] HELMET SHIELD (10s)" % p_name)
+			# 硬核化调整: 10.0 -> 7.0 秒。头盔本来就是稀有度和 STAR/BOMB 同级的
+			# 道具, 10 秒无敌在敌人 2.2 秒一发的节奏下相当于白吃 4-5 发, 分量
+			# 偏重; 收到 7 秒仍然是一段扎实的免伤窗口, 只是不再接近"这段时间
+			# 里房间基本清空了"。
+			set_invulnerable(7.0)
+			powerup_collected.emit("[%s] HELMET SHIELD (7s)" % p_name)
 		PowerUp.Type.BOMB:
 			if main and main.has_method("trigger_bomb"):
 				main.trigger_bomb()
@@ -340,6 +358,11 @@ func apply_powerup(type: PowerUp.Type) -> void:
 				main.rpg_mgr.add_perk("kinetic_piston_rounds", player_id)
 			VFXAnimator.spawn_shockwave(get_parent(), global_position)
 			powerup_collected.emit("[%s] 🚜 活塞冲压弹就绪！主炮获得推墙与挤压处决能力！" % p_name)
+		PowerUp.Type.IFF_FLAG:
+			if main and main.has_method("trigger_iff_flag"):
+				main.trigger_iff_flag(40.0)
+			VFXAnimator.spawn_shockwave(get_parent(), global_position)
+			powerup_collected.emit("[%s] 🚩 友军标识旗已部署！我方火力绝对豁免基地伤害！" % p_name)
 
 func set_invulnerable(duration: float) -> void:
 	is_invulnerable = true
@@ -553,7 +576,21 @@ func _shoot() -> void:
 	var cd = fire_cooldown
 	if main and main.rpg_mgr:
 		cd *= main.rpg_mgr.get_fire_cooldown_mult(player_id)
-	cd = maxf(0.18 if branch == "speed" else (1.10 if branch == "counter" else 0.32), cd)
+	# 冷却地板引用 RPGManager 的常量, 不要在这里重写一遍字面量 —— 曾经真的
+	# 出过岔子: RPGManager.FIRE_CD_FLOOR_COUNTER/TRENCH 分别写着 0.95/0.38,
+	# 而这里实际生效的地板是 1.10/0.40, 两边一直没对上。这不是无害的重复:
+	# RPGManager.is_fire_rate_capped() 就是靠它自己那份常量判断"这次射速强化
+	# 还有没有用", 用来在商店/升级面板拦掉卖零的 autoloader/rapid_loader (见
+	# RPGManager 里"不卖零"那条原则)。常数对不上, 拦截阈值就和这里真正的
+	# clamp 不一致, 可能在还没到底时拦掉有效的强化, 或者到底之后仍然放行。
+	var floor_v := RPGManager.FIRE_CD_FLOOR_SPEED
+	if branch == "trench":
+		floor_v = RPGManager.FIRE_CD_FLOOR_TRENCH
+	elif branch == "counter":
+		floor_v = RPGManager.FIRE_CD_FLOOR_COUNTER
+	elif branch != "speed":
+		floor_v = RPGManager.FIRE_CD_FLOOR_OTHER
+	cd = maxf(floor_v, cd)
 	can_fire = false
 	fire_timer = cd
 
@@ -572,6 +609,17 @@ func _shoot() -> void:
 	VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 
 	match branch:
+		"trench":
+			# 壕沟战坦克：前方短距离激光环形切割攻击！
+			# 切割等级和当前炮弹等级相等 (Tier 2/3 或 b_tier >= 2 具备破钢切割，并能拦截切割敌方炮弹)
+			var can_cut_steel = (upgrade_tier >= 3 or b_tier >= 2)
+			var cut_rad = 54.0 if b_tier >= 2 else 42.0
+			# 别在这里再加一次 +1/+2 —— dmg 已经在 get_atk_damage() 里吃过
+			# TRENCH_DMG_BONUS 了, 这里以前又叠一次, 相当于同一个加成算了
+			# 两遍。maxi(dmg, N) 只保留原来的保底值 (2/4), 不再额外加成。
+			var cut_dmg = maxi(dmg, 4) if b_tier >= 2 else maxi(dmg, 2)
+			LaserRingCutter.create_cut(get_parent(), global_position, facing_direction, self, "player", cut_dmg, can_cut_steel, cut_rad)
+
 		"counter":
 			# Deploy reactive energy parry buckler
 			is_parrying = true
@@ -718,8 +766,13 @@ func take_damage(amount: int) -> void:
 	regen_lockout = REGEN_COMBAT_LOCKOUT
 	regen_accumulator = 0.0
 
-	# 黏土受击挤压形变动画 + 碎屑飞溅
-	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+	# 黏土受击挤压形变动画 + 崩落。
+	# 活着走崩落 (spawn_hit_spall), 死了才走碎屑 —— 同 enemy.gd::take_damage,
+	# "受伤"和"被摧毁"不能是同一张图。
+	if current_health > 0:
+		VFXAnimator.spawn_hit_spall(get_parent(), global_position)
+	else:
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 	if hit_tween and hit_tween.is_valid():
 		hit_tween.kill()
 	hit_tween = create_tween()

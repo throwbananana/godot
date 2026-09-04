@@ -60,6 +60,11 @@ var SEQS := {
 	"frost_shatter": "res://assets/sprites/effects/vfx_frost_shatter_f%d.png",
 	"sand_burst": "res://assets/sprites/effects/vfx_sand_burst_f%d.png",
 	"build_assemble": "res://assets/sprites/effects/vfx_build_assemble_f%d.png",
+	# 第二批拆分。通用特效那时仍然承担着 217 处调用 (shockwave 82 /
+	# clay_debris 74 / dust_puff 61), 这两组拆的是其中最要命的两对语义:
+	# "打不动" vs "打没了"、"受伤" vs "被摧毁"。
+	"ricochet_spark": "res://assets/sprites/effects/vfx_ricochet_spark_f%d.png",
+	"hit_spall": "res://assets/sprites/effects/vfx_hit_spall_f%d.png",
 }
 
 
@@ -229,6 +234,8 @@ func _check_spawn_api() -> void:
 		["spawn_frost_shatter", VFXAnimator.spawn_frost_shatter],
 		["spawn_sand_burst", VFXAnimator.spawn_sand_burst],
 		["spawn_build_assemble", VFXAnimator.spawn_build_assemble],
+		["spawn_ricochet_spark", VFXAnimator.spawn_ricochet_spark],
+		["spawn_hit_spall", VFXAnimator.spawn_hit_spall],
 	]
 	for entry in fns:
 		var fn_name: String = entry[0]

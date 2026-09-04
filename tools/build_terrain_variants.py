@@ -1,12 +1,13 @@
 """地形瓦片差分 (variety + act theme)。
 
-产出 20 张:
+产出 22 张:
     tile_brick_v1/v2                  平原砖的两种"磨损差分"
     tile_brick_a2 / a2_v1 / a2_v2     沙漠主题砖 (3 张)
     tile_brick_a3 / a3_v1 / a3_v2     冰川主题砖 (3 张)
     tile_steel_*                      同上, 8 张
     tile_sand_v1/v2                   沙地波纹差分
     tile_trees_v1/v2                  树丛树冠差分
+    tile_ice_v1/v2                    冰面气泡 / 覆雪差分
 
 === 为什么是包装器, 不是第二套几何 ===
 
@@ -88,6 +89,7 @@ from build_all_sokpop_assets_unified import (
     build_sokpop_brick,
     build_sokpop_steel,
     build_sokpop_trees,
+    build_sokpop_ice,
     SPRITES_TILES,
 )
 from build_desert_mechanics import build_desert_sand_tile
@@ -100,11 +102,40 @@ JITTER_SEED = 4200
 P = ORTHO_SCALE_DEFAULT       # 画幅周期 3.30
 H = P * 0.5                   # 半幅 1.65
 
-# 装饰的活动范围与限高。DECO_REACH + DECO_MAX_H * 1.43 (35° 太阳的影长系数)
-# 必须小于 H, 否则装饰的影子会甩出画幅, 在拼缝处露出来。
-#   1.34 + 0.13 * 1.43 = 1.526 < 1.65  ✓
+# 装饰中心的活动范围与限高。这两个是粗筛, 真正的判据是下面的 _deco_extent():
+# 光看中心点是不够的 —— 装饰**自己的体积**和**自己的影子**同样会越过画幅边。
 DECO_REACH = 1.34
 DECO_MAX_H = 0.13
+
+# 35° 太阳的影长系数: 影长 = 高 / tan(35°) = 高 x 1.428。
+SHADOW_PER_HEIGHT = 1.428
+
+
+def _deco_extent(scale, rot_z):
+    """旋转矩形的轴对齐半尺寸 + 影长。
+
+    第一版只拿中心点和 DECO_REACH 比, 漏掉了两件事, 而 brick_v1 正好同时踩中:
+    崩角块中心在 y=1.4375 (通过了 1.34?? 没有 —— 它是靠 b.location.y ± 0.20
+    算出来的, 中心确实越界过一点), 半高 0.147, 再加 0.10 厚投出的 0.143 影子,
+    实际够到 1.73 > 半幅 1.65。表现是变体之间的**边缘互差** mean 3.01 /
+    单像素最坏 18 —— 而每一张图**自己**铺开都是无缝的, 所以 tileseam 检查
+    一声不吭。这是变体系统独有的失效模式: 同一张地图上相邻两格可能是不同变体,
+    边缘对不上才会露缝。
+
+    用精确的旋转 AABB 而不是外接圆: 沙脊是 1.70 长 x 0.26 宽的近水平长条,
+    按外接圆算半径 0.86, 一律超标; 按 AABB 算 y 方向只有 0.26, 完全合规。
+    保守到把合规的东西也拒掉, 就只能靠调松阈值来放行, 那等于没有守卫。
+    """
+    hx, hy = abs(scale[0]) * 0.5, abs(scale[1]) * 0.5
+    ca, sa = abs(math.cos(rot_z)), abs(math.sin(rot_z))
+    shadow = abs(scale[2]) * SHADOW_PER_HEIGHT
+    return (hx * ca + hy * sa + shadow, hx * sa + hy * ca + shadow)
+
+
+def _deco_fits(loc, scale, rot_z=0.0):
+    """装饰(含体积与影子)是否完全落在画幅内。"""
+    ex, ey = _deco_extent(scale, rot_z)
+    return abs(loc[0]) + ex <= H and abs(loc[1]) + ey <= H
 
 
 # ==================== 主题配色 ====================
@@ -200,12 +231,17 @@ def _interior_objects(objs, reach=DECO_REACH, min_z=0.05):
 
 
 def _deco_box(loc, scale, mat, bevel=0.03, rot_z=0.0):
-    """加一块装饰用小体块, 并强制限高 —— 影子不许甩出画幅。"""
+    """加一块装饰用小体块。越界直接抛异常, 不静默放行。"""
     x, y, z = loc
-    if abs(x) > DECO_REACH or abs(y) > DECO_REACH:
-        raise RuntimeError(f"装饰件 {loc} 超出 DECO_REACH={DECO_REACH}, 影子会越过拼缝")
     if scale[2] > DECO_MAX_H:
         raise RuntimeError(f"装饰件高 {scale[2]} 超出 DECO_MAX_H={DECO_MAX_H}")
+    if not _deco_fits(loc, scale, rot_z):
+        ex, ey = _deco_extent(scale, rot_z)
+        raise RuntimeError(
+            f"装饰件中心 ({x:.3f},{y:.3f}) 加上自身外扩({ex:.3f},{ey:.3f})"
+            f"[含 {scale[2] * SHADOW_PER_HEIGHT:.3f} 影长] 够到 "
+            f"({abs(x) + ex:.3f},{abs(y) + ey:.3f}) > 半幅 {H} —— "
+            f"会越过拼缝, 让不同变体的边缘对不上")
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(x, y, z))
     o = bpy.context.active_object
     o.scale = scale
@@ -238,14 +274,29 @@ def brick_variant(variant, theme):
         for i, b in enumerate(inner[:4]):
             sx = 0.34 if i % 2 == 0 else 0.28
             ox = (0.52 if i % 2 == 0 else -0.48)
-            oy = (0.20 if i < 2 else -0.20)
+            # 偏移一律**朝画幅中心**。原来是按序号定正负 (前两块 +0.20),
+            # 而排序后前两块正好是最下面那一行 (y=-1.2375), +0.20 把它们推向
+            # 边缘, 加上体积和影子就够到了 1.73 —— 越过了半幅 1.65。
+            oy = -0.20 if b.location.y > 0 else 0.20
             _deco_box((b.location.x + ox, b.location.y + oy, 0.22),
                       (sx, 0.26, 0.10), mat_chip, bevel=0.04,
                       rot_z=math.radians(6 * (1 if i % 2 else -1)))
             objs.append(bpy.context.active_object)
         # 两块整砖换成压暗的"旧砖", 让整面墙出现色斑而不是均匀一片。
+        #
+        # **只能挑不贴边的那几行。** 整块砖是 1.51 x 0.62 的大面积, 而上下两行
+        # 砖的外沿距画幅只有 0.10 —— 把它换成暗色, 弹到边缘那条砖缝上的间接光
+        # 就少了一截 (Cycles 这里开着 2 次漫反射弹射)。装饰本身一寸没越界,
+        # 越界的是它的**光**: 实测变体与基础图的下边缘互差 6.97/255, 而左右
+        # 两边只有 1.7~2.3。同一张地图上相邻两格可能是不同变体, 这就是一道
+        # 沿着格子边的明暗台阶, 而每张图自己铺开又都是无缝的 —— tileseam
+        # 检查一声不吭。
+        #
+        # 小块装饰 (崩角、苔藓) 不受此限: 面积小一个数量级, 弹射贡献淹没在
+        # 渲染噪声里 (实测同族其余变体互差 0.4~0.8)。
         mat_old = create_clay_mat(f"m_bv_old_{theme}", pal["chip"], roughness=0.90)
-        for b in inner[1::3][:2]:
+        away_from_edge = [b for b in inner if abs(b.location.y) < 1.0]
+        for b in away_from_edge[:2]:
             b.material_slots[0].material = mat_old
 
     elif variant == 2:
@@ -258,10 +309,13 @@ def brick_variant(variant, theme):
             side = 1.0 if i % 2 == 0 else -1.0
             bx = b.location.x + (0.30 * side)
             by = b.location.y + (0.33 * side)
-            if abs(bx) > DECO_REACH or abs(by) > DECO_REACH:
+            m_scale = (0.62 + 0.1 * (i % 3), 0.16, 0.06)
+            m_rot = math.radians(3 * side)
+            # 贴着上下边那一行砖的砖缝会落到画幅外, 跳过而不是硬塞 —— 苔藓是
+            # 点缀, 少一处不影响读数; 越界则会让不同变体的边缘对不上。
+            if not _deco_fits((bx, by, 0.045), m_scale, m_rot):
                 continue
-            _deco_box((bx, by, 0.045), (0.62 + 0.1 * (i % 3), 0.16, 0.06),
-                      mat_moss, bevel=0.03, rot_z=math.radians(3 * side))
+            _deco_box((bx, by, 0.045), m_scale, mat_moss, bevel=0.03, rot_z=m_rot)
             objs.append(bpy.context.active_object)
         # 几簇爬上砖面的
         for i, b in enumerate(inner[::2]):
@@ -413,6 +467,84 @@ def sand_variant(variant, theme="a1"):
     return objs
 
 
+# ==================== 冰面差分 ====================
+
+def ice_variant(variant, theme="a1"):
+    """v0=原样, v1=气泡冰, v2=覆雪冰。
+
+    冰以前没有差分, 而它偏偏是最需要的一张: 底板是一整块均质的浅冰蓝, 全部
+    可辨识信息都来自那 4 条裂纹和 2 颗星芒 —— 位置又完全固定。修掉拼接梯度
+    (见 build_sokpop_ice 的注释) 之后, 冰湖不再有网格线, 但每一格的裂纹长在
+    同一个地方, 铺开读起来是一张壁纸。砖和钢没有这个问题, 是因为它们的图案
+    本来就是周期性的, 重复是"对"的; 冰的裂纹是随机事件, 重复就是穿帮。
+
+    和其它瓦片一样, 差分只动画幅内部 —— 冰的底板是满幅的, 边缘必须逐像素
+    一致, 否则两个不同变体贴在一起就是一道缝。
+    """
+    objs = build_sokpop_ice()
+    if variant == 0:
+        return objs
+
+    # objs[0] 是满幅底板, 其余是裂纹和星芒。底板一概不动。
+    deco = objs[1:]
+
+    if variant == 1:
+        # 气泡冰: 冻在冰里的气泡。刻意做成压扁的球而不是方块 —— 裂纹已经是
+        # 直线条了, 再加直线条只是把同一种形状铺得更满, 分不出两个变体。
+        _rotate_group(deco, math.radians(47))
+        mat_bub = create_clay_mat("m_ice_bubble", (0.90, 0.96, 1.0, 1.0),
+                                  roughness=0.30, sss_weight=0.14)
+        bubbles = [(-0.95, 0.55, 0.15), (-0.70, 0.78, 0.10), (0.88, -0.42, 0.13),
+                   (1.05, -0.66, 0.09), (0.25, 1.02, 0.12), (-0.30, -1.05, 0.14),
+                   (-0.55, -0.80, 0.09), (0.60, 0.85, 0.11)]
+        for (x, y, r) in bubbles:
+            # 球按等效外接盒送进同一个越界判据 —— 压扁系数 0.45 决定影长。
+            if not _deco_fits((x, y, 0.17), (2 * r, 2 * r, 2 * r * 0.45)):
+                continue
+            bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=(x, y, 0.17))
+            b = bpy.context.active_object
+            b.scale = (1.0, 1.0, 0.45)
+            b.data.materials.append(mat_bub)
+            bpy.ops.object.shade_smooth()
+            objs.append(b)
+
+    elif variant == 2:
+        # 覆雪冰: 积雪斑块。比冰面更亮更哑光 —— 冰是 roughness 0.22 的亮面,
+        # 雪走 0.95, 两者在同一个色相上靠**质感**分开, 不靠颜色。48px 下这读
+        # 出来是"一块块不反光的白斑", 和裂纹的细线条完全是两种东西。
+        _rotate_group(deco, math.radians(-62))
+        # 雪堆用**互相重叠的扁球**堆出来, 不用圆角方块。
+        #
+        # 第一版是方块, 铺开一看就是一张张贴在冰面上的白卡片 —— 48px 下方块的
+        # 四条直边活得很好 (直线是降采样最难抹掉的东西), 于是读出来是"一个物件"
+        # 而不是"一摊雪"。雪堆没有直边, 所以形状本身就在说谎。三个错开的扁球
+        # 叠出来的轮廓是不规则的, 缩到 48px 才读得像堆积物。
+        #
+        # 亮度也压了一档 (0.97 -> 0.94) 并加大色斑: 冰本身就是 0.76/0.90/0.96
+        # 的浅色, 纯白雪和它只差一点点色相, 却差很多明度 —— 对比拉满会让雪比
+        # 裂纹还抢眼, 而裂纹才是这张瓦片的主体信息。
+        mat_snow = create_clay_mat("m_ice_snow", (0.94, 0.96, 0.99, 1.0),
+                                   roughness=0.95, bump_strength=0.30, mottle=0.16)
+        drifts = [(-0.80, -0.72, 0.34), (0.86, 0.62, 0.30),
+                  (0.30, -1.05, 0.26), (-1.02, 0.72, 0.24), (0.20, 0.35, 0.21)]
+        for (cx, cy, r) in drifts:
+            # 每堆三颗错开的扁球, 偏移量固定 (可复现), 大小递减
+            for (dx, dy, k) in ((0.0, 0.0, 1.0), (r * 0.72, r * 0.30, 0.74),
+                                (-r * 0.55, r * 0.48, 0.62)):
+                rr = r * k
+                if not _deco_fits((cx + dx, cy + dy, 0.17), (2 * rr, 2 * rr, 2 * rr * 0.32)):
+                    continue
+                bpy.ops.mesh.primitive_uv_sphere_add(
+                    radius=rr, location=(cx + dx, cy + dy, 0.17))
+                s = bpy.context.active_object
+                s.scale = (1.0, 1.0, 0.32)
+                s.data.materials.append(mat_snow)
+                bpy.ops.object.shade_smooth()
+                objs.append(s)
+
+    return objs
+
+
 # ==================== 树丛差分 ====================
 
 def _rotate_group(objs, ang):
@@ -507,6 +639,10 @@ GROUPS = {
     "tile_trees": (trees_variant, [
         (1, "a1", "tile_trees_v1.png"),
         (2, "a1", "tile_trees_v2.png"),
+    ]),
+    "tile_ice": (ice_variant, [
+        (1, "a1", "tile_ice_v1.png"),
+        (2, "a1", "tile_ice_v2.png"),
     ]),
 }
 

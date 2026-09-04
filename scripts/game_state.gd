@@ -85,14 +85,23 @@ static var player_tier: int = 0
 static var player_lives: int = 3
 static var max_hp_lvl: int = 0
 static var atk_bonus: int = 0
+## 商店花钱买到的 atk_bonus 总数 (plasma_mod + 分支后的 star_tier), 与靠打
+## 楼层升级涨的那部分分开计数。atk_bonus 是全项目唯一被精心限速的战斗数值
+## (RPGManager.ATK_LEVELS_PER_POINT), 而 plasma_mod/star_tier 原来对购买
+## 次数完全没有限制——autoloader 有 is_fire_rate_capped() 那样的"不卖零"
+## 闸门, atk_bonus 却没有对应的机制。这个计数器就是补上那道闸门, 见
+## shop_dialog.gd::can_buy_item() 和 SHOP_ATK_BONUS_CAP。
+static var shop_atk_bonus_purchases: int = 0
+const SHOP_ATK_BONUS_CAP := 5
 static var speed_lvl: int = 0
 static var fire_rate_lvl: int = 0
 static var regen_lvl: int = 0
 static var builder_lvl: int = 0
 
 # RPG Branch & Archetype Specialization
-static var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter"
+static var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter", "trench"
 static var branch_tier: int = 0            # 0=Unassigned/Base, 1=Tier 1, 2=Tier 2
+static var has_iff_flag: bool = false      # Friendly IFF Flag: player attacks never damage the base eagle
 
 # perk_id -> stack count (was Array[String] of unique unlocks; a single run
 # now spans 15 floors instead of the original 6, so the fixed "10 unique
@@ -127,6 +136,7 @@ const PERK_MAX_STACKS := {
 	"armor_piercing_rounds": 1,
 	"amphibious_hull": 1,
 	"kinetic_piston_rounds": 1,
+	"iff_flag": 1,
 }
 
 static func max_stacks_for_perk(perk_id: String) -> int:
@@ -170,6 +180,7 @@ static func grant_star_tier_reward(player_id: int = 1) -> void:
 			p2_tier = mini(p2_tier + 1, 3)
 	else:
 		atk_bonus += 1
+		shop_atk_bonus_purchases += 1
 
 ## structure_id (String, e.g. "turret") -> owned count. Builder Controller
 ## structures used to be a flat "spend battle gold at placement time" cost;
@@ -246,7 +257,8 @@ static var rooms_cleared: int = 0
 ## 累积。
 static var shop_reroll_cost: int = 20
 const SHOP_REROLL_BASE := 20
-const SHOP_REROLL_STEP := 25
+# 硬核化调整: 和 shop_dialog.gd::REROLL_STEP 一起从 25 改成 30, 两处必须同步。
+const SHOP_REROLL_STEP := 30
 
 static func bump_shop_reroll_cost() -> void:
 	shop_reroll_cost += SHOP_REROLL_STEP
@@ -285,6 +297,8 @@ static func get_player_max_hp() -> int:
 		bonus_hp += 1 + branch_tier
 	elif tank_branch == "counter":
 		bonus_hp += 2 + branch_tier
+	elif tank_branch == "trench":
+		bonus_hp += 2 + branch_tier
 	return 1 + max_hp_lvl + bonus_hp
 
 static func reset_campaign(p_count: int = 1) -> void:
@@ -298,6 +312,7 @@ static func reset_campaign(p_count: int = 1) -> void:
 	player_lives = 3
 	tank_branch = "default"
 	branch_tier = 0
+	has_iff_flag = false
 	unlocked_perks.clear()
 	structure_inventory.clear()
 	p2_tier = 0
@@ -306,6 +321,7 @@ static func reset_campaign(p_count: int = 1) -> void:
 	p2_unlocked_perks.clear()
 	max_hp_lvl = 0
 	atk_bonus = 0
+	shop_atk_bonus_purchases = 0
 	speed_lvl = 0
 	fire_rate_lvl = 0
 	regen_lvl = 0
@@ -575,10 +591,14 @@ static func save_campaign() -> void:
 		"p2_unlocked_perks": p2_unlocked_perks,
 		"max_hp_lvl": max_hp_lvl,
 		"atk_bonus": atk_bonus,
+		"shop_atk_bonus_purchases": shop_atk_bonus_purchases,
 		"speed_lvl": speed_lvl,
 		"fire_rate_lvl": fire_rate_lvl,
 		"regen_lvl": regen_lvl,
 		"builder_lvl": builder_lvl,
+		# 商店买的永久增益, 和上面几个 *_lvl 同类 —— 一次性买断、跨楼层生效,
+		# 所以必须进存档。漏掉它的表现是"花钱买了、重载之后没了", 而且不报错。
+		"has_iff_flag": has_iff_flag,
 		"battle_type": battle_type,
 		"challenge_mode": challenge_mode,
 		"run_seed": run_seed,
@@ -629,10 +649,13 @@ static func load_campaign() -> bool:
 	p2_unlocked_perks = _load_perk_dict(d.get("p2_unlocked_perks", {}))
 	max_hp_lvl = int(d.get("max_hp_lvl", 0))
 	atk_bonus = int(d.get("atk_bonus", 0))
+	shop_atk_bonus_purchases = int(d.get("shop_atk_bonus_purchases", 0))
 	speed_lvl = int(d.get("speed_lvl", 0))
 	fire_rate_lvl = int(d.get("fire_rate_lvl", 0))
 	regen_lvl = int(d.get("regen_lvl", 0))
 	builder_lvl = int(d.get("builder_lvl", 0))
+	# 老存档没有这个 key -> false, 也就是"没买过", 和实际情况一致。
+	has_iff_flag = bool(d.get("has_iff_flag", false))
 	battle_type = str(d.get("battle_type", "battle"))
 	challenge_mode = str(d.get("challenge_mode", ""))
 	# 老存档没有这个字段 -> 0 -> _pick_from_pool() 退回旧的取模行为。

@@ -27,8 +27,12 @@ var current_shop_items: Array[Dictionary] = []
 ##
 ## 递增之后, 刷新变成"要不要为了指定的一件东西, 放弃买两三件别的", 这才是
 ## 原本想要的取舍。基数保持 20 不变, 所以第一次刷新的手感和以前一样。
+##
+## 硬核化调整: STEP 25 -> 30。GameState.SHOP_REROLL_STEP 是同一份数字的第二
+## 处拷贝 (见那边的注释), 两处必须一起改, 否则两套"刷新到第 N 次多少钱"
+## 会各说各话。
 const REROLL_BASE: int = 20
-const REROLL_STEP: int = 25
+const REROLL_STEP: int = 30
 var reroll_cost: int = REROLL_BASE
 var reroll_count: int = 0
 
@@ -182,15 +186,22 @@ static func item_by_id(item_id: String) -> Dictionary:
 	return {}
 
 
-## 非建材的强化池, 11 种全在。这里是它们的**唯一**定义 ——
-## build_inventory() 从这里抽 6 种上架, item_by_id() 从这里回查。
+## 非建材的强化池, 13 种全在 (最初是 11 种, kinetic_piston_rounds/iff_flag
+## 后来加入时这条注释没跟着改——数字本身不影响逻辑, build_inventory()/
+## item_by_id() 都是从下面这个数组本身取数, 不读这条注释, 纯粹是文档债)。
+## 这里是它们的**唯一**定义 —— build_inventory() 从这里抽 6 种上架,
+## item_by_id() 从这里回查。
 static func _upgrade_pool() -> Array[Dictionary]:
 	return [
 		{
 			"id": "star_tier",
 			"name": "战车升阶模块 (Star Upgrade)",
-			"desc": "提升战车阶级 (Tier Up)，增强火力与射击发数",
-			"cost": 95,
+			"desc": "提升战车阶级 (Tier Up)，增强火力与射击发数；已选定专属流派后转化为永久攻击力 +1",
+			# 原来是 95, 比 plasma_mod 的 80 贵 15G——但分支选定之后 (几乎整局
+			# 游戏都是这个状态) 这张卡的效果和 plasma_mod 完全一样, 贵的那部分
+			# 溢价只在没分支前那一小段窗口才有意义。降到和 plasma_mod 一致,
+			# 同效果同价, 不再有"选错卡多花钱"的坑。
+			"cost": 80,
 			"icon": "res://assets/sprites/powerups/star.png",
 			"category": "WEAPON"
 		},
@@ -281,6 +292,14 @@ static func _upgrade_pool() -> Array[Dictionary]:
 			"cost": 130,
 			"icon": "res://assets/sprites/powerups/piston_rounds.png",
 			"category": "TACTICAL"
+		},
+		{
+			"id": "iff_flag",
+			"name": "友军标识旗 (IFF Banner)",
+			"desc": "在基地哨塔高悬永久友军识别标识旗（光环转为翡翠绿）。我方坦克所有常规火炮、高爆定时炸弹与活塞推墙动能，均获得绝对友军免伤，永不误击误伤基地！",
+			"cost": 100,
+			"icon": "res://assets/sprites/powerups/iff_flag.png",
+			"category": "BASE"
 		}
 	]
 
@@ -321,7 +340,12 @@ const PRICE_FLOOR_SLOPE := 0.12
 ## PRICE_FLOOR_SLOPE 的曲线形状(早期依旧不卡钱, 只是量级变了)。这是一次性
 ## 校准, 不是"越大越好"——改这个数之后必须重新跑 400 局探针确认盈余倍率落
 ## 在期望区间, 而不是凭感觉再翻一倍。
-const PRICE_BASE_MULT := 2.0
+##
+## 硬核化调整: 2.0 -> 2.2。400 局探针复测过, 盈余倍率从 0.93x 降到 0.83x——
+## 玩家得在货架前面真的做取舍, 而不是"早期不缺钱、后期也不缺钱"。仍然留在
+## probe_balance_report.gd 报警阈值 1.35x 以内很远, 也没有把早期(floor 0-2,
+## 教学段)一起卡紧, 因为这条只改量级、PRICE_FLOOR_SLOPE 的曲线形状没动。
+const PRICE_BASE_MULT := 2.2
 
 static func _price_for(base_cost: int) -> int:
 	var floor_mult := 1.0 + float(GameState.current_floor) * PRICE_FLOOR_SLOPE
@@ -343,7 +367,7 @@ static func _price_for(base_cost: int) -> int:
 ## 同一个项目里的 event_dialog.gd 对完全相同的奖励是发两份的
 ## (_grant_tier_up / _grant_perk 都判 player_count == 2) —— 也就是说双份才是
 ## 既定行为, 商店这边是漏了, 不是另一种设计。
-const PER_PLAYER_PERKS := ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds", "kinetic_piston_rounds"]
+const PER_PLAYER_PERKS := ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds", "kinetic_piston_rounds", "iff_flag"]
 
 
 ## 这一局有几个玩家要拿这份奖励。
@@ -351,21 +375,35 @@ static func _reward_targets() -> Array:
 	return [1, 2] if GameState.player_count == 2 else [1]
 
 
+## atk_bonus 是全项目唯一被精心限速的战斗数值 (RPGManager.ATK_LEVELS_PER_POINT
+## 专门放慢了它的自然成长节奏), 但商店里有两条路能直接花钱买到它——plasma_mod
+## 和分支后的 star_tier——而且都曾经没有购买次数上限, 等于花钱绕开了特意收紧
+## 的那条曲线。GameState.SHOP_ATK_BONUS_CAP 是两者共用的一个闸门, 和
+## autoloader 那条"冷却到底就不卖"是同一个原则: 不卖已经不该再卖的东西。
+static func _shop_atk_bonus_capped() -> bool:
+	return GameState.shop_atk_bonus_purchases >= GameState.SHOP_ATK_BONUS_CAP
+
+
 static func can_buy_item(item_id: String) -> bool:
 	if item_id == "star_tier":
 		# Only default-branch players actually cap at tier 3 (multi-shot/plasma
 		# progression). Once a branch is picked, this item redirects to a
-		# permanent +1 ATK (GameState.grant_star_tier_reward) which has no
-		# such cap -- same as the shop's other flat stat items.
+		# permanent +1 ATK (GameState.grant_star_tier_reward) -- capped by
+		# SHOP_ATK_BONUS_CAP now, shared with plasma_mod below (same effect).
 		#
 		# 双人时只要还有一个人吃得下就该能买 —— 否则 1P 顶了 tier 3 会连带
 		# 把 2P 的升阶也锁死。
 		for pid in _reward_targets():
 			var branch = GameState.tank_branch if pid == 1 else GameState.p2_branch
 			var tier = GameState.player_tier if pid == 1 else GameState.p2_tier
-			if branch != "default" or tier < 3:
+			if branch == "default":
+				if tier < 3:
+					return true
+			elif not _shop_atk_bonus_capped():
 				return true
 		return false
+	if item_id == "plasma_mod":
+		return not _shop_atk_bonus_capped()
 	if item_id in PER_PLAYER_PERKS:
 		# These are perks (GameState.unlocked_perks), not flat stat fields --
 		# unlike the items above, repeat purchases across shop visits are
@@ -437,6 +475,7 @@ static func apply_item_purchase(item_id: String) -> String:
 			return "基地防御掩体强度大幅提升！"
 		"plasma_mod":
 			GameState.atk_bonus += 1
+			GameState.shop_atk_bonus_purchases += 1
 			return "主炮口径扩容，攻击力 +1！"
 		"landmine_crate":
 			# 以前这里发 +50 XP; 升级已经不吃经验条了 (只能吃 STAR, 见
@@ -456,6 +495,10 @@ static func apply_item_purchase(item_id: String) -> String:
 		"kinetic_piston_rounds":
 			_grant_perk_to_team("kinetic_piston_rounds")
 			return "活塞冲压弹改装完成！炮弹命中墙体可强行推移，两墙相撞夹击秒杀敌人！"
+		"iff_flag":
+			GameState.has_iff_flag = true
+			_grant_perk_to_team("iff_flag")
+			return "🚩 友军标识旗已高悬基地！全队火力永久豁免基地伤害！"
 	return ""
 
 

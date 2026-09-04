@@ -9,10 +9,11 @@ const LaserPiercer = preload("res://scripts/laser_piercer.gd")
 const FlameJet = preload("res://scripts/flame_jet.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 const KineticPushHelper = preload("res://scripts/kinetic_push_helper.gd")
+const LaserRingCutter = preload("res://scripts/laser_ring_cutter.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, BULLDOZER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, TITAN_BOSS, SCORPION_BOSS, MAMMOTH_BOSS, TESLA, TOXIC, DRONE_CARRIER, DRONE_MINI }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, BULLDOZER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, TITAN_BOSS, SCORPION_BOSS, MAMMOTH_BOSS, TESLA, TOXIC, DRONE_CARRIER, DRONE_MINI, TRENCH }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -694,6 +695,14 @@ func _setup_tank_type() -> void:
 			xp_value = 30
 			gold_value = 15
 			fire_interval = 999.0 # 无常规射击，接触自爆
+		EnemyType.TRENCH:
+			prefix = "enemy_trench"
+			speed = 72.0 # 壕沟重型爬行底盘
+			max_health = 4 # 战壕复合装甲
+			score_value = 600
+			xp_value = 110
+			gold_value = 75
+			fire_interval = 1.8 # 环形激光切刀扫掠周期
 
 	# 动态难度缩放 (Dynamic Scaling based on floor & encounter type)
 	var floor_mult = 1.0 + float(GameState.current_floor) * FLOOR_SCALE_SLOPE
@@ -1408,6 +1417,13 @@ func _shoot() -> void:
 		tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.12)
 		LaserPiercer.fire_linear_laser(get_parent(), muzzle_pos, facing_direction, self, "enemy", 2)
 		VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+	elif enemy_type == EnemyType.TRENCH:
+		# 壕沟战坦克：前方短距离激光环形切割攻击！切割等级与当前炮弹等级相等，可拦截切割炮弹！
+		var can_destroy_steel: bool = (armor_plates >= 2)
+		var cut_rad = 48.0
+		var cut_dmg = 2 if can_destroy_steel else 1
+		LaserRingCutter.create_cut(get_parent(), global_position, facing_direction, self, "enemy", cut_dmg, can_destroy_steel, cut_rad)
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 	elif enemy_type == EnemyType.SNIPER:
 		# 超高速超远穿甲狙击弹
 		var bullet = bullet_scene.instantiate()
@@ -1605,7 +1621,13 @@ func take_damage(amount: int) -> void:
 	# 战损贴花跟着血量走。放在扣血之后、死亡判定之前 —— 这样最后一击的那一
 	# 帧也是"重伤"的样子, 而不是死前突然变回完好。
 	_update_damage_overlay()
-	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+	# "还能打" 和 "已经没了" 必须长得不一样 —— 这是玩家最需要区分的一对反馈,
+	# 而拆分前两者共用 spawn_clay_debris。碎屑现在专表被摧毁 (_die() 那边),
+	# 这里只在**目标活下来**时放崩落。
+	if health > 0:
+		VFXAnimator.spawn_hit_spall(get_parent(), global_position)
+	else:
+		VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
 	# 按敌人类型追加额外特效
 	if is_heavy_scale_unit() or enemy_type == EnemyType.ARMOR:

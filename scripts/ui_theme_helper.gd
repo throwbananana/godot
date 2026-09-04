@@ -842,6 +842,7 @@ static func get_perk_icon(opt: Dictionary) -> Texture2D:
 			"heavy": icon_name = "perk_armor"
 			"train": icon_name = "perk_train"
 			"counter": icon_name = "perk_shield"
+			"trench": icon_name = "perk_trench"
 	elif opt_type == "tier_up":
 		var name_str = str(opt.get("name", ""))
 		if "Speed" in name_str or "暴风" in name_str:
@@ -852,6 +853,8 @@ static func get_perk_icon(opt: Dictionary) -> Texture2D:
 			icon_name = "perk_missile"
 		elif "Counter" in name_str or "反击" in name_str:
 			icon_name = "perk_shield"
+		elif "Trench" in name_str or "战壕" in name_str or "壕沟" in name_str:
+			icon_name = "perk_trench"
 	elif opt_type == "gold_heal":
 		icon_name = "perk_gold"
 	else:
@@ -869,6 +872,7 @@ static func get_perk_icon(opt: Dictionary) -> Texture2D:
 			"amphibious_hull": icon_name = "perk_amphibious"
 			"armor_piercing_rounds": icon_name = "perk_piercing"
 			"kinetic_piston_rounds": icon_name = "perk_tactical"
+			"iff_flag": icon_name = "perk_shield"
 			_:
 				icon_name = "perk_tactical"
 

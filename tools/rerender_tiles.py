@@ -3,11 +3,16 @@
 和 rerender_tanks.py / rerender_vfx.py 同一套路: builder 一律从*属主脚本*
 import, 这里只负责挑目标和摆画幅, 不复制几何代码。
 
-只登记了属主脚本确认能复现已提交美术的那几张。**故意不含** tile_ice /
-tile_hard_clay / tile_conveyor / tile_jump_pad / tile_platform —— 它们属于
-CLAUDE.md 里记的那 16 张"孤儿资源": 渲它们的脚本已经被删了, 现存的实现只能
-复现轮廓、复现不了着色。给它们重渲等于拿已知可用的美术去换一版没人审过的,
-需要先做美术决策, 不是顺手就能做的事。
+只登记了属主脚本确认能复现已提交美术的那几张。**故意不含** tile_hard_clay /
+tile_jump_pad / tile_platform —— 用 tools/qa_orphan_audit.py 逐个 (布光 × 画幅)
+组合试过, 它们的最优匹配仍在 d_rgb 20 上下, 是真正的孤儿。给它们重渲等于拿
+已知可用的美术去换一版没人审过的, 需要先做美术决策, 不是顺手就能做的事。
+
+tile_ice 曾经也在这份排除名单里, 那是**误判**: 当年拿点光源年代的已提交 PNG
+去比无缝布光的重渲, 比错了口 (d_rgb 24.08 全是布光差异)。用当年的渲法重跑
+build_sokpop_ice() 得到 d_rgb 0.20 —— 属主一直在忠实复现, 只是那份美术自己
+带着全项目最差的拼接梯度 (上下 30.41)。缺陷修完后它已归队。同类误判还有
+tile_conveyor 和 shield_station, 见 qa_orphan_audit.py。
 
 用法:
     blender --background --python tools/rerender_tiles.py -- tile_brick
@@ -37,6 +42,7 @@ from build_all_sokpop_assets_unified import (
     build_sokpop_steel,
     build_sokpop_trees,
     build_sokpop_water,
+    build_sokpop_ice,
     SPRITES_TILES,
 )
 from build_desert_mechanics import build_desert_sand_tile
@@ -51,6 +57,12 @@ GROUPS = {
     "tile_trees": (lambda f: build_sokpop_trees(), 1, "tile_trees.png"),
     "tile_sand":  (lambda f: build_desert_sand_tile(), 1, "tile_sand.png"),
     "tile_water": (build_sokpop_water, 6, "tile_water_f{i}.png"),
+    # tile_ice 曾被排除在外, 理由是"孤儿资源"。那个判定是错的 —— 详见
+    # build_sokpop_ice() 的函数注释: 当年是拿点光源年代的已提交 PNG 去比无缝
+    # 布光的重渲, 比错了口。用当年的渲法重跑该函数 d_rgb = 0.20, 也就是属主
+    # 脚本一直忠实复现着已提交的美术, 只是那份美术自己是坏的 (上下拼接梯度
+    # 30.41, 全项目最差)。现在缺陷已修, 它和其余四张一样可以定向重渲。
+    "tile_ice":   (lambda f: build_sokpop_ice(), 1, "tile_ice.png"),
 }
 
 

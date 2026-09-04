@@ -42,6 +42,11 @@ func _init() -> void:
 	print("==================================================")
 
 	_check_sequence("explosion", "res://assets/sprites/effects/explosion_%d.png")
+	# 爆炸差分。消散那三条对每个变体都得成立 —— 变体只换了角相位和 wobble 种子,
+	# 逐帧的 span/r_puff/n/core 表没动, 所以理应自动成立; 断言它是为了防止以后
+	# 有人给某个变体单独调半径 (EXPLOSION_VARIANTS 的第三项) 时把余量调没。
+	_check_sequence("explosion_v1", "res://assets/sprites/effects/explosion_v1_%d.png")
+	_check_sequence("explosion_v2", "res://assets/sprites/effects/explosion_v2_%d.png")
 	_check_sequence("suicide_blast", "res://assets/sprites/effects/vfx_suicide_blast_f%d.png")
 	_check_sequence("dust_puff", "res://assets/sprites/effects/dust_puff_%d.png")
 	_check_sequence("boss_plasma_nova", "res://assets/sprites/effects/boss_plasma_nova_%d.png")
@@ -61,6 +66,8 @@ func _init() -> void:
 	_check_sequence("reward_burst", "res://assets/sprites/effects/vfx_reward_burst_f%d.png")
 	_check_sequence("frost_shatter", "res://assets/sprites/effects/vfx_frost_shatter_f%d.png")
 	_check_sequence("sand_burst", "res://assets/sprites/effects/vfx_sand_burst_f%d.png")
+	_check_sequence("ricochet_spark", "res://assets/sprites/effects/vfx_ricochet_spark_f%d.png")
+	_check_sequence("hit_spall", "res://assets/sprites/effects/vfx_hit_spall_f%d.png")
 	_check_legacy_asset_gone()
 	await _check_runtime()
 

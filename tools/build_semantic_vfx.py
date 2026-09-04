@@ -420,6 +420,138 @@ def build_build_assemble(frame):
     return objs
 
 
+# ==================== 7. 弹开 / 打不穿 (RICOCHET SPARK) ====================
+#
+# 用在: 子弹打在 border / steel / 有壳建筑上 —— 也就是**打了但没用**。
+#
+# 为什么值得单独出一组: 数过调用点, spawn_shockwave 有 82 处, 其中"命中
+# border/steel/buildings"占 17 处, "建筑被摧毁"占 10 处 —— 同一个灰环既在说
+# "你打不动这个", 又在说"这个被你打没了"。这两件事玩家的下一步动作完全相反
+# (换目标 vs 继续推进), 却长得一模一样。
+#
+# 母题是**冷钢火星**: 短粗的放射钉 + 一颗只活两帧的硬芯。三处刻意的取舍:
+#   - 颜色走冷白偏青 (0.88,0.96,1.0), 不走暖橙。全批的暖色都归"燃烧/伤害",
+#     金属撞金属该是冷的; 顺带这也是 48px 下和 muzzle_flash / explosion 拉开
+#     距离的主要手段 —— 指标比的是预乘 RGB, 色相差是实打实的距离。
+#   - 钉子**短而粗**, 不做成 reward_burst 那种细长射线。两者都是"核心 + 放射",
+#     区分只能落在长细比上。
+#   - 硬芯到 f2 就没了, 之后只剩钉子向外散。reward_burst 反过来, 核心一直在。
+#     这是运动上的区别, 静帧指标看不见, 但播放时一眼可辨。
+
+def build_ricochet_spark(frame):
+    """剪影 = **短粗放射钉的星芒**, 冷白偏青, 硬芯只活到 f2。"""
+    objs = []
+    mat_spike = create_clay_mat(f"m_ric_s_{frame}", (0.88, 0.96, 1.00, 1.0),
+                                emission=(0.82, 0.94, 1.00, 1.0), emission_str=2.6)
+    mat_core = create_clay_mat(f"m_ric_c_{frame}", (1.00, 1.00, 1.00, 1.0),
+                               emission=(0.94, 0.99, 1.00, 1.0), emission_str=3.0)
+
+    # 逐帧手写而不是用连续公式 —— 覆盖率要同时满足三条硬约束 (首帧 < 峰值 60%、
+    # 峰值在中段、末帧 < 峰值 50%), 而覆盖率随长x宽走, 连续公式很难三条都卡住。
+    # 见 tools/test_explosion_vfx.gd::_check_sequence。
+    #        内半径  钉长   钉宽   芯半径
+    TABLE = [(0.16,  0.16,  0.18,  0.20),   # f0 撞击瞬间: 一小团, 钉还没抽出来
+             (0.30,  0.44,  0.24,  0.15),   # f1
+             (0.42,  0.58,  0.19,  0.09),   # f2 峰值
+             (0.56,  0.62,  0.13,  0.00),   # f3 芯没了
+             (0.68,  0.66,  0.085, 0.00),   # f4
+             (0.78,  0.70,  0.055, 0.00)]   # f5 只剩细屑
+    r0, spike_len, spike_w, core_r = TABLE[frame]
+
+    if core_r > 0.0:
+        objs.append(_sphere(core_r, (0, 0, 0.06), mat_core, squash=0.85, jitter=0.0))
+
+    # 6 根钉。角度上加一点固定偏移, 免得正好水平/垂直 —— 正交轴向的直线在
+    # 降采样后会和瓦片网格的方向对齐, 读起来像界面元素而不是碎屑。
+    n = 6
+    for i in range(n):
+        ang = (i / float(n)) * 2.0 * math.pi + 0.26
+        cx = math.cos(ang) * (r0 + spike_len * 0.5)
+        cy = math.sin(ang) * (r0 + spike_len * 0.5)
+        objs.append(_block((spike_len, spike_w, 0.10), (cx, cy, 0.05), mat_spike,
+                           rot=(0.0, 0.0, ang), bevel=0.03))
+    return objs
+
+
+# ==================== 8. 受伤未死 (HIT SPALL) ====================
+#
+# 用在: take_damage —— 打中了、掉血了, 但目标还站着。
+#
+# 现在这件事和"目标被摧毁"共用 spawn_clay_debris (74 处调用里 take_damage 占
+# 14 处、destroy/_destroy 占 13 处)。"还能打" 和 "已经没了" 是玩家最需要区分的
+# 一对反馈, 却是同一张图。
+#
+# 母题是**偏心**: 碎块全部甩向一侧, 加上撞击点那道短弧。整批特效只有这一组不是
+# 中心对称的 —— 而偏心是极少数能扛住 5.33 倍降采样的特征之一 (同 heal_pulse 的
+# 竖向各向异性、sand_burst 的重心贴底是同一类手段)。
+#
+# 方向固定不跟着弹道转, 这是有意的: VFXAnimator 的接口只收位置不收方向, 而
+# sand_burst / heal_pulse 同样是固定朝向, 已经证明在这套俯视视角下读得通。
+# 真要跟着弹道转, 得先给整个 VFXAnimator 加一个方向参数, 那是另一件事。
+
+def build_hit_spall(frame):
+    """剪影 = **整团偏向一侧的崩落**。全批唯一重心明显离开画幅中心的图形。
+
+    第一版没做到这一点, 而且是量出来才发现的: 碎块甩向右下, 撞击弧却放在左上,
+    两者正好抵消 —— 实测重心只偏了 (1.4, 0.6) 像素, 等于中心对称。于是它和
+    clay_debris 在 48px 下只差 11.9, 低于阈值 12.0。
+
+    更要紧的是搞清了**为什么**撞: clay_debris 峰值覆盖率只有 2.8%, 是个稀疏
+    散点效果; 第一版的 spall 同样是几块彼此分开的小碎块散在相近半径上。两者
+    共用"稀疏散布"这个足迹, 而颜色差再大也盖不过足迹 —— spall 的平均色已经是
+    (255,255,246) 纯白、clay_debris 是 (167,115,74) 暖棕, 差到不能再差, 距离
+    还是不够。**这个指标里足迹压过颜色。**
+
+    所以第二版改的是拓扑而不是配色: 碎块收紧、放大、互相重叠成**一整团**
+    (连续块 vs 散点), 撞击弧移到同一侧的内缘, 让重心真的甩出去。
+    """
+    objs = []
+    # 骨白偏暖 —— 是被削下来的材料本身, 不是火。刻意不压暗: CLAUDE.md 记过
+    # 把特效调暗反而让它更难区分 (指标是预乘 RGB, 变暗就是朝透明背景靠)。
+    # 自发光从 0.9 降到 0.55: 第一版整团糊成纯白, 连黏土的明暗都没了。
+    mat_chip = create_clay_mat(f"m_spall_p_{frame}", (0.95, 0.92, 0.86, 1.0),
+                               emission=(0.88, 0.84, 0.76, 1.0), emission_str=0.55)
+    mat_arc = create_clay_mat(f"m_spall_a_{frame}", (1.00, 0.96, 0.88, 1.0),
+                              emission=(1.00, 0.95, 0.86, 1.0), emission_str=2.0)
+
+    #        团心距离 碎块尺寸 弧半径 弧珠半径
+    TABLE = [(0.20,   0.30,   0.16,  0.13),   # f0
+             (0.44,   0.52,   0.30,  0.24),   # f1
+             (0.60,   0.62,   0.38,  0.26),   # f2 峰值
+             (0.78,   0.50,   0.46,  0.18),   # f3
+             (0.94,   0.34,   0.52,  0.11),   # f4
+             (1.08,   0.20,   0.58,  0.06)]   # f5
+    throw, chip, arc_r, bead = TABLE[frame]
+
+    # 碎块: 张角收到 ±26°, 距离扰动也收窄, 七块因此互相重叠成一整团而不是
+    # 一堆散点 —— 这是和 clay_debris 拉开距离的主要手段之一。
+    #
+    # 另一半是**把量做够**, 这条是第二次量完才想明白的: 两个稀疏且几乎不重叠
+    # 的特效, 这个指标其实由双方的总墨量决定 (差值 ≈ 各自亮度之和), 跟"看起来
+    # 像不像"关系不大。第二版把重心从 (1.4,0.6) 甩到 (37,31) 像素、拓扑彻底
+    # 变了, 距离却只从 11.9 动到 11.8 —— 因为峰值覆盖率还是 3.7%, 对方
+    # clay_debris 也只有 2.8%, 两个都太薄。峰值提到 ~9% 之后才真正拉开。
+    # 参照: 现役 dust_puff 11.6%、explosion 19%; 本文件顶部记的"新特效太稀薄"
+    # 说的就是这件事。
+    base_ang = math.radians(-40.0)
+    for i in range(7):
+        ang = base_ang + math.radians(-26.0 + 8.7 * i)
+        d = throw * (0.84 + 0.16 * ((i * 3) % 4) / 3.0)
+        k = chip * (0.80 + 0.20 * ((i * 5) % 3) / 2.0)
+        objs.append(_block((k, k * 0.76, 0.12),
+                           (math.cos(ang) * d, math.sin(ang) * d, 0.05),
+                           mat_chip, rot=(0.0, 0.0, ang + 0.4), bevel=0.04))
+
+    # 撞击短弧: 和碎块**同侧**, 压在团的内缘。第一版放在反侧, 把偏心抵消掉了。
+    if bead > 0.03:
+        for j in (-1, 0, 1):
+            a = base_ang + j * 0.40
+            objs.append(_sphere(bead * (1.0 if j == 0 else 0.78),
+                                (math.cos(a) * arc_r, math.sin(a) * arc_r, 0.06),
+                                mat_arc, squash=0.75, jitter=0.006))
+    return objs
+
+
 # ---------------------------------------------------------------- 注册表
 
 GROUPS = {
@@ -429,6 +561,8 @@ GROUPS = {
     "frost_shatter":  (build_frost_shatter,  "vfx_frost_shatter_f{i}.png"),
     "sand_burst":     (build_sand_burst,     "vfx_sand_burst_f{i}.png"),
     "build_assemble": (build_build_assemble, "vfx_build_assemble_f{i}.png"),
+    "ricochet_spark": (build_ricochet_spark, "vfx_ricochet_spark_f{i}.png"),
+    "hit_spall":      (build_hit_spall,      "vfx_hit_spall_f{i}.png"),
 }
 
 

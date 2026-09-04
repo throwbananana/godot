@@ -33,9 +33,9 @@ from sokpop_common import (
     reset_jitter_seed,
     ORTHO_SCALE_DEFAULT,
 )
-from build_all_sokpop_assets_unified import build_sokpop_explosion, SPRITES_EFFECTS
+from build_all_sokpop_assets_unified import build_sokpop_explosion, SPRITES_EFFECTS, SPRITES_TILES
 from build_suicide_and_mirage_assets import build_suicide_blast_vfx, ORTHO_SCALE_BLAST
-from build_sokpop_animations import build_dust_puff, build_muzzle_flash
+from build_sokpop_animations import build_dust_puff, build_muzzle_flash, build_base_eagle_idle
 from build_semantic_vfx import (
     build_heal_pulse,
     build_emp_pulse,
@@ -43,13 +43,23 @@ from build_semantic_vfx import (
     build_frost_shatter,
     build_sand_burst,
     build_build_assemble,
+    build_ricochet_spark,
+    build_hit_spall,
 )
 
 JITTER_SEED = 3100
 
-# name -> (builder, 帧数, 输出名模板, ortho_scale)
+# name -> (builder, 帧数, 输出名模板, ortho_scale[, 输出目录])
+#
+# 第 5 项是可选的输出目录, 缺省 SPRITES_EFFECTS。加它是因为鹰巢待机动画属于
+# 地形目录 (base_eagle.gd 从 tiles/ 取图), 而这个脚本原来写死了 effects/ ——
+# 写死的话要么把鹰渲错地方, 要么就得为它单开一个脚本, 两条都不如加一项。
 GROUPS = {
     "explosion":     (build_sokpop_explosion,   6, "explosion_{i}.png",         ORTHO_SCALE_DEFAULT),
+    # 爆炸差分。同一套火球语言的另外两次实例 (换角相位 + 换 wobble 种子),
+    # 不是另外两种爆炸 —— 见 build_sokpop_explosion 上方 EXPLOSION_VARIANTS。
+    "explosion_v1":  (lambda i: build_sokpop_explosion(i, 1), 6, "explosion_v1_{i}.png", ORTHO_SCALE_DEFAULT),
+    "explosion_v2":  (lambda i: build_sokpop_explosion(i, 2), 6, "explosion_v2_{i}.png", ORTHO_SCALE_DEFAULT),
     "suicide_blast": (build_suicide_blast_vfx,  6, "vfx_suicide_blast_f{i}.png", ORTHO_SCALE_BLAST),
     "dust_puff":     (build_dust_puff,          6, "dust_puff_{i}.png",         ORTHO_SCALE_DEFAULT),
     "muzzle_flash":  (build_muzzle_flash,       6, "muzzle_flash_{i}.png",      ORTHO_SCALE_DEFAULT),
@@ -62,6 +72,17 @@ GROUPS = {
     "frost_shatter":  (build_frost_shatter,  6, "vfx_frost_shatter_f{i}.png",  ORTHO_SCALE_DEFAULT),
     "sand_burst":     (build_sand_burst,     6, "vfx_sand_burst_f{i}.png",     ORTHO_SCALE_DEFAULT),
     "build_assemble": (build_build_assemble, 6, "vfx_build_assemble_f{i}.png", ORTHO_SCALE_DEFAULT),
+
+    # 鹰巢待机动画。**注意它写进 tiles/ 而不是 effects/**。
+    # 不要拿 build_sokpop_animations.py 的 main() 去渲它 —— 那个 main() 会连带
+    # 重渲 muzzle_flash / clay_debris / shield_bubble / shockwave / dust_puff /
+    # base_damaged 六组已提交的美术。定向重渲走这里。
+    "base_eagle_idle": (build_base_eagle_idle, 6, "base_eagle_f{i}.png", ORTHO_SCALE_DEFAULT, SPRITES_TILES),
+    # 第二批拆分: 通用特效仍然承担着 217 处调用 (shockwave 82 / clay_debris 74 /
+    # dust_puff 61)。这两组拆的是其中最要命的两对语义 —— "打不动" vs "打没了",
+    # "受伤" vs "被摧毁"。
+    "ricochet_spark": (build_ricochet_spark, 6, "vfx_ricochet_spark_f{i}.png", ORTHO_SCALE_DEFAULT),
+    "hit_spall":      (build_hit_spall,      6, "vfx_hit_spall_f{i}.png",      ORTHO_SCALE_DEFAULT),
 }
 
 
@@ -94,8 +115,10 @@ def main():
 
     total = 0
     for name in targets:
-        builder, n_frames, tmpl, ortho = GROUPS[name]
-        print(f">>> 重渲 {name} ({n_frames} 帧, ortho={ortho})...")
+        entry = GROUPS[name]
+        builder, n_frames, tmpl, ortho = entry[:4]
+        out_dir = entry[4] if len(entry) > 4 else SPRITES_EFFECTS
+        print(f">>> 重渲 {name} ({n_frames} 帧, ortho={ortho}) -> {os.path.basename(out_dir)}/")
         for i in range(n_frames):
             # 每帧都重建场景: create_sokpop_lighting() 是幂等的 (会先清光源),
             # 但 clear_scene() 才能保证上一帧的网格不会留在画面里 —— 那正是
@@ -105,7 +128,7 @@ def main():
             create_sokpop_lighting(ortho_scale=ortho)
             reset_jitter_seed(JITTER_SEED + i)
             objs = builder(i)
-            render_and_clean(objs, os.path.join(SPRITES_EFFECTS, tmpl.format(i=i)))
+            render_and_clean(objs, os.path.join(out_dir, tmpl.format(i=i)))
             total += 1
 
     print(f"\n[OK] 已重渲 {len(targets)} 组特效, 共 {total} 帧。")

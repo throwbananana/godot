@@ -110,9 +110,9 @@ static func try_push(target_node: Node2D, push_dir: Vector2, can_destroy_steel: 
 
 			if is_pinned:
 				# ========= 💥 核心：挤压粉碎消灭 (SQUEEZE KILL) =========
-				_trigger_squeeze_kill(collider, target_node, main, is_enemy, is_player, is_eagle)
-			else:
-				# 后方空旷：强行击退单位并造成震荡
+				_trigger_squeeze_kill(collider, target_node, main, is_enemy, is_player, is_eagle, pusher)
+			elif not is_eagle:
+				# 后方空旷：强行击退单位并造成震荡（基地老鹰固定于阵地，不受推击击退）
 				_trigger_knockback_unit(collider, behind_pos, parent_node)
 
 		# B. 可撞碎的脆弱地形（砖块、硬泥、陷阱等）
@@ -176,7 +176,7 @@ static func _is_position_blocked_solid(context_node: Node2D, pos: Vector2, ignor
 	return false
 
 ## 触发挤压粉碎处决 (Squeeze Kill Execution)
-static func _trigger_squeeze_kill(victim: Object, target_node: Node2D, main: Node, is_enemy: bool, is_player: bool, is_eagle: bool) -> void:
+static func _trigger_squeeze_kill(victim: Object, target_node: Node2D, main: Node, is_enemy: bool, is_player: bool, is_eagle: bool, pusher: Node = null) -> void:
 	var tree = target_node.get_tree()
 	var parent_node = target_node.get_parent() if target_node.get_parent() else target_node
 	var v_pos: Vector2 = victim.global_position if "global_position" in victim else target_node.global_position
@@ -212,6 +212,12 @@ static func _trigger_squeeze_kill(victim: Object, target_node: Node2D, main: Nod
 			victim.stun(2.0)
 
 	elif is_eagle:
+		var iff_active: bool = (victim.get("is_iff_active") == true) or (main and main.has_method("is_iff_flag_active") and main.is_iff_flag_active()) or ("has_iff_flag" in GameState and GameState.has_iff_flag)
+		var is_pusher_player: bool = (pusher != null and (pusher.is_in_group("player") or ("shooter_type" in pusher and pusher.shooter_type == "player")))
+		if is_pusher_player and iff_active:
+			if main and main.has_method("show_toast"):
+				main.show_toast("🚩 友军标识旗生效：基地免受友军推挤挤压！")
+			return
 		# 基地老鹰被两面挤压：毁灭
 		if victim.has_method("destroy"):
 			victim.destroy()

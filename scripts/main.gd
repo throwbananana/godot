@@ -129,6 +129,8 @@ var is_victory: bool = false
 
 var shovel_timer: float = 0.0
 var is_shovel_active: bool = false
+var iff_flag_timer: float = 0.0
+var iff_flag_active: bool = false
 
 var darkness_fog_instance: DarknessFog = null
 var is_night_mode_active: bool = false
@@ -689,7 +691,10 @@ const ENCOUNTER_BASE := {
 	"challenge": 14,
 	"battle": 12,
 }
-const ENCOUNTER_PER_LAP := 4
+## 硬核化调整: 4 -> 5。每圈遭遇规模的绝对值抬高一档, 战斗打得更久;
+## 下面 MAX_ALIVE_BASE 才是"每一刻更挤"的那个杠杆, 两者一起调才不会变成
+## "只是更长不是更难"。
+const ENCOUNTER_PER_LAP := 5
 
 const SPAWN_INTERVAL_BASE := {
 	"elite": 2.0,
@@ -698,8 +703,10 @@ const SPAWN_INTERVAL_BASE := {
 	"battle": 2.5,
 }
 ## 每圈出车间隔收紧多少; 下限 1.2 秒 —— 再快的话三个出生点会堵住,
-## 车挤在门口反而比正常涌出来好打。
-const SPAWN_INTERVAL_PER_LAP := 0.25
+## 车挤在门口反而比正常涌出来好打。硬核化调整只动收紧速度 (0.25 -> 0.35,
+## 更早触到这个下限), 不动 1.2 这个下限本身 —— 那条是地图几何决定的真实
+## 上限, 不是随便能往上顶的数字。
+const SPAWN_INTERVAL_PER_LAP := 0.35
 const SPAWN_INTERVAL_FLOOR := 1.2
 
 ## 场上同时存在的敌人上限。
@@ -710,7 +717,10 @@ const SPAWN_INTERVAL_FLOOR := 1.2
 ## 是个整数、同样一眼看得见 (屏幕上就是多两辆)。
 ##
 ## 封顶 6: 13x13 的地图加三个出生点, 再多就变成敌人互相堵路, 反而更好打。
-const MAX_ALIVE_BASE := 4
+## 这个上限不动——硬核化调整改的是 BASE (4 -> 5): 圈 0 起步就是 5 辆同屏,
+## 圈 1 就摸到封顶, 比原来"圈 2 才摸到封顶"提前压满, 整条难度圈曲线往前
+## 挪了一步, 而不是把封顶本身顶破。
+const MAX_ALIVE_BASE := 5
 const MAX_ALIVE_CAP := 6
 
 var max_alive_cap: int = MAX_ALIVE_BASE
@@ -742,6 +752,12 @@ func start_game() -> void:
 	max_alive_cap = MAX_ALIVE_BASE
 	shovel_timer = 0.0
 	is_shovel_active = false
+	if not GameState.has_iff_flag:
+		iff_flag_active = false
+		iff_flag_timer = 0.0
+	else:
+		iff_flag_active = true
+		iff_flag_timer = 999999.0
 	hud_status.visible = false
 	btn_restart.visible = false
 	if victory_modal_root:
@@ -1290,7 +1306,7 @@ func _grant_treasure_room_reward() -> void:
 		# MISSILE/TIMED_BOMB 曾经完全不在这张表里 —— 房间奖励是这套架构下玩家
 		# 最稳定的道具来源 (每个宝藏房必掉一次), 而砖块/bonus 击杀是随机的。
 		# 两者不含这两种道具, 意味着不靠打砖块或 bonus 击杀就永远发现不了它们。
-		var types = [PowerUp.Type.STAR, PowerUp.Type.LIFE, PowerUp.Type.HELMET, PowerUp.Type.BOMB, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
+		var types = [PowerUp.Type.STAR, PowerUp.Type.LIFE, PowerUp.Type.HELMET, PowerUp.Type.BOMB, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON, PowerUp.Type.IFF_FLAG]
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = Vector2((GRID_W / 2.0) * TILE_SIZE, (GRID_H / 2.0) * TILE_SIZE)
@@ -2164,7 +2180,7 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 		# Rare Power-up (Star / Bomb / Clock / Helmet / Life / Shovel / Missile / Timed Bomb)
 		if powerup_scene and actors_container:
 			var p_inst = powerup_scene.instantiate()
-			var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
+			var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON, PowerUp.Type.IFF_FLAG]
 			types.shuffle()
 			p_inst.setup(types[0])
 			# pos 是全局坐标, 这里原来直接赋给 position(局部), 掉落道具落在
@@ -2226,6 +2242,8 @@ func _spawn_base_and_walls(use_steel: bool = false) -> void:
 	base_instance.position = Vector2(6.5 * TILE_SIZE, 12.5 * TILE_SIZE)
 	base_instance.destroyed.connect(_on_base_destroyed)
 	base_wall_container.add_child(base_instance)
+	if is_iff_flag_active():
+		base_instance.set_iff_active(true)
 
 	var wall_positions = [
 		Vector2(5.5 * TILE_SIZE, 12.5 * TILE_SIZE),
@@ -2256,6 +2274,9 @@ func _despawn_base() -> void:
 		child.queue_free()
 	is_shovel_active = false
 	shovel_timer = 0.0
+	if not GameState.has_iff_flag:
+		iff_flag_active = false
+		iff_flag_timer = 0.0
 	base_wall_container.modulate.a = 1.0
 
 
@@ -2289,6 +2310,17 @@ func trigger_shovel(duration: float = 15.0) -> void:
 	shovel_timer = duration
 	_spawn_base_and_walls(true)
 	show_toast("BASE FORTIFIED WITH STEEL!")
+
+func trigger_iff_flag(duration: float = 40.0) -> void:
+	iff_flag_active = true
+	iff_flag_timer = maxf(iff_flag_timer, duration)
+	if base_instance and is_instance_valid(base_instance):
+		if base_instance.has_method("set_iff_active"):
+			base_instance.set_iff_active(true)
+	show_toast("🚩 友军标识旗已生效！我方火力绝对豁免基地伤害！")
+
+func is_iff_flag_active() -> bool:
+	return iff_flag_active or ("has_iff_flag" in GameState and GameState.has_iff_flag)
 
 func trigger_freeze(duration: float = 7.5) -> void:
 	for node in actors_container.get_children():
@@ -2462,6 +2494,14 @@ func _process(delta: float) -> void:
 				_spawn_base_and_walls(false)
 				show_toast("BASE STEEL EXPIRED")
 
+	if iff_flag_active and not GameState.has_iff_flag:
+		iff_flag_timer -= delta
+		if iff_flag_timer <= 0.0:
+			iff_flag_active = false
+			if base_instance and is_instance_valid(base_instance) and base_instance.has_method("set_iff_active"):
+				base_instance.set_iff_active(false)
+			show_toast("🚩 友军标识旗已失效")
+
 	# Boss Health Bar Realtime Sync & Smooth Fade
 	if active_boss_instance:
 		if is_instance_valid(active_boss_instance) and hud_boss_fill:
@@ -2543,6 +2583,7 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.ENGINEER: 3,
 	EnemyTank.EnemyType.FLAMETHROWER: 3,
 	EnemyTank.EnemyType.FIREWALL: 3,
+	EnemyTank.EnemyType.TRENCH: 3,
 	EnemyTank.EnemyType.SNIPER: 4,
 	EnemyTank.EnemyType.GATLING: 4,
 	EnemyTank.EnemyType.SPIDER: 4,
@@ -2571,7 +2612,7 @@ const GATE_FALLBACK_POOL: Array = [
 	EnemyTank.EnemyType.BASIC, EnemyTank.EnemyType.FAST,
 	EnemyTank.EnemyType.POWER, EnemyTank.EnemyType.SUICIDE, EnemyTank.EnemyType.ARMOR,
 	EnemyTank.EnemyType.SHOTGUN, EnemyTank.EnemyType.HUNTER,
-	EnemyTank.EnemyType.BOMBER, EnemyTank.EnemyType.ENGINEER, EnemyTank.EnemyType.FLAMETHROWER, EnemyTank.EnemyType.FIREWALL,
+	EnemyTank.EnemyType.BOMBER, EnemyTank.EnemyType.ENGINEER, EnemyTank.EnemyType.FLAMETHROWER, EnemyTank.EnemyType.FIREWALL, EnemyTank.EnemyType.TRENCH,
 	EnemyTank.EnemyType.SNIPER, EnemyTank.EnemyType.GATLING, EnemyTank.EnemyType.SPIDER, EnemyTank.EnemyType.SANDWORM, EnemyTank.EnemyType.CANNON,
 	EnemyTank.EnemyType.TESLA, EnemyTank.EnemyType.TOXIC,
 	EnemyTank.EnemyType.AIRCRAFT, EnemyTank.EnemyType.MIRAGE,
@@ -2689,10 +2730,11 @@ func _request_spawn_enemy() -> void:
 		elif r < 0.52: type = EnemyTank.EnemyType.GATLING
 		elif r < 0.62: type = EnemyTank.EnemyType.SNIPER
 		elif r < 0.70: type = EnemyTank.EnemyType.CANNON
-		elif r < 0.76: type = EnemyTank.EnemyType.CRUSHER
-		elif r < 0.82: type = EnemyTank.EnemyType.MISSILE
-		elif r < 0.88: type = EnemyTank.EnemyType.BOMBER
-		elif r < 0.94: type = EnemyTank.EnemyType.LASER
+		elif r < 0.76: type = EnemyTank.EnemyType.TRENCH
+		elif r < 0.81: type = EnemyTank.EnemyType.CRUSHER
+		elif r < 0.86: type = EnemyTank.EnemyType.MISSILE
+		elif r < 0.91: type = EnemyTank.EnemyType.BOMBER
+		elif r < 0.96: type = EnemyTank.EnemyType.LASER
 		else: type = themed_type
 	else:
 		match floor_idx:
@@ -2715,31 +2757,33 @@ func _request_spawn_enemy() -> void:
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.ARMOR
 			3:
 				if r < 0.08: type = EnemyTank.EnemyType.ARMOR
-				elif r < 0.16: type = EnemyTank.EnemyType.ENGINEER
-				elif r < 0.24: type = EnemyTank.EnemyType.FIREWALL
-				elif r < 0.32: type = EnemyTank.EnemyType.HUNTER
-				elif r < 0.40: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.48: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.58: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.68: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.78: type = EnemyTank.EnemyType.SUICIDE
-				elif r < 0.88: type = EnemyTank.EnemyType.BOMBER
+				elif r < 0.15: type = EnemyTank.EnemyType.ENGINEER
+				elif r < 0.22: type = EnemyTank.EnemyType.FIREWALL
+				elif r < 0.30: type = EnemyTank.EnemyType.TRENCH
+				elif r < 0.38: type = EnemyTank.EnemyType.HUNTER
+				elif r < 0.46: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.54: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.63: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.72: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.81: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.90: type = EnemyTank.EnemyType.BOMBER
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 			4:
 				if r < 0.05: type = EnemyTank.EnemyType.ARMOR
 				elif r < 0.10: type = EnemyTank.EnemyType.ENGINEER
 				elif r < 0.15: type = EnemyTank.EnemyType.FIREWALL
-				elif r < 0.20: type = EnemyTank.EnemyType.HUNTER
-				elif r < 0.25: type = EnemyTank.EnemyType.SPIDER
-				elif r < 0.30: type = EnemyTank.EnemyType.SANDWORM
-				elif r < 0.35: type = EnemyTank.EnemyType.CANNON
-				elif r < 0.41: type = EnemyTank.EnemyType.TESLA
-				elif r < 0.47: type = EnemyTank.EnemyType.TOXIC
-				elif r < 0.53: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.60: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.67: type = EnemyTank.EnemyType.GATLING
-				elif r < 0.74: type = EnemyTank.EnemyType.SNIPER
-				elif r < 0.81: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.20: type = EnemyTank.EnemyType.TRENCH
+				elif r < 0.25: type = EnemyTank.EnemyType.HUNTER
+				elif r < 0.30: type = EnemyTank.EnemyType.SPIDER
+				elif r < 0.35: type = EnemyTank.EnemyType.SANDWORM
+				elif r < 0.40: type = EnemyTank.EnemyType.CANNON
+				elif r < 0.46: type = EnemyTank.EnemyType.TESLA
+				elif r < 0.52: type = EnemyTank.EnemyType.TOXIC
+				elif r < 0.58: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.64: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.70: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.76: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.82: type = EnemyTank.EnemyType.MIRAGE
 				elif r < 0.88: type = EnemyTank.EnemyType.AIRCRAFT
 				elif r < 0.94: type = EnemyTank.EnemyType.SUICIDE
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
@@ -2751,20 +2795,21 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.16: type = EnemyTank.EnemyType.SPLITTER
 				elif r < 0.19: type = EnemyTank.EnemyType.CRUSHER
 				elif r < 0.22: type = EnemyTank.EnemyType.BULLDOZER
-				elif r < 0.25: type = EnemyTank.EnemyType.ENGINEER
-				elif r < 0.29: type = EnemyTank.EnemyType.FIREWALL
-				elif r < 0.33: type = EnemyTank.EnemyType.HUNTER
-				elif r < 0.38: type = EnemyTank.EnemyType.SPIDER
-				elif r < 0.43: type = EnemyTank.EnemyType.SANDWORM
-				elif r < 0.48: type = EnemyTank.EnemyType.CANNON
-				elif r < 0.54: type = EnemyTank.EnemyType.GATLING
-				elif r < 0.60: type = EnemyTank.EnemyType.SNIPER
-				elif r < 0.66: type = EnemyTank.EnemyType.SHOTGUN
-				elif r < 0.72: type = EnemyTank.EnemyType.BATTLESHIP
-				elif r < 0.78: type = EnemyTank.EnemyType.FLAMETHROWER
-				elif r < 0.84: type = EnemyTank.EnemyType.MIRAGE
-				elif r < 0.90: type = EnemyTank.EnemyType.AIRCRAFT
-				elif r < 0.95: type = EnemyTank.EnemyType.SUICIDE
+				elif r < 0.25: type = EnemyTank.EnemyType.TRENCH
+				elif r < 0.29: type = EnemyTank.EnemyType.ENGINEER
+				elif r < 0.33: type = EnemyTank.EnemyType.FIREWALL
+				elif r < 0.37: type = EnemyTank.EnemyType.HUNTER
+				elif r < 0.41: type = EnemyTank.EnemyType.SPIDER
+				elif r < 0.46: type = EnemyTank.EnemyType.SANDWORM
+				elif r < 0.51: type = EnemyTank.EnemyType.CANNON
+				elif r < 0.57: type = EnemyTank.EnemyType.GATLING
+				elif r < 0.63: type = EnemyTank.EnemyType.SNIPER
+				elif r < 0.69: type = EnemyTank.EnemyType.SHOTGUN
+				elif r < 0.74: type = EnemyTank.EnemyType.BATTLESHIP
+				elif r < 0.79: type = EnemyTank.EnemyType.FLAMETHROWER
+				elif r < 0.85: type = EnemyTank.EnemyType.MIRAGE
+				elif r < 0.91: type = EnemyTank.EnemyType.AIRCRAFT
+				elif r < 0.96: type = EnemyTank.EnemyType.SUICIDE
 				else: type = EnemyTank.EnemyType.BATTLESHIP if has_water else EnemyTank.EnemyType.LASER
 
 	# Floor-gate the roll above -- the boss/elite tables (unlike the plain
@@ -2836,7 +2881,7 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 
 	if is_bonus and powerup_scene:
 		var p_inst = powerup_scene.instantiate()
-		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
+		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON, PowerUp.Type.IFF_FLAG]
 		types.shuffle()
 		p_inst.setup(types[0])
 		# drop_pos 来自 enemy.gd 的 enemy_destroyed 信号, 是全局坐标
@@ -2898,7 +2943,7 @@ func _grant_room_clear_reward() -> void:
 		var p_inst = powerup_scene.instantiate()
 		# 同上 (见宝藏房奖励那处注释): 补齐 MISSILE/TIMED_BOMB, 房间奖励不该是
 		# 这两种道具唯一发现不了的死角。
-		var types = [PowerUp.Type.STAR, PowerUp.Type.HELMET, PowerUp.Type.LIFE, PowerUp.Type.CLOCK, PowerUp.Type.SHOVEL, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
+		var types = [PowerUp.Type.STAR, PowerUp.Type.HELMET, PowerUp.Type.LIFE, PowerUp.Type.CLOCK, PowerUp.Type.SHOVEL, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON, PowerUp.Type.IFF_FLAG]
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = drop_pos
