@@ -16,8 +16,8 @@ uniform vec2 base_pos = vec2(312.0, 600.0);
 uniform float base_radius = 115.0;
 uniform bool base_active = true;
 
-uniform vec2 extra_lights_pos[16];
-uniform float extra_lights_radius[16];
+uniform vec2 extra_lights_pos[32];
+uniform float extra_lights_radius[32];
 uniform int extra_lights_count = 0;
 
 uniform vec4 ambient_darkness : source_color = vec4(0.015, 0.015, 0.035, 0.96);
@@ -95,7 +95,7 @@ func add_flash(pos: Vector2, radius: float = 160.0, duration: float = 0.35) -> v
 	})
 
 func _process(delta: float) -> void:
-	if not shader_mat:
+	if not shader_mat or not is_inside_tree():
 		return
 
 	# 1. Update Player 1 Light
@@ -142,7 +142,7 @@ func _process(delta: float) -> void:
 	for f in flashes:
 		f["elapsed"] += delta
 		if f["elapsed"] < f["duration"]:
-			if pos_array.size() < 16:
+			if pos_array.size() < 32:
 				var progress = f["elapsed"] / f["duration"]
 				var cur_radius = f["radius"] * (1.0 - progress * 0.7)
 				pos_array.append(f["pos"])
@@ -150,10 +150,19 @@ func _process(delta: float) -> void:
 			remaining_flashes.append(f)
 	flashes = remaining_flashes
 
+	# Dynamic light for active darkness shroud devices (the device itself emits an eerie pulsating glow)
+	var darkness_devices = get_tree().get_nodes_in_group("darkness_device")
+	for dev in darkness_devices:
+		if is_instance_valid(dev) and dev.get("is_active") != false and pos_array.size() < 32:
+			var d_radius = dev.get("light_radius") if dev.get("light_radius") != null else 105.0
+			var d_pulse = d_radius + sin(Time.get_ticks_msec() * 0.006 + dev.position.x) * 6.0
+			pos_array.append(dev.position)
+			radius_array.append(d_pulse)
+
 	# Dynamic light for active street lamps (illumination)
 	var street_lamps = get_tree().get_nodes_in_group("street_lamp")
 	for lamp in street_lamps:
-		if is_instance_valid(lamp) and lamp.get("is_lit") == true and pos_array.size() < 16:
+		if is_instance_valid(lamp) and lamp.get("is_lit") == true and pos_array.size() < 32:
 			var l_radius = lamp.get("light_radius") if lamp.get("light_radius") != null else 165.0
 			var l_pulse = l_radius + sin(Time.get_ticks_msec() * 0.005 + lamp.position.x) * 4.0
 			pos_array.append(lamp.position)
@@ -162,7 +171,7 @@ func _process(delta: float) -> void:
 	# Dynamic light for active timed bombs
 	var timed_bombs = get_tree().get_nodes_in_group("timed_bomb")
 	for bomb in timed_bombs:
-		if is_instance_valid(bomb) and pos_array.size() < 16:
+		if is_instance_valid(bomb) and pos_array.size() < 32:
 			var bomb_pulse = 75.0 + sin(Time.get_ticks_msec() * 0.02) * 15.0
 			pos_array.append(bomb.position)
 			radius_array.append(bomb_pulse)
@@ -170,13 +179,13 @@ func _process(delta: float) -> void:
 	# Dynamic light for active bullets / missiles
 	var bullets = get_tree().get_nodes_in_group("bullet")
 	for b in bullets:
-		if is_instance_valid(b) and pos_array.size() < 16:
+		if is_instance_valid(b) and pos_array.size() < 32:
 			pos_array.append(b.position)
 			radius_array.append(42.0)
 
-	# Fill up to 16 slots
-	var count = mini(pos_array.size(), 16)
-	while pos_array.size() < 16:
+	# Fill up to 32 slots
+	var count = mini(pos_array.size(), 32)
+	while pos_array.size() < 32:
 		pos_array.append(Vector2.ZERO)
 		radius_array.append(0.0)
 

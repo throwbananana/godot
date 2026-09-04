@@ -55,6 +55,7 @@ const BUILDING_ITEMS: Array[Dictionary] = [
 	{"id": "pipe_conduit", "name": "导流管道补给 (Conduit Pipe)", "desc": "购入 1 个导流管道。子弹从入口打入会改变方向射出，在非入口方向受击可被破坏。", "cost": 30, "icon": "res://assets/sprites/buildings/pipe_conduit.png", "category": "BUILD"},
 	{"id": "bunker", "name": "战术防御堡垒 (Tactical Bunker)", "desc": "购入 1 座防御堡垒。坦克可躲在后方射穿射击孔出膛，正面格挡阻挡低阶炮弹，从左右侧面受击可被破坏。", "cost": 45, "icon": "res://assets/sprites/buildings/bunker.png", "category": "BUILD"},
 	{"id": "wooden_wall", "name": "便携木墙补给 (Wooden Wall)", "desc": "购入 1 面可移动木制防线。具有韧性且可被推移，撞击敌军或障碍物时造成接触破坏，承受多次撞击与攻击后碎裂。", "cost": 30, "icon": "res://assets/sprites/buildings/wooden_wall.png", "category": "BUILD"},
+	{"id": "darkness_device", "name": "暗幕装置补给 (Darkness Device)", "desc": "购入 1 座暗幕发生器库存。放置后释放超强吸光力场使全战场陷入黑暗，仅装置自身、玩家载具微光及炮弹爆炸具备可视光源，可打乱敌军远程索敌！", "cost": 65, "icon": "res://assets/sprites/buildings/darkness_device.png", "category": "BUILD"},
 ]
 
 func _ready() -> void:
@@ -272,6 +273,14 @@ static func _upgrade_pool() -> Array[Dictionary]:
 			"cost": 120,
 			"icon": "res://assets/sprites/powerups/armor_piercing_rounds.png",
 			"category": "RISK"
+		},
+		{
+			"id": "kinetic_piston_rounds",
+			"name": "活塞冲压弹 (Kinetic Piston Rounds)",
+			"desc": "改装主炮为重动能活塞冲压弹，命中方块或建筑时将其向后暴击推移一格！推墙能力受炮弹破坏等级制约（高阶炮弹可推重型钢墙）。若被推移的墙体将敌人逼入死角两面挤压，触发毁灭性的【挤压粉碎处决】！",
+			"cost": 130,
+			"icon": "res://assets/sprites/powerups/piston_rounds.png",
+			"category": "TACTICAL"
 		}
 	]
 
@@ -334,7 +343,7 @@ static func _price_for(base_cost: int) -> int:
 ## 同一个项目里的 event_dialog.gd 对完全相同的奖励是发两份的
 ## (_grant_tier_up / _grant_perk 都判 player_count == 2) —— 也就是说双份才是
 ## 既定行为, 商店这边是漏了, 不是另一种设计。
-const PER_PLAYER_PERKS := ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds"]
+const PER_PLAYER_PERKS := ["ricochet_rounds", "amphibious_hull", "armor_piercing_rounds", "kinetic_piston_rounds"]
 
 
 ## 这一局有几个玩家要拿这份奖励。
@@ -444,6 +453,9 @@ static func apply_item_purchase(item_id: String) -> String:
 		"armor_piercing_rounds":
 			_grant_perk_to_team("armor_piercing_rounds")
 			return "贯穿装甲弹装填完毕！可洞穿墙体，但再也无法拦截敌方炮弹！"
+		"kinetic_piston_rounds":
+			_grant_perk_to_team("kinetic_piston_rounds")
+			return "活塞冲压弹改装完成！炮弹命中墙体可强行推移，两墙相撞夹击秒杀敌人！"
 	return ""
 
 

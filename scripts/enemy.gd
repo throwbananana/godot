@@ -11,7 +11,7 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
-enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, TITAN_BOSS, SCORPION_BOSS, MAMMOTH_BOSS, TESLA, TOXIC, DRONE_CARRIER, DRONE_MINI }
+enum EnemyType { BASIC, FAST, POWER, ARMOR, MISSILE, LASER, BOSS, DESERT, TRAIN_BOSS, BOMBER, SUICIDE, MIRAGE, BATTLESHIP, AIRCRAFT, WARP, FLAMETHROWER, CRUSHER, BULLDOZER, SNIPER, GATLING, SHOTGUN, SPLITTER, SPLIT_MINI, ENGINEER, SPIDER, FIREWALL, HUNTER, SANDWORM, CANNON, TITAN_BOSS, SCORPION_BOSS, MAMMOTH_BOSS, TESLA, TOXIC, DRONE_CARRIER, DRONE_MINI }
 
 ## 奖励 (xp/gold/score) 的楼层缩放斜率。**只作用于奖励, 不作用于血量** ——
 ## 血量走下面的装甲板系统。
@@ -241,7 +241,7 @@ func is_boss_unit() -> bool:
 	return enemy_type in [EnemyType.BOSS, EnemyType.TRAIN_BOSS, EnemyType.TITAN_BOSS, EnemyType.SCORPION_BOSS, EnemyType.MAMMOTH_BOSS]
 
 func is_heavy_scale_unit() -> bool:
-	return is_boss_unit() or enemy_type in [EnemyType.CRUSHER, EnemyType.SPLITTER, EnemyType.DRONE_CARRIER]
+	return is_boss_unit() or enemy_type in [EnemyType.CRUSHER, EnemyType.BULLDOZER, EnemyType.SPLITTER, EnemyType.DRONE_CARRIER]
 
 func is_mini_scale_unit() -> bool:
 	return enemy_type in [EnemyType.SPLIT_MINI, EnemyType.DRONE_MINI]
@@ -535,6 +535,14 @@ func _setup_tank_type() -> void:
 			xp_value = 260
 			gold_value = 160
 			fire_interval = 999.0 # 不发射子弹，靠碾碎一切物体推进
+		EnemyType.BULLDOZER:
+			prefix = "enemy_bulldozer"
+			speed = 52.0 # 重型推土装甲推进速度
+			max_health = 8 # 坚固的重型工程装甲
+			score_value = 1450
+			xp_value = 240
+			gold_value = 150
+			fire_interval = 3.6 # 偶发冲压冲击弹
 		EnemyType.SNIPER:
 			prefix = "enemy_sniper"
 			speed = 135.0 # 高机动巡航狙击车：移动速度极快，但射击间隔长
@@ -1008,6 +1016,9 @@ func _physics_process(delta: float) -> void:
 				var crushed = _crush_target(col_node)
 				if not crushed:
 					_choose_new_direction()
+		elif enemy_type == EnemyType.BULLDOZER:
+			if col_node:
+				_handle_bulldozer_push(col_node)
 		else:
 			if col_node and is_instance_valid(col_node) and col_node.has_method("take_push"):
 				col_node.take_push(facing_direction, self)
@@ -1103,6 +1114,46 @@ func _crush_target(col: Object) -> bool:
 		return true
 
 	return false
+
+## 推土装甲车：推进推移障碍物与墙壁挤压处决
+func _handle_bulldozer_push(col_node: Object) -> void:
+	if not is_instance_valid(col_node) or col_node == self:
+		return
+
+	var can_break_steel: bool = (armor_plates >= 2)
+
+	# 1. 尝试将障碍物或建筑沿行进方向推移
+	if col_node is Node2D and KineticPushHelper.can_push(col_node, can_break_steel):
+		var pushed: bool = KineticPushHelper.try_push(col_node, facing_direction, can_break_steel, self)
+		if pushed:
+			SoundManager.play_hit_steel(get_tree())
+			VFXAnimator.spawn_dust_puff(get_parent(), global_position + facing_direction * 24.0)
+			return
+
+	# 2. 如果正面撞击玩家单位，检测是否将玩家夹击在墙壁死角处
+	if col_node.is_in_group("player") or col_node.is_in_group("p1") or col_node.is_in_group("p2"):
+		var behind_pos = col_node.global_position + facing_direction * 48.0
+		var main = get_tree().current_scene if is_inside_tree() else null
+		var is_pinned := KineticPushHelper._is_position_blocked_solid(self, behind_pos, col_node, main, 24.0, 13.0 * 48.0 - 24.0)
+		if is_pinned:
+			# 墙角强力挤压处决判定
+			KineticPushHelper._trigger_squeeze_kill(col_node, self, main, false, true, false)
+		else:
+			KineticPushHelper._trigger_knockback_unit(col_node, behind_pos, get_parent() if get_parent() else self)
+		return
+
+	# 3. 基地老鹰
+	if col_node.is_in_group("base") or col_node.is_in_group("base_eagle"):
+		if col_node.has_method("destroy"):
+			col_node.destroy()
+		elif col_node.has_method("take_damage_hit"):
+			col_node.take_damage_hit()
+		elif col_node.has_method("take_damage"):
+			col_node.take_damage(999)
+		return
+
+	# 4. 无法推动的硬性障碍（例如外墙边框），选择新方向
+	_choose_new_direction()
 
 func _choose_new_direction() -> void:
 	var dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
@@ -1458,6 +1509,19 @@ func _shoot() -> void:
 			bullet.global_position = muzzle_pos
 			VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 			SoundManager.play_shot(get_tree())
+	elif enemy_type == EnemyType.BULLDOZER:
+		var bullet = bullet_scene.instantiate()
+		bullet.direction = facing_direction
+		bullet.speed = 340.0
+		bullet.damage = 1
+		bullet.can_destroy_steel = (armor_plates >= 2)
+		bullet.is_kinetic_push = true
+		bullet.shooter = self
+		bullet.shooter_type = "enemy"
+		get_parent().add_child(bullet)
+		bullet.global_position = muzzle_pos
+		VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+		SoundManager.play_shot(get_tree())
 	else:
 		var bullet = bullet_scene.instantiate()
 		bullet.direction = facing_direction

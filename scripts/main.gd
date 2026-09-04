@@ -340,17 +340,44 @@ func _debug_clear_room() -> void:
 		waited += 1
 
 
+func activate_darkness_fog() -> DarknessFog:
+	if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
+		return darkness_fog_instance
+	darkness_fog_instance = DarknessFog.new()
+	darkness_fog_instance.setup_trackers(p1_instance, p2_instance, base_instance)
+	if game_area:
+		game_area.add_child(darkness_fog_instance)
+	return darkness_fog_instance
+
+
+func deactivate_darkness_fog() -> void:
+	if not (darkness_fog_instance and is_instance_valid(darkness_fog_instance)):
+		return
+	if is_night_mode_active:
+		return
+
+	# Check if any active darkness devices still remain on the battlefield
+	var devices = get_tree().get_nodes_in_group("darkness_device")
+	for d in devices:
+		if is_instance_valid(d) and not d.is_queued_for_deletion() and d.get("is_active") != false:
+			return
+
+	var fog = darkness_fog_instance
+	darkness_fog_instance = null
+	if is_inside_tree() and fog.is_inside_tree():
+		var tw = fog.create_tween()
+		tw.tween_property(fog, "modulate:a", 0.0, 0.35)
+		tw.tween_callback(fog.queue_free)
+	else:
+		fog.queue_free()
+
+
 func _debug_toggle_night_fog() -> void:
 	is_night_mode_active = not is_night_mode_active
 	if is_night_mode_active:
-		if not (darkness_fog_instance and is_instance_valid(darkness_fog_instance)):
-			darkness_fog_instance = DarknessFog.new()
-			darkness_fog_instance.setup_trackers(p1_instance, p2_instance, base_instance)
-			game_area.add_child(darkness_fog_instance)
+		activate_darkness_fog()
 	else:
-		if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
-			darkness_fog_instance.queue_free()
-			darkness_fog_instance = null
+		deactivate_darkness_fog()
 
 
 func hit_stop(duration_sec: float = 0.05) -> void:
@@ -783,9 +810,7 @@ func start_game() -> void:
 		if hud_p2_hp_box: hud_p2_hp_box.visible = false
 
 	if is_night_mode_active:
-		darkness_fog_instance = DarknessFog.new()
-		darkness_fog_instance.setup_trackers(p1_instance, p2_instance, base_instance)
-		game_area.add_child(darkness_fog_instance)
+		activate_darkness_fog()
 
 	_setup_challenge_treasure()
 	_update_hud()
@@ -1035,9 +1060,7 @@ func enter_room(room_key: String, entry_dir: int) -> void:
 	_place_players_at_entry(entry_dir)
 
 	if is_night_mode_active:
-		darkness_fog_instance = DarknessFog.new()
-		darkness_fog_instance.setup_trackers(p1_instance, p2_instance, base_instance)
-		game_area.add_child(darkness_fog_instance)
+		activate_darkness_fog()
 
 	room_cleared_pending = false
 	if is_combat:
@@ -1267,7 +1290,7 @@ func _grant_treasure_room_reward() -> void:
 		# MISSILE/TIMED_BOMB 曾经完全不在这张表里 —— 房间奖励是这套架构下玩家
 		# 最稳定的道具来源 (每个宝藏房必掉一次), 而砖块/bonus 击杀是随机的。
 		# 两者不含这两种道具, 意味着不靠打砖块或 bonus 击杀就永远发现不了它们。
-		var types = [PowerUp.Type.STAR, PowerUp.Type.LIFE, PowerUp.Type.HELMET, PowerUp.Type.BOMB, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
+		var types = [PowerUp.Type.STAR, PowerUp.Type.LIFE, PowerUp.Type.HELMET, PowerUp.Type.BOMB, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = Vector2((GRID_W / 2.0) * TILE_SIZE, (GRID_H / 2.0) * TILE_SIZE)
@@ -2141,7 +2164,7 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 		# Rare Power-up (Star / Bomb / Clock / Helmet / Life / Shovel / Missile / Timed Bomb)
 		if powerup_scene and actors_container:
 			var p_inst = powerup_scene.instantiate()
-			var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
+			var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
 			types.shuffle()
 			p_inst.setup(types[0])
 			# pos 是全局坐标, 这里原来直接赋给 position(局部), 掉落道具落在
@@ -2532,6 +2555,7 @@ const ENEMY_MIN_FLOOR: Dictionary = {
 	EnemyTank.EnemyType.BATTLESHIP: 5,
 	EnemyTank.EnemyType.LASER: 5,
 	EnemyTank.EnemyType.CRUSHER: 5,
+	EnemyTank.EnemyType.BULLDOZER: 5,
 	EnemyTank.EnemyType.SPLITTER: 5,
 	EnemyTank.EnemyType.DRONE_CARRIER: 6,
 	EnemyTank.EnemyType.DRONE_MINI: 6,
@@ -2552,7 +2576,7 @@ const GATE_FALLBACK_POOL: Array = [
 	EnemyTank.EnemyType.TESLA, EnemyTank.EnemyType.TOXIC,
 	EnemyTank.EnemyType.AIRCRAFT, EnemyTank.EnemyType.MIRAGE,
 	EnemyTank.EnemyType.BATTLESHIP, EnemyTank.EnemyType.LASER,
-	EnemyTank.EnemyType.CRUSHER, EnemyTank.EnemyType.SPLITTER,
+	EnemyTank.EnemyType.CRUSHER, EnemyTank.EnemyType.BULLDOZER, EnemyTank.EnemyType.SPLITTER,
 	EnemyTank.EnemyType.DRONE_CARRIER,
 	EnemyTank.EnemyType.MISSILE, EnemyTank.EnemyType.WARP,
 ]
@@ -2725,9 +2749,10 @@ func _request_spawn_enemy() -> void:
 				elif r < 0.08: type = EnemyTank.EnemyType.TESLA
 				elif r < 0.12: type = EnemyTank.EnemyType.TOXIC
 				elif r < 0.16: type = EnemyTank.EnemyType.SPLITTER
-				elif r < 0.20: type = EnemyTank.EnemyType.CRUSHER
-				elif r < 0.24: type = EnemyTank.EnemyType.ENGINEER
-				elif r < 0.28: type = EnemyTank.EnemyType.FIREWALL
+				elif r < 0.19: type = EnemyTank.EnemyType.CRUSHER
+				elif r < 0.22: type = EnemyTank.EnemyType.BULLDOZER
+				elif r < 0.25: type = EnemyTank.EnemyType.ENGINEER
+				elif r < 0.29: type = EnemyTank.EnemyType.FIREWALL
 				elif r < 0.33: type = EnemyTank.EnemyType.HUNTER
 				elif r < 0.38: type = EnemyTank.EnemyType.SPIDER
 				elif r < 0.43: type = EnemyTank.EnemyType.SANDWORM
@@ -2811,7 +2836,7 @@ func _on_enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2) -> void
 
 	if is_bonus and powerup_scene:
 		var p_inst = powerup_scene.instantiate()
-		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
+		var types = [PowerUp.Type.STAR, PowerUp.Type.BOMB, PowerUp.Type.CLOCK, PowerUp.Type.HELMET, PowerUp.Type.SHOVEL, PowerUp.Type.LIFE, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
 		types.shuffle()
 		p_inst.setup(types[0])
 		# drop_pos 来自 enemy.gd 的 enemy_destroyed 信号, 是全局坐标
@@ -2873,7 +2898,7 @@ func _grant_room_clear_reward() -> void:
 		var p_inst = powerup_scene.instantiate()
 		# 同上 (见宝藏房奖励那处注释): 补齐 MISSILE/TIMED_BOMB, 房间奖励不该是
 		# 这两种道具唯一发现不了的死角。
-		var types = [PowerUp.Type.STAR, PowerUp.Type.HELMET, PowerUp.Type.LIFE, PowerUp.Type.CLOCK, PowerUp.Type.SHOVEL, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
+		var types = [PowerUp.Type.STAR, PowerUp.Type.HELMET, PowerUp.Type.LIFE, PowerUp.Type.CLOCK, PowerUp.Type.SHOVEL, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB, PowerUp.Type.PISTON]
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = drop_pos

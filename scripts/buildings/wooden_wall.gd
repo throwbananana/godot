@@ -198,18 +198,21 @@ func _try_push(hit_dir: Vector2) -> void:
 				VFXAnimator.spawn_dust_puff(p_node, collider.global_position)
 				VFXAnimator.spawn_wood_debris(p_node, collider.global_position)
 				collider.queue_free()
-		# 顶撞敌人坦克：造成 2 点伤害与眩晕
+		# 顶撞敌人坦克：造成 2 点伤害与眩晕，若被挤压在硬物死角则触发粉碎消灭
 		elif collider.is_in_group("enemy") or collider.is_in_group("enemies"):
-			if collider.has_method("take_damage"):
-				collider.take_damage(2)
-			# enemy.gd 没有 stun() 方法，真正的定身机制叫 freeze()/freeze_timer
-			# (_physics_process 里 freeze_timer > 0 时整体提前 return)。has_method
-			# 守卫让这行调用一直静默地什么都没做——roller_wall.gd 里也是同一个坑。
-			if collider.has_method("freeze"):
-				collider.freeze(0.6)
-			var p_node = get_parent() if get_parent() else self
-			VFXAnimator.spawn_wood_debris(p_node, collider.global_position)
-			VFXAnimator.spawn_dust_puff(p_node, collider.global_position)
+			var behind_pos = target_pos + cardinal * push_step
+			var is_pinned = KineticPushHelper._is_position_blocked_solid(self, behind_pos, collider, main, 24.0, 13.0 * 48.0 - 24.0)
+			if is_pinned:
+				KineticPushHelper._trigger_squeeze_kill(collider, self, main, true, false, false)
+			else:
+				if collider.has_method("take_damage"):
+					collider.take_damage(2)
+				if collider.has_method("freeze"):
+					collider.freeze(0.6)
+				KineticPushHelper._trigger_knockback_unit(collider, behind_pos, get_parent() if get_parent() else self)
+				var p_node = get_parent() if get_parent() else self
+				VFXAnimator.spawn_wood_debris(p_node, collider.global_position)
+				VFXAnimator.spawn_dust_puff(p_node, collider.global_position)
 		# 坚硬不可移动固体障碍（钢铁/地图边界/基地/建筑）
 		elif collider.is_in_group("steel") or collider.is_in_group("border") or collider.is_in_group("buildings") or collider.is_in_group("base"):
 			blocked_by_solid = true

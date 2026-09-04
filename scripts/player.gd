@@ -313,6 +313,11 @@ func apply_powerup(type: PowerUp.Type) -> void:
 					get_parent().call_deferred("add_child", bomb)
 			SoundManager.play_build(get_tree())
 			powerup_collected.emit("[%s] 💣 强化十字连环定时炸弹！" % p_name)
+		PowerUp.Type.PISTON:
+			if main and main.rpg_mgr:
+				main.rpg_mgr.add_perk("kinetic_piston_rounds", player_id)
+			VFXAnimator.spawn_shockwave(get_parent(), global_position)
+			powerup_collected.emit("[%s] 🚜 活塞冲压弹就绪！主炮获得推墙与挤压处决能力！" % p_name)
 
 func set_invulnerable(duration: float) -> void:
 	is_invulnerable = true

@@ -41,6 +41,14 @@ var has_bounced: bool = false
 # have shot down instead sails straight through.
 var armor_piercing: bool = false
 
+# Kinetic Piston Rounds (活塞冲压弹):
+# Shells gain high kinetic impulse, pushing struck buildings, walls, and blocks.
+# The type of block that can be pushed strictly follows the destruction tier:
+# - Normal destruction tier (can_destroy_steel == false): pushes brick, clay, wood, roller walls, light buildings.
+# - High destruction tier (can_destroy_steel == true): also pushes solid steel walls, fortified walls, bunkers.
+# When a pushed block compresses a unit against a solid barrier behind it, triggers SQUEEZE KILL!
+var is_kinetic_push: bool = false
+
 @onready var sprite: Sprite2D = $Sprite2D
 
 func _ready() -> void:
@@ -57,12 +65,15 @@ func _ready() -> void:
 		if main and main.rpg_mgr:
 			bounces_remaining = main.rpg_mgr.get_perk_stacks("ricochet_rounds", shooter.player_id)
 			armor_piercing = main.rpg_mgr.has_perk("armor_piercing_rounds", shooter.player_id)
+			is_kinetic_push = is_kinetic_push or main.rpg_mgr.has_perk("kinetic_piston_rounds", shooter.player_id)
 
 	var tex_path = "res://assets/sprites/effects/bullet_plasma.png" if can_destroy_steel else "res://assets/sprites/effects/bullet.png"
 	if is_homing:
 		tex_path = "res://assets/sprites/effects/bullet_missile.png"
 	if bounces_remaining > 0:
 		tex_path = "res://assets/sprites/effects/bullet_ricochet.png"
+	if is_kinetic_push and not can_destroy_steel:
+		tex_path = "res://assets/sprites/effects/bullet_kinetic.png"
 	if custom_texture_path != "":
 		tex_path = custom_texture_path
 
@@ -165,6 +176,16 @@ func _on_body_entered(body: Node2D) -> void:
 		return
 
 	if body.is_in_group("brick") or body.is_in_group("hard_clay"):
+		if is_kinetic_push and KineticPushHelper.can_push(body, can_destroy_steel):
+			KineticPushHelper.try_push(body, direction, can_destroy_steel, self)
+			if not is_destroyed:
+				is_destroyed = true
+				if is_inside_tree() and get_tree():
+					SoundManager.play_hit_brick(get_tree())
+				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+				queue_free()
+			return
+
 		if not destroyed_bodies.has(body):
 			destroyed_bodies.append(body)
 			var effective_damage = damage
@@ -198,6 +219,16 @@ func _on_body_entered(body: Node2D) -> void:
 				queue_free()
 		return
 	elif body.is_in_group("oil_barrel") or body.is_in_group("street_lamp"):
+		if is_kinetic_push and KineticPushHelper.can_push(body, can_destroy_steel):
+			KineticPushHelper.try_push(body, direction, can_destroy_steel, self)
+			if not is_destroyed:
+				is_destroyed = true
+				if is_inside_tree() and get_tree():
+					SoundManager.play_hit_steel(get_tree())
+				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+				queue_free()
+			return
+
 		# 油桶/路灯是可购买的路上道具, 不是需要免友伤保护的防御建筑 ——
 		# 地图模板注释写的是"explodes when hit", 不分敌我一律命中, 走的
 		# 是跟 brick 一样的路径。此前它们只挂 oil_barrel/destructible/
@@ -229,6 +260,15 @@ func _on_body_entered(body: Node2D) -> void:
 			var redirected = body.handle_bullet_hit(self, global_position, direction)
 			if redirected:
 				return
+		if is_kinetic_push and KineticPushHelper.can_push(body, can_destroy_steel):
+			KineticPushHelper.try_push(body, direction, can_destroy_steel, self)
+			if not is_destroyed:
+				is_destroyed = true
+				if is_inside_tree() and get_tree():
+					SoundManager.play_hit_steel(get_tree())
+				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+				queue_free()
+			return
 		if not is_destroyed:
 			is_destroyed = true
 			if is_aoe:
@@ -256,6 +296,15 @@ func _on_body_entered(body: Node2D) -> void:
 			queue_free()
 		return
 	elif body.is_in_group("steel"):
+		if is_kinetic_push and can_destroy_steel and not body.is_in_group("border") and KineticPushHelper.can_push(body, can_destroy_steel):
+			KineticPushHelper.try_push(body, direction, can_destroy_steel, self)
+			if not is_destroyed:
+				is_destroyed = true
+				if is_inside_tree() and get_tree():
+					SoundManager.play_hit_steel(get_tree())
+				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+				queue_free()
+			return
 		var pierces_this_steel = armor_piercing and can_destroy_steel and not body.is_in_group("border")
 		if not is_destroyed:
 			if is_aoe:

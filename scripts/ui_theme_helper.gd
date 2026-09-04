@@ -650,6 +650,11 @@ const HOTBAR_CATALOG := [
 	{"id": "wind_blower", "icon": "res://assets/sprites/buildings/wind_blower.png"},
 	{"id": "missile_strike", "icon": "res://assets/sprites/powerups/missile_strike.png"},
 	{"id": "timed_bomb", "icon": "res://assets/sprites/buildings/prop_timed_bomb.png"},
+	{"id": "roller_wall", "icon": "res://assets/sprites/buildings/roller_wall.png"},
+	{"id": "pipe_conduit", "icon": "res://assets/sprites/buildings/pipe_conduit.png"},
+	{"id": "bunker", "icon": "res://assets/sprites/buildings/bunker.png"},
+	{"id": "wooden_wall", "icon": "res://assets/sprites/buildings/wooden_wall.png"},
+	{"id": "darkness_device", "icon": "res://assets/sprites/buildings/darkness_device.png"},
 ]
 
 static func create_hotbar_ui(parent: Node) -> Control:
@@ -860,6 +865,7 @@ static func get_perk_icon(opt: Dictionary) -> Texture2D:
 			"magnetic_salvage": icon_name = "perk_gold"
 			"amphibious_hull": icon_name = "perk_amphibious"
 			"armor_piercing_rounds": icon_name = "perk_piercing"
+			"kinetic_piston_rounds": icon_name = "perk_tactical"
 			_:
 				icon_name = "perk_tactical"
 

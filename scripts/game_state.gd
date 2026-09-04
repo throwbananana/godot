@@ -126,6 +126,7 @@ const PERK_MAX_STACKS := {
 	"ricochet_rounds": 3,
 	"armor_piercing_rounds": 1,
 	"amphibious_hull": 1,
+	"kinetic_piston_rounds": 1,
 }
 
 static func max_stacks_for_perk(perk_id: String) -> int:

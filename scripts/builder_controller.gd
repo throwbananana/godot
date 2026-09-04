@@ -6,7 +6,7 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const BunkerScript = preload("res://scripts/buildings/bunker.gd")
 
-enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL, PIPE, BUNKER, WOODEN_WALL }
+enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL, PIPE, BUNKER, WOODEN_WALL, DARKNESS_DEVICE }
 
 ## Battle-placement no longer spends gold directly (see GameState.structure_inventory) --
 ## these structures are shop-only stock now: buy N in shop_dialog.gd's Building
@@ -28,7 +28,8 @@ var structure_ids = {
 	StructureType.ROLLER_WALL: "roller_wall",
 	StructureType.PIPE: "pipe_conduit",
 	StructureType.BUNKER: "bunker",
-	StructureType.WOODEN_WALL: "wooden_wall"
+	StructureType.WOODEN_WALL: "wooden_wall",
+	StructureType.DARKNESS_DEVICE: "darkness_device"
 }
 
 @onready var preview_sprite_p1: Sprite2D = get_node_or_null("PreviewSprite")
@@ -49,6 +50,7 @@ var roller_wall_scene: PackedScene
 var pipe_scene: PackedScene
 var bunker_scene: PackedScene
 var wooden_wall_scene: PackedScene
+var darkness_device_scene: PackedScene
 
 # Per-player hotbar state so P1 and P2 never clobber each other's selection.
 var selection_by_pid: Dictionary = {1: StructureType.NONE, 2: StructureType.NONE}
@@ -68,7 +70,8 @@ var structure_list: Array[StructureType] = [
 	StructureType.ROLLER_WALL,
 	StructureType.PIPE,
 	StructureType.BUNKER,
-	StructureType.WOODEN_WALL
+	StructureType.WOODEN_WALL,
+	StructureType.DARKNESS_DEVICE
 ]
 
 var structure_names = {
@@ -86,7 +89,8 @@ var structure_names = {
 	StructureType.ROLLER_WALL: "ROLLER WALL",
 	StructureType.PIPE: "CONDUIT PIPE",
 	StructureType.BUNKER: "TACTICAL BUNKER",
-	StructureType.WOODEN_WALL: "WOODEN WALL"
+	StructureType.WOODEN_WALL: "WOODEN WALL",
+	StructureType.DARKNESS_DEVICE: "DARKNESS SHROUD DEVICE"
 }
 
 func _ready() -> void:
@@ -105,6 +109,7 @@ func _ready() -> void:
 	pipe_scene = load("res://scenes/buildings/pipe_conduit.tscn")
 	bunker_scene = load("res://scenes/buildings/bunker.tscn")
 	wooden_wall_scene = load("res://scenes/buildings/wooden_wall.tscn")
+	darkness_device_scene = load("res://scenes/buildings/darkness_device.tscn")
 
 	if not preview_sprite_p1:
 		preview_sprite_p1 = Sprite2D.new()
@@ -206,6 +211,7 @@ func select_structure(type: StructureType, pid: int = 1) -> void:
 		StructureType.PIPE: tex_path = "res://assets/sprites/buildings/pipe_conduit.png"
 		StructureType.BUNKER: tex_path = "res://assets/sprites/buildings/bunker.png"
 		StructureType.WOODEN_WALL: tex_path = "res://assets/sprites/buildings/wooden_wall.png"
+		StructureType.DARKNESS_DEVICE: tex_path = "res://assets/sprites/buildings/darkness_device.png"
 
 	var tex = TextureHelper.get_tex(tex_path)
 	if tex:
@@ -452,6 +458,9 @@ func _try_place_current(pid: int) -> void:
 		StructureType.WOODEN_WALL:
 			new_struct = wooden_wall_scene.instantiate()
 			name_str = "WOODEN WALL"
+		StructureType.DARKNESS_DEVICE:
+			new_struct = darkness_device_scene.instantiate()
+			name_str = "DARKNESS SHROUD DEVICE"
 
 	if new_struct:
 		main.actors_container.add_child(new_struct)

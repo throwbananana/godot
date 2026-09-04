@@ -140,14 +140,17 @@ func _try_push(hit_dir: Vector2) -> void:
 				collider.queue_free()
 		# Ram & crush enemy tanks in the way
 		elif collider.is_in_group("enemy") or collider.is_in_group("enemies"):
-			if collider.has_method("take_damage"):
-				collider.take_damage(2)
-			# enemy.gd 没有 stun() 方法，真正的定身机制叫 freeze()/freeze_timer
-			# (_physics_process 里 freeze_timer > 0 时整体提前 return)。has_method
-			# 守卫让这行调用一直静默地什么都没做——wooden_wall.gd 里也是同一个坑。
-			if collider.has_method("freeze"):
-				collider.freeze(0.8)
-			VFXAnimator.spawn_clay_debris(get_parent(), collider.global_position)
+			var behind_pos = target_pos + cardinal * push_step
+			var is_pinned = KineticPushHelper._is_position_blocked_solid(self, behind_pos, collider, main, 24.0, 13.0 * 48.0 - 24.0)
+			if is_pinned:
+				KineticPushHelper._trigger_squeeze_kill(collider, self, main, true, false, false)
+			else:
+				if collider.has_method("take_damage"):
+					collider.take_damage(2)
+				if collider.has_method("freeze"):
+					collider.freeze(0.8)
+				KineticPushHelper._trigger_knockback_unit(collider, behind_pos, get_parent() if get_parent() else self)
+				VFXAnimator.spawn_clay_debris(get_parent(), collider.global_position)
 		# Solid impenetrable obstacles
 		elif collider.is_in_group("steel") or collider.is_in_group("border") or collider.is_in_group("buildings") or collider.is_in_group("base"):
 			blocked_by_solid = true

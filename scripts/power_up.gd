@@ -5,7 +5,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
-enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE, MISSILE, TIMED_BOMB }
+enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE, MISSILE, TIMED_BOMB, PISTON }
 
 @export var power_up_type: Type = Type.STAR
 
@@ -36,6 +36,7 @@ func _update_texture() -> void:
 		Type.LIFE: tex_name = "life"
 		Type.MISSILE: tex_name = "missile_strike"
 		Type.TIMED_BOMB: tex_name = "powerup_timed_bomb"
+		Type.PISTON: tex_name = "piston_rounds"
 	
 	var path = "res://assets/sprites/powerups/%s.png" % tex_name
 	var tex = TextureHelper.get_tex(path)
