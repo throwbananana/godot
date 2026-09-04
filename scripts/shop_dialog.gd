@@ -454,7 +454,7 @@ func _render_item_cards() -> void:
 	for item in current_shop_items:
 		var card = PanelContainer.new()
 		card.custom_minimum_size = Vector2(210, 160)
-		UIThemeHelper.apply_clay_panel(card, Color(0.18, 0.15, 0.22, 0.95), 10)
+		UIThemeHelper.apply_clay_subpanel(card)
 
 		var vbox = VBoxContainer.new()
 		vbox.add_theme_constant_override("separation", 3)

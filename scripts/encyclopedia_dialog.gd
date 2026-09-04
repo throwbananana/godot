@@ -36,10 +36,22 @@ var active_item_buttons: Array[Button] = []
 
 func _ready() -> void:
 	UIThemeHelper.apply_clay_panel(main_panel, Color(0.16, 0.13, 0.18, 0.98), 16)
-	UIThemeHelper.apply_clay_panel(left_list_panel, Color(0.12, 0.10, 0.14, 0.95), 10)
-	UIThemeHelper.apply_clay_panel(right_detail_panel, Color(0.13, 0.11, 0.15, 0.95), 10)
-	UIThemeHelper.apply_clay_panel(stats_section, Color(0.10, 0.08, 0.12, 0.8), 8)
-	UIThemeHelper.apply_clay_panel(icon_container, Color(0.20, 0.17, 0.22, 1.0), 10)
+	UIThemeHelper.apply_clay_subpanel(left_list_panel)
+	UIThemeHelper.apply_clay_subpanel(right_detail_panel)
+	UIThemeHelper.apply_clay_subpanel(stats_section)
+	UIThemeHelper.apply_clay_subpanel(icon_container)
+
+	# 为 5 个分类 Tab 绑定实体黏土图标
+	btn_tab_upgrades.icon = TextureHelper.get_tex("res://assets/sprites/powerups/star.png")
+	btn_tab_upgrades.expand_icon = true
+	btn_tab_tanks.icon = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_tank_p1.png")
+	btn_tab_tanks.expand_icon = true
+	btn_tab_items.icon = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_gift.png")
+	btn_tab_items.expand_icon = true
+	btn_tab_buildings.icon = TextureHelper.get_tex("res://assets/sprites/buildings/turret_gun.png")
+	btn_tab_buildings.expand_icon = true
+	btn_tab_terrain.icon = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_terrain.png")
+	btn_tab_terrain.expand_icon = true
 
 	UIThemeHelper.apply_clay_button(btn_close_top, false)
 	UIThemeHelper.apply_icon_button(btn_close_top, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(18, 18), false)

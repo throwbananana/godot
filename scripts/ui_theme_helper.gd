@@ -212,6 +212,36 @@ static func apply_clay_event_button(btn: Button, opt_index: int = 1) -> void:
 
 static func apply_clay_tab_button(btn: Button, is_active: bool = false) -> void:
 	if not btn: return
+	var tex_act = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_tab_active.png")
+	var tex_inact = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_tab_inactive.png")
+	var tex = tex_act if is_active else tex_inact
+	if tex:
+		var sb = StyleBoxTexture.new()
+		sb.texture = tex
+		sb.texture_margin_left = 18
+		sb.texture_margin_right = 18
+		sb.texture_margin_top = 12
+		sb.texture_margin_bottom = 12
+		sb.content_margin_left = 14
+		sb.content_margin_right = 14
+		sb.content_margin_top = 8
+		sb.content_margin_bottom = 8
+		btn.add_theme_stylebox_override("normal", sb)
+		btn.add_theme_stylebox_override("hover", sb)
+		btn.add_theme_stylebox_override("pressed", sb)
+		btn.add_theme_stylebox_override("focus", sb)
+		if is_active:
+			btn.add_theme_color_override("font_color", Color(0.22, 0.15, 0.05, 1.0))
+			btn.add_theme_color_override("font_hover_color", Color(0.12, 0.08, 0.02, 1.0))
+			btn.add_theme_color_override("font_pressed_color", Color(0.22, 0.15, 0.05, 1.0))
+			btn.add_theme_color_override("font_focus_color", Color(0.22, 0.15, 0.05, 1.0))
+		else:
+			btn.add_theme_color_override("font_color", Color(0.85, 0.82, 0.88, 1.0))
+			btn.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.80, 1.0))
+			btn.add_theme_color_override("font_pressed_color", Color(0.85, 0.82, 0.88, 1.0))
+			btn.add_theme_color_override("font_focus_color", Color(1.0, 0.95, 0.80, 1.0))
+		return
+	
 	var sb = StyleBoxFlat.new()
 	if is_active:
 		sb.bg_color = Color(0.85, 0.72, 0.35, 1.0)
@@ -411,6 +441,40 @@ static func apply_clay_panel(panel: Control, bg_color: Color = Color(0.18, 0.15,
 	sb.content_margin_bottom = 14
 	panel.add_theme_stylebox_override("panel", sb)
 
+static func apply_clay_subpanel(panel: Control, bg_color: Color = Color(0.12, 0.10, 0.15, 0.92)) -> void:
+	if not panel: return
+	var tex_sub = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_subpanel_tray.png")
+	if tex_sub:
+		var sbt = StyleBoxTexture.new()
+		sbt.texture = tex_sub
+		sbt.texture_margin_left = 24
+		sbt.texture_margin_right = 24
+		sbt.texture_margin_top = 22
+		sbt.texture_margin_bottom = 22
+		sbt.content_margin_left = 14
+		sbt.content_margin_right = 14
+		sbt.content_margin_top = 10
+		sbt.content_margin_bottom = 10
+		panel.add_theme_stylebox_override("panel", sbt)
+		return
+
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = bg_color
+	sb.corner_radius_top_left = 8
+	sb.corner_radius_top_right = 8
+	sb.corner_radius_bottom_left = 8
+	sb.corner_radius_bottom_right = 8
+	sb.border_width_left = 1
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.border_color = Color(0.35, 0.28, 0.40, 0.8)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	panel.add_theme_stylebox_override("panel", sb)
+
 static func apply_clay_progressbar(bar: ProgressBar, fill_color: Color = Color(0.35, 0.82, 0.95, 1.0)) -> void:
 	if not bar: return
 	var bg = StyleBoxFlat.new()
@@ -436,6 +500,27 @@ static func apply_clay_progressbar(bar: ProgressBar, fill_color: Color = Color(0
 
 static func apply_clay_slider(slider: HSlider) -> void:
 	if not slider: return
+	var tex_track = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_slider_track.png")
+	var tex_grab = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_slider_grabber.png")
+	if tex_grab:
+		slider.add_theme_icon_override("grabber", tex_grab)
+		slider.add_theme_icon_override("grabber_highlight", tex_grab)
+	if tex_track:
+		var sbt = StyleBoxTexture.new()
+		sbt.texture = tex_track
+		sbt.texture_margin_left = 16
+		sbt.texture_margin_right = 16
+		sbt.texture_margin_top = 8
+		sbt.texture_margin_bottom = 8
+		sbt.content_margin_top = 6
+		sbt.content_margin_bottom = 6
+		slider.add_theme_stylebox_override("slider", sbt)
+		var sbt_area = sbt.duplicate() as StyleBoxTexture
+		sbt_area.modulate_color = Color(1.2, 1.1, 0.9)
+		slider.add_theme_stylebox_override("grabber_area", sbt_area)
+		slider.add_theme_stylebox_override("grabber_area_highlight", sbt_area)
+		return
+
 	var bg := StyleBoxFlat.new()
 	bg.bg_color = Color(0.14, 0.11, 0.18, 0.95)
 	bg.corner_radius_top_left = 6
@@ -543,26 +628,7 @@ static func apply_hud_sidepanel(panel: Control) -> void:
 
 static func apply_pause_menu_theme(menu_panel: PanelContainer, buttons: Array) -> void:
 	if not menu_panel: return
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.08, 0.15, 0.96)
-	sb.corner_radius_top_left = 16
-	sb.corner_radius_top_right = 16
-	sb.corner_radius_bottom_left = 16
-	sb.corner_radius_bottom_right = 16
-	sb.border_width_left = 2
-	sb.border_width_top = 2
-	sb.border_width_right = 2
-	sb.border_width_bottom = 2
-	sb.border_color = Color(0.60, 0.48, 0.75, 0.9)
-	sb.shadow_color = Color(0, 0, 0, 0.7)
-	sb.shadow_size = 20
-	sb.shadow_offset = Vector2(0, 8)
-	sb.content_margin_left = 18
-	sb.content_margin_right = 18
-	sb.content_margin_top = 18
-	sb.content_margin_bottom = 18
-	menu_panel.add_theme_stylebox_override("panel", sb)
-	
+	apply_clay_panel(menu_panel)
 	for b in buttons:
 		if b is Button:
 			apply_clay_button(b, true)

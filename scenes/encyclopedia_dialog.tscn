@@ -43,7 +43,7 @@ layout_mode = 2
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
 theme_override_font_sizes/font_size = 20
-text = "📖 TACTICAL COMPENDIUM (战术图鉴百科)"
+text = "TACTICAL COMPENDIUM (战术图鉴百科)"
 
 [node name="Spacer" type="Control" parent="CenterContainer/MainPanel/VBox/Header"]
 layout_mode = 2
@@ -64,31 +64,31 @@ alignment = 1
 custom_minimum_size = Vector2(175, 38)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "🌟 升级路线 (UPGRADES)"
+text = "升级路线 (UPGRADES)"
 
 [node name="BtnTabTanks" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
 custom_minimum_size = Vector2(175, 38)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "🛡️ 坦克战车 (TANKS)"
+text = "坦克战车 (TANKS)"
 
 [node name="BtnTabItems" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
 custom_minimum_size = Vector2(175, 38)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "⚡ 道具宝物 (ITEMS)"
+text = "道具宝物 (ITEMS)"
 
 [node name="BtnTabBuildings" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
 custom_minimum_size = Vector2(175, 38)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "🏗️ 防御建筑 (BUILDINGS)"
+text = "防御建筑 (BUILDINGS)"
 
 [node name="BtnTabTerrain" type="Button" parent="CenterContainer/MainPanel/VBox/TabsBar"]
 custom_minimum_size = Vector2(175, 38)
 layout_mode = 2
 theme_override_font_sizes/font_size = 13
-text = "🌲 战场地形 (TERRAIN)"
+text = "战场地形 (TERRAIN)"
 
 [node name="HSeparator1" type="HSeparator" parent="CenterContainer/MainPanel/VBox"]
 layout_mode = 2
