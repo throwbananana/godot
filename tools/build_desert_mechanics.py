@@ -43,6 +43,41 @@ def build_desert_sand_tile():
     base.scale = (TILE_PLATE_BLEED, TILE_PLATE_BLEED, 0.1)
     base.data.materials.append(mat_sand)
     apply_uniform_clay_bevel(base, width=0.02, segments=2, jitter=0.008)
+    # 底板必须*平面着色* —— 否则整块沙地被当成枕形曲面渲, 铺开是一条网格线。
+    #
+    # apply_uniform_clay_bevel() 内部会调 shade_smooth(), 这对坦克/建筑那种
+    # 有体积的黏土件是对的, 但对满幅底板是错的: 立方体顶面的四个顶点法线是
+    # 三个相邻面法线的平均, 也就是朝四角上翘的。平滑着色把这四个"翘"的法线
+    # 在整个顶面上插值, 于是一块几何上完全平的板子被着色成一个枕头。
+    #
+    # 太阳方位角以 Y 分量为主 (rotation_euler = 35°,20°,-35°), 所以这个枕形
+    # 在画面上表现为一条 Y 方向的单调渐变: 实测行均值 139 (顶) -> 145 (底),
+    # 上下拼接梯度 5.99, 而左右只有 1.65 —— 上下差得多、左右差得少这个不对称
+    # 本身就是"太阳 + 法线插值"的指纹, 排除了几何越界之类的解释。
+    #
+    # 排查时否掉的两个更顺手的猜测, 记下来免得再走一遍:
+    #   - 不是顶点抖动把板子抻歪了: jitter 0.008 -> 0 拼接梯度反而升到 6.25。
+    #   - 不是材质噪声不周期: mottle 0.08 -> 0 完全没动 (仍是 5.99), 降低
+    #     bump_strength 反而升到 6.77。
+    # shade_flat() 一改, 上下 5.99 -> 1.46, 左右 1.65 -> 1.32, 而整图平均
+    # 亮度只从 140.5 动到 140.9 (< 0.5/255) —— 消掉的正好只有那条渐变, 形状
+    # 和颜色都没动。
+    #
+    # 为什么只有沙地需要这一句: 砖 (20~35) 和钢的内部结构梯度远大于 6, 这条
+    # 渐变淹没在里面, qa_style_consistency 的 tileseam 用的是
+    # `seam > max(内部最大梯度, 6.0)`, 所以它们判定上没事。沙地内部梯度只有
+    # 3.7, 于是这条管线级的渐变就成了整块瓦片最大的行间差, 基准图本身就卡在
+    # 5.99 —— 距 6.0 的容忍地板只有 0.01, 任何差分版本都会把它顶过去。
+    # 这不是"为了过检查改美术": 那条渐变确实是铺开后可见的网格线, 检查抓对了。
+    #
+    # 没有顺手改到 sokpop_common.apply_uniform_clay_bevel 里, 是因为它喂着全部
+    # 构建脚本 —— 坦克和建筑要的正是那个平滑外观, 全局改会重塑整个美术风格
+    # (CLAUDE.md 对改这个模块的前置手续也写得很明确)。砖/钢/水的底板同样带着
+    # 这条渐变但判定上无碍, 就没有跟着动已提交的美术。
+    bpy.ops.object.select_all(action='DESELECT')
+    base.select_set(True)
+    bpy.context.view_layer.objects.active = base
+    bpy.ops.object.shade_flat()
     objs.append(base)
 
     # 沙漠微波纹 (Ripples)

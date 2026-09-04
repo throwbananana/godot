@@ -42,6 +42,38 @@ const BIOME_FAMILIES := {
 	MapGenerator.Biome.GLACIAL_VOID:    ["ice", "wormhole", "platform", "electric", "lamp", "shield"],
 }
 
+## 档 1 (floor>=2) 起才允许出现的族 —— 信号干扰塔到木墙那批"军事设施"型地块。
+##
+## 阈值不是拍的, 是从手写模板反查出来的: 交叉核对 MapTemplates.TEMPLATE_MIN_FLOOR
+## 与每张模板实际用到的地块号, jammer/factory/pipe/radar/depot/command/sniper/
+## bunker/wooden 这九族里, 出现过的最早 min_floor 全部是 2 (个别模板复用同一批
+## 地块时标了 3/4, 但那是"第二次出现", 真正的下限仍是 2 —— 例如
+## TEMPLATE_JAMMER_OUTPOST/TEMPLATE_FACTORY_ESCORT/TEMPLATE_CONDUIT_CROSSFIRE
+## 等直接给 min_floor=2)。这些结构本身也不是被动地形: sniper_nest 会朝玩家开
+## 火, command_post 18 HP 是全部建筑里最厚的一档 —— 全部塞进档 0 (纯地形, 见
+## TIER_BUDGET) 会让 floor 0-1 撞上手写模板里都要 floor 2 才会出现的火力点。
+## 它们不分群系 (不像冰面/风机那样是地形本身的一部分), 所以三个群系统一追加
+## 同一份列表, 和 electric/shield/lamp/jump 已经跨群系共享是同一个道理。
+const TIER1_EXTRA_FAMILIES := [
+	"jammer", "factory", "pipe", "radar", "depot", "command", "sniper", "bunker", "wooden",
+]
+
+## 档 2 (floor>=5) 起才允许出现的族。反查依据同上: shield_tower 只在
+## TEMPLATE_ENEMY_SHIELD_BASTION 起出现 (min_floor=5), emp 只在
+## TEMPLATE_EMP_TESLA_LABYRINTH 起出现 (min_floor=5)。shield_tower 还额外多一条
+## 理由: 它是全项目唯一的*敌方*建筑 (会给附近敌人套无敌护盾), 放进档 1 的话,
+## floor 2 的普通战斗就可能凭空出现"打不动的敌人", 而档 2 正好是 CLAUDE.md
+## 里"floor 5 引入真正的新对抗手段"那一档, 玩家此时已经在手写模板里见过它。
+const TIER2_EXTRA_FAMILIES := ["shield_tower", "emp"]
+
+## drift (漂流补给) 单独处理: 它是"水面上的踏脚石", 只在有大片水域的地图上有
+## 意义 (CLAUDE.md: 拿它当跨越 3 号水地形的手段)。手写模板里出现它的三张
+## (NAVAL_SALVAGE_ROUTE / TWIN_LAKES_SALVAGE / NAVAL_FERRY_SALVAGE) 都是"大面
+## 积水域"主题, 沙漠群系的地形权重表里干脆没有水 (BIOME_TERRAIN 三个群系都有
+## 水的条目, 但沙漠的水权重实测最低), 保守起见只给平原/冰原两个群系, 和
+## GLACIAL_VOID 已经有 wormhole/platform 这类"摆渡"族是同一个思路。
+const TIER2_EXTRA_FAMILIES_WATER_BIOMES := ["drift"]
+
 ## 坦克永远过不去的地形 (砖和黏土能打掉, 所以不算)。
 ## 25 是电墙: 它是 StaticBody2D 且加入 steel 组, 只有 3 阶等离子弹能打穿,
 ## 对绝大多数单位而言和钢墙没区别。
@@ -125,7 +157,12 @@ static func validate(grid: Array, tier: int = -1) -> Array:
 			return problems
 		for c in range(13):
 			var v := int(grid[r][c])
-			if v < 0 or v > 29:
+			# 29 曾经是这张表的真实上限 (drifting supplies)。地块 30-44 (敌方
+			# 护盾塔起, 一路到木墙) 后来陆续加进了手写模板和 main.gd 的分派梯,
+			# 这条边界却没跟着挪 —— 相当于给这条校验焊死了一个过期的天花板,
+			# FAMILY_TILES 就算加了这些族, generate_planned() 只要摆出一格,
+			# validate() 也会把整张图当"地形号越界"打回去重摇。
+			if v < 0 or v > 44:
 				problems.append("(%d,%d) 地形号 %d 越界" % [r, c, v])
 
 	for p in RESERVED:
@@ -202,9 +239,22 @@ static func reachable_from_base(grid: Array) -> Dictionary:
 	return seen
 
 
+## 按群系 + 档位拼出这次可选的族池。档位越高, 池子越大 (累加, 不是替换) ——
+## floor 5+ 的图仍然可能抽到 floor 2 就该有的东西, 只是现在也可能抽到更晚的。
+static func _pool_for(biome: int, tier: int) -> Array:
+	var pool: Array = BIOME_FAMILIES[biome].duplicate()
+	if tier >= 1:
+		pool.append_array(TIER1_EXTRA_FAMILIES)
+	if tier >= 2:
+		pool.append_array(TIER2_EXTRA_FAMILIES)
+		if biome != MapGenerator.Biome.DESERT_DUNES:
+			pool.append_array(TIER2_EXTRA_FAMILIES_WATER_BIOMES)
+	return pool
+
+
 static func _make_plan(biome: int, tier: int, rng: RandomNumberGenerator) -> Dictionary:
 	var budget: Dictionary = TIER_BUDGET[tier]
-	var pool: Array = BIOME_FAMILIES[biome].duplicate()
+	var pool: Array = _pool_for(biome, tier)
 	# 洗牌后取前 N 族 —— 每张图只挑几族, 所以同一档位的两张图也会长得不一样,
 	# 而不是每张都把整个机制表铺满 (旧实现就是后者)。
 	for i in range(pool.size() - 1, 0, -1):

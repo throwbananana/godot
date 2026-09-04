@@ -44,6 +44,9 @@ var anim_timer: float = 0.0
 var explosion_scene: PackedScene
 
 func _ready() -> void:
+	# 外观差分 (通用战损贴花 + 战区覆盖层)。延迟调用: 有的建筑在 _ready() 里
+	# 才创建 sprite / 才按 rpg_mgr 改 max_health, 立即调会读到还没成形的状态。
+	BuildingSkin.attach.call_deferred(self)
 	add_to_group("building")
 	add_to_group("buildings")
 	add_to_group("pipe_conduit")

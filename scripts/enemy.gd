@@ -52,6 +52,48 @@ const ARMOR_PLATE_FLOOR_GATE := [2, 5, 9] # 分别是拿到第 1/2/3 层上界�
 var armor_plates: int = 0
 var plate_sprite: Sprite2D = null
 
+# ---------------------------------------------------------------- 外观差分
+#
+# 三层叠加贴图, 和装甲板走同一条路线 (一套图覆盖全部车种, 挂成 sprite 的子
+# 节点, 由父变换带着走)。理由见 tools/build_tank_variants.py 的文件头; 一句话
+# 是: 车种 35 种 x 6 帧, 任何"逐车种出差分"的方案起步就是三位数张图, 而且每
+# 加一个车种都要跟着乘。
+#
+# 三层读的不是同一个信号, 所以 48px 下叠在一起也不糊 (连同装甲板是四层):
+#
+#   装甲板  轮廓外扩 + 明度压暗   —— 表示"有几层甲", 生成时定死
+#   涂装    大面积低对比色块      —— 表示"第几幕的战区", 按 act 定
+#   编队标记极小面积高对比亮点    —— 只为了让同波次的同型号车分得开
+#   战损    小面积极暗 + 一处极亮  —— 表示"这辆快死了", 随血量变
+#
+# 画的顺序 (z_index) 是有讲究的: 涂装是**喷在车体上**的, 得压在装甲板下面;
+# 标记和战损是后来加上去的, 压在最上面。战损必须在最上层 —— 它是唯一一个
+# 随时间变化、玩家需要即时读到的信息。
+const CAMO_Z := 0
+const PLATE_Z := 1
+const MARKING_Z := 2
+const DAMAGE_Z := 3
+
+## 战损换档的血量比例。max_health 1 的车没有中间态 (挨一下就死), 所以低于
+## DAMAGE_MIN_MAX_HP 的车种整个跳过战损贴花 —— 给它挂一张永远不会显示的
+## 贴图只是白费一个节点。
+const DAMAGE_T1_FRAC := 0.60
+const DAMAGE_T2_FRAC := 0.30
+const DAMAGE_MIN_MAX_HP := 2
+
+## Boss 不吃涂装和编队标记。Boss 的整个存在感建立在"一眼认出这是谁"上
+## (SCORPION 的沙漠冲刺、MAMMOTH 的霜爆各有自己的剪影和配色), 往上糊一层
+## 战区涂装等于把它降格成一辆杂兵。战损照常 —— 那是玩家最需要读到的信息。
+const NO_COSMETIC_TYPES := [
+	EnemyType.BOSS, EnemyType.TITAN_BOSS, EnemyType.SCORPION_BOSS,
+	EnemyType.MAMMOTH_BOSS, EnemyType.TRAIN_BOSS,
+]
+
+var camo_sprite: Sprite2D = null
+var marking_sprite: Sprite2D = null
+var damage_sprite: Sprite2D = null
+var damage_tier: int = 0
+
 @export var enemy_type: EnemyType = EnemyType.BASIC
 @export var is_bonus: bool = false
 
@@ -267,8 +309,87 @@ func _apply_armor_plate_visual() -> void:
 		return
 	plate_sprite = Sprite2D.new()
 	plate_sprite.texture = tex
-	plate_sprite.z_index = 1
+	plate_sprite.z_index = PLATE_Z
 	sprite.add_child(plate_sprite)
+
+
+## 生成时定死的两层: 战区涂装 (按幕) 和编队标记 (按个体)。
+##
+## 和装甲板一样挂在 sprite 下, 所以不需要每帧同步坐标。
+func _apply_cosmetic_overlays() -> void:
+	for s in [camo_sprite, marking_sprite]:
+		if s:
+			s.queue_free()
+	camo_sprite = null
+	marking_sprite = null
+	if sprite == null or enemy_type in NO_COSMETIC_TYPES:
+		return
+
+	# 战区涂装。第一幕 (平原) 没有涂装 —— 车种自己的配色就是它的"素颜",
+	# 三幕都盖一层的话就没有对照, 玩家读不出"换战区了"。
+	var act := GameState.get_visual_act()
+	if act >= 2:
+		var camo_tex = TextureHelper.get_tex(
+			"res://assets/sprites/tanks/tank_camo_a%d.png" % act)
+		if camo_tex:
+			camo_sprite = Sprite2D.new()
+			camo_sprite.texture = camo_tex
+			camo_sprite.z_index = CAMO_Z
+			sprite.add_child(camo_sprite)
+
+	# 编队标记。0 = 不挂 —— 四分之一的车没有标记, 有标记的才显得是"某一队的"。
+	# 这里用 randi() 而不是哈希: 敌人是一次性生成的, 不像地形瓦片那样需要
+	# "重进房间时长得一样", 而且旁边的 roll_armor_plates() 本来就在抽 randi。
+	var mark := randi() % 4
+	if mark > 0:
+		var mark_tex = TextureHelper.get_tex(
+			"res://assets/sprites/tanks/tank_marking_v%d.png" % mark)
+		if mark_tex:
+			marking_sprite = Sprite2D.new()
+			marking_sprite.texture = mark_tex
+			marking_sprite.z_index = MARKING_Z
+			sprite.add_child(marking_sprite)
+
+
+## 战损贴花。按当前血量比例换档, 只在跨档时动节点 —— take_damage() 每次都调,
+## 每次重建 Sprite2D 是没必要的开销, 而且会让贴花在连续受击时闪。
+func _update_damage_overlay() -> void:
+	if sprite == null or max_health < DAMAGE_MIN_MAX_HP:
+		return
+	var frac := float(health) / float(max_health)
+	var tier := 0
+	if frac <= DAMAGE_T2_FRAC:
+		tier = 2
+	elif frac <= DAMAGE_T1_FRAC:
+		tier = 1
+	if tier == damage_tier:
+		return
+	damage_tier = tier
+	if damage_sprite:
+		damage_sprite.queue_free()
+		damage_sprite = null
+	if tier <= 0:
+		return
+	var tex = TextureHelper.get_tex(
+		"res://assets/sprites/tanks/tank_dmg_t%d.png" % tier)
+	if tex == null:
+		return
+	damage_sprite = Sprite2D.new()
+	damage_sprite.texture = tex
+	damage_sprite.z_index = DAMAGE_Z
+	# 伪装中的 MIRAGE 不能因为挨了一下就冒出战损痕迹 —— 那等于自曝位置。
+	damage_sprite.visible = not is_camouflaged
+	sprite.add_child(damage_sprite)
+
+
+## 伪装/解除伪装时统一开关全部叠加层。
+##
+## 原来这里只管 plate_sprite, 每加一层叠加就要记得在两个分支各补一行 ——
+## 而漏掉的那一层不会报错, 只会让潜行单位顶着一块贴花站在树丛里。
+func _set_overlays_visible(v: bool) -> void:
+	for s in [plate_sprite, camo_sprite, marking_sprite, damage_sprite]:
+		if s:
+			s.visible = v
 
 
 func _setup_tank_type() -> void:
@@ -612,6 +733,7 @@ func _setup_tank_type() -> void:
 		score_value = int(score_value * (1.0 + cycle * 0.15))
 
 	_apply_armor_plate_visual()
+	_apply_cosmetic_overlays()
 
 	if enemy_type == EnemyType.FLAMETHROWER and flame_jet == null:
 		# 挂成子节点, 位置和旋转由父变换自动带着走 —— 不需要每帧同步坐标。
@@ -621,6 +743,12 @@ func _setup_tank_type() -> void:
 		flame_cycle_t = randf_range(0.0, FLAME_BURN_TIME)
 
 	health = max_health
+	# 满血重置: 车种可能是复用节点重新 setup 的 (例如 CANNON 换形态),
+	# 不清掉上一次的战损档位, 新的满血车会继续顶着旧贴花。
+	damage_tier = 0
+	if damage_sprite:
+		damage_sprite.queue_free()
+		damage_sprite = null
 	tank_frames.clear()
 	if enemy_type == EnemyType.CANNON:
 		cannon_mobile_frames.clear()
@@ -715,12 +843,11 @@ func _physics_process(delta: float) -> void:
 				if tree_tex:
 					sprite.texture = tree_tex
 					sprite.scale = Vector2(0.1875, 0.1875)
-				# 装甲板必须跟着藏起来。伪装成树的车顶上还挂着一圈钢板,
-				# 等于把自己的位置标出来 —— 潜行单位不能自己暴露自己
-				# (同样的理由见 main.gd::_update_tree_transparency 里
-				# "跳过伪装中的 MIRAGE"那段)。
-				if plate_sprite:
-					plate_sprite.visible = false
+				# 全部叠加层都必须跟着藏起来。伪装成树的车顶上还挂着一圈钢板
+				# (或者一块战损焦痕、一个编队标记), 等于把自己的位置标出来 ——
+				# 潜行单位不能自己暴露自己 (同样的理由见
+				# main.gd::_update_tree_transparency 里"跳过伪装中的 MIRAGE"那段)。
+				_set_overlays_visible(false)
 				rotation = 0.0
 		else:
 			if is_camouflaged:
@@ -729,8 +856,7 @@ func _physics_process(delta: float) -> void:
 				_spawn_mirage_shimmer()
 				sprite.scale = Vector2(0.196, 0.196)
 				rotation = facing_direction.angle() + PI / 2.0
-				if plate_sprite:
-					plate_sprite.visible = true
+				_set_overlays_visible(true)
 				if tank_frames.size() > 0:
 					sprite.texture = tank_frames[current_frame]
 
@@ -1411,6 +1537,9 @@ func take_damage(amount: int) -> void:
 		flash_tw.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0), 0.08)
 
 	health -= amount
+	# 战损贴花跟着血量走。放在扣血之后、死亡判定之前 —— 这样最后一击的那一
+	# 帧也是"重伤"的样子, 而不是死前突然变回完好。
+	_update_damage_overlay()
 	VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 
 	# 按敌人类型追加额外特效

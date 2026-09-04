@@ -35,6 +35,10 @@ class Piece extends StaticBody2D:
 
 	func _ready() -> void:
 		explosion_scene = load("res://scenes/explosion.tscn")
+		# 每个 Piece 单独挂 —— 四个象限各有各的血量, 也就各有各的战损档。
+		# BuildingSkin 会从 sprite 抄 region_rect, 所以贴花跟着象限切,
+		# 不会四块各贴一整张。
+		BuildingSkin.attach(self)
 
 	func heal(amount: int) -> void:
 		current_health = mini(current_health + amount, max_health)
@@ -69,7 +73,14 @@ class Piece extends StaticBody2D:
 				p_wall.call_deferred("_check_empty")
 
 func _ready() -> void:
-	var tex = TextureHelper.get_tex("res://assets/sprites/buildings/fortified_wall.png")
+	# 外观差分: 加固墙是玩家一格一格摆出来的, 一道长墙就是同一张图连贴 N 次 ——
+	# 建筑里唯一真正撞上"平铺重复"问题的一个, 所以按格号确定性挑一张变体。
+	# 选到的贴图整块墙 (四个 Piece) 共用, 象限切分由各 Piece 的 region_rect 做,
+	# 所以一面墙仍然是一面完整的墙, 不是四个不同变体拼起来的。
+	var tex: Texture2D = TerrainVariants.prop_texture_for(
+		"fortified_wall", TerrainVariants.cell_of(position, 48.0))
+	if tex == null:
+		tex = TextureHelper.get_tex("res://assets/sprites/buildings/fortified_wall.png")
 	var main = get_tree().current_scene
 	var hp_mult = main.rpg_mgr.get_building_hp_mult() if (main and main.rpg_mgr) else 1.0
 	var final_hp = maxi(1, int(max_health * hp_mult))

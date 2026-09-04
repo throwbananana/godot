@@ -576,7 +576,11 @@ func _shoot() -> void:
 			# Default classical tiers
 			var is_plasma = (upgrade_tier >= 3)
 			var can_break_steel = is_plasma
-			var b_speed = 520.0 if upgrade_tier == 0 else 660.0
+			# tier0 (每局开局默认值, upgrade_tier 从 0 起) 曾是 480 px/s, 在一次
+			# 美术资产提交 (5d54593) 里顺手涨到 520, 不属于任何记录在案的平衡性
+			# 改动。玩家反馈开局炮弹偏快, 改回原值 —— 660 (tier3+) 是后续经
+			# star 升级换来的, 没有类似反馈, 不动。
+			var b_speed = 480.0 if upgrade_tier == 0 else 660.0
 			if is_plasma:
 				VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
 

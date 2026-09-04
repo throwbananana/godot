@@ -29,7 +29,7 @@ There is **no linter**. Verification is `--check-only` per script, running the g
 Each prints `[FAIL]`/`❌` lines and exits non-zero on failure. `tools/run_tests.ps1` aggregates them:
 
 ```powershell
-pwsh tools/run_tests.ps1                      # all of them (69 as of now; the runner globs test_*.gd)
+pwsh tools/run_tests.ps1                      # all of them (70 as of now; the runner globs test_*.gd)
 pwsh tools/run_tests.ps1 -Filter shop         # just the matching ones
 pwsh tools/run_tests.ps1 -Probe               # …plus the balance sampling probe (~4 min)
 ```
@@ -40,7 +40,7 @@ The rest are feature-scoped (`test_state_and_save.gd`, `test_act_enemy_theming.g
 
 The two room-system tests are split along a deliberate line: `test_floor_map.gd` checks the **generated graph** (connectivity, door symmetry, boss depth, special-room uniqueness — 200 seeds, no scene boot), `test_room_flow.gd` checks **walking around on it** (door latch/open states, the base spawning and despawning, the player instance surviving a transition with its HP, shop rooms opening the dialog). A floor can generate perfectly and still be unplayable, so neither subsumes the other.
 
-**The suite is currently all-green (69/69).** It has not always been: `test_differentiated_enemies.gd` / `test_enemy_crusher.gd` (`Parse Error: Function "get_tree()" not found in base self`) and `test_texture_mipmaps.gd` were long-standing known failures, and this paragraph used to tell you to ignore them. That is exactly how the mipmap one grew from 35 missing sprites to 73 without anyone noticing — a permanently-red gate stops being read. If something here goes red, it is either yours or worth fixing now; verify against `git stash` before assuming a change of yours broke it, but don't add it to a tolerated-failures list.
+**The suite is currently all-green (70/70).** It has not always been: `test_differentiated_enemies.gd` / `test_enemy_crusher.gd` (`Parse Error: Function "get_tree()" not found in base self`) and `test_texture_mipmaps.gd` were long-standing known failures, and this paragraph used to tell you to ignore them. That is exactly how the mipmap one grew from 35 missing sprites to 73 without anyone noticing — a permanently-red gate stops being read. If something here goes red, it is either yours or worth fixing now; verify against `git stash` before assuming a change of yours broke it, but don't add it to a tolerated-failures list.
 
 Two of those are project-wide gates rather than feature tests, and are worth running after any change that touches spawning or art: `test_compile_all.gd` and `test_texture_mipmaps.gd`.
 
@@ -59,6 +59,9 @@ Most of the earlier "four stacked generations" of build scripts were consolidate
 | `build_sokpop_clay_ui.py` | title banner, clay buttons, HP hearts |
 | `build_armor_plating.py` | `enemy_plate_t1/t2/t3` — the armor-tier overlays (see "Enemy toughness is integer and visible") |
 | `build_semantic_vfx.py` | `vfx_{heal_pulse,emp_pulse,reward_burst,frost_shatter,sand_burst,build_assemble}_f0..f5` — the six sequences that split the overloaded generic shockwave (see "One generic ring was playing 79 different events") |
+| `build_terrain_variants.py` | `tile_{brick,steel}` × 3 acts × 3 wear variants, `tile_{sand,trees}_v1/v2` — the terrain differentials (see "Appearance differentials") |
+| `build_tank_variants.py` | `tank_dmg_t1/t2`, `tank_camo_a2/a3`, `tank_marking_v1..v3` — overlay differentials for all 35 enemy types |
+| `build_building_variants.py` | `building_dmg_t1/t2`, `building_theme_a2/a3`, `fortified_wall_v1/v2` |
 
 ```powershell
 $blender = "C:\steam\steamapps\common\Blender\blender.exe"
@@ -66,6 +69,10 @@ $blender = "C:\steam\steamapps\common\Blender\blender.exe"
 & $blender --background --python tools/build_sokpop_animations.py
 & $blender --background --python tools/build_sokpop_clay_ui.py
 & $blender --background --python tools/build_armor_plating.py   # enemy_plate_t1..t3 (3 renders)
+& $blender --background --python tools/build_terrain_variants.py            # 20 renders
+& $blender --background --python tools/build_terrain_variants.py -- tile_brick   # one group only
+& $blender --background --python tools/build_tank_variants.py               # 7 renders
+& $blender --background --python tools/build_building_variants.py           # 6 renders
 python tools/analyze_render_and_colors.py    # QA: per-asset clipping / luminance / saturation
 python tools/qa_tank_models_and_clipping.py  # QA: tank sprite bounding-box / clipping check
 python tools/qa_style_consistency.py         # QA: the regression suite — run this after any re-render
@@ -324,6 +331,26 @@ Sprite naming, which now mixes two schemes:
 - **Players**: 6-frame, prefixed by both player slot and branch (`player.gd::_update_tier_appearance()`): `{player|player2}_tier{0-3}` for the default branch, or `{player|player2}_{speed|heavy}_t{1,2}` / `{player|player2}_train_loco_t{1,2}` once a branch is picked. `player2` means P2's tank, not a tier — there is no shared or recoloured sprite between P1 and P2.
 
 **The 6-frame tread-roll cycle is driven by distance travelled, not wall-clock time.** Both `player.gd` and `enemy.gd` used to pick the frame from `int(Time.get_ticks_msec() / 60ish) % tank_frames.size()`, gated only on "is velocity non-zero" — so a tank slowed 50% by sand animated its treads at the exact same rate as one sprinting at +30% from nitro/ice, a "moonwalk" mismatch between visual tread speed and actual ground speed. Both now accumulate `tread_accum_dist += |speed| * delta` (`enemy.gd` uses the already-fully-modified `move_speed` — sand/ice/ambush-stillness/sniper-windup all already folded in — so no second copy of that logic) and derive the frame from `int(tread_accum_dist / TREAD_PX_PER_FRAME) % 6`. `TREAD_PX_PER_FRAME = 8.0` is a style constant, not a physical one — picked to roughly match the old fixed-rate feel at each script's typical base speed, not derived from tread/wheel geometry.
+
+### Appearance differentials (差分) — variants for terrain, tanks and buildings
+
+Three orthogonal axes, all added at once and all gated by `tools/test_asset_variants.gd`:
+
+- **Terrain** gets real per-tile art: `tile_{brick,steel}` in three act themes × three wear variants (`tile_brick_a2_v1.png` and friends), `tile_{sand,trees}_v1/v2`. Selected per cell by `scripts/terrain_variants.gd`.
+- **Tanks and buildings** get *overlays*, not per-type art: `tank_dmg_t1/t2`, `tank_camo_a2/a3`, `tank_marking_v1..v3`, `building_dmg_t1/t2`, `building_theme_a2/a3`. Same reasoning as `enemy_plate_t{1,2,3}` — 35 enemy types × 6 frames means any per-type scheme starts in the hundreds of files and multiplies again with every new type.
+- `fortified_wall_v1/v2` is the one *building* with true variety art, because it is the only structure the player places in rows; a nine-cell wall is otherwise one image pasted nine times.
+
+Things that are load-bearing:
+
+- **A variant may only change the interior of the frame.** Adjacent cells on one map can hold *different* variants, so all variants of a tile must be pixel-identical along their edges. That means the seam-riding geometry is untouchable: brick's odd rows put a brick centre on ±H so each tile draws half of a shared running-bond brick, and steel's eight rivets straddle the frame edges/midpoints so four tiles compose one rivet per grid vertex. `build_terrain_variants.py::_interior_objects()` filters by coordinate; decorations are additionally capped in height and reach so their *shadows* can't cross the edge either (sun at 35° → shadow = 1.43 × height).
+- **The variant scripts are wrappers, not a second copy of the geometry.** Each calls the owner builder (`build_sokpop_brick`, `build_desert_sand_tile`, `build_sokpop_fortified_wall`, …) and then re-tints materials / adds decoration. Copying the brick layout would create a second owner that drifts — the exact failure the "Stale build scripts" section is about. Re-theming matches materials **by name** and raises on an unknown one rather than silently leaving a part its original colour.
+- **`tile_sand`'s base plate had to be flat-shaded, and that is not cosmetic.** `apply_uniform_clay_bevel()` calls `shade_smooth()`, which is right for tanks but wrong for a full-bleed plate: a cube's top-face vertex normals are the average of three adjacent faces, i.e. tilted up at the corners, so smooth shading renders a geometrically flat plate as a *pillow*. With the sun's azimuth dominated by its Y component that becomes a monotonic vertical ramp — measured row means 139 (top) → 145 (bottom), tile-join gradient **5.99 vertical vs 1.65 horizontal**, and that asymmetry is the fingerprint. Brick and steel carry the same ramp but their interior structure (20–35) swamps it; sand's interior is only 3.7, so the ramp *is* its largest gradient and the base tile sat 0.01 under `qa_style_consistency`'s 6.0 floor — every variant of it necessarily tipped over. `shade_flat()` on the plate takes it to 1.46/1.32 while mean brightness moves 140.5 → 140.9 (< 0.5/255), i.e. it removes the ramp and nothing else. Two tidier-looking explanations were measured and rejected first: vertex jitter (0.008 → 0 made it *worse*, 6.25) and non-periodic shader noise (mottle 0.08 → 0 changed nothing). This was **not** pushed into `sokpop_common.apply_uniform_clay_bevel()` — that feeds every script and tanks/buildings want the smooth look.
+- **Selection must be a pure hash, never `randi()`.** Rooms are re-enterable and are rebuilt in place, so drawing from the RNG gives a different wall every time you walk back in (a visibly flickering room), and it also shifts the Daily Challenge's seeded stream for everyone. `TerrainVariants._mix()` is a hand-written FNV-1a over `(kind, current_room, cell, run_seed)` plus an avalanche step — hand-written rather than `String.hash()` because that is an engine internal, and "same save, same room, same wall" should not depend on a Godot version. Skipping the avalanche makes neighbouring cells' low bits correlate and the map comes out in a checkerboard, which is worse than no variants at all. Enemies are the opposite case and *do* use `randi()`: they're spawned once, never rebuilt, and `roll_armor_plates()` is already drawing from that stream beside them.
+- **Overlays must not cover the turret centre.** They're children of the tank's `Sprite2D` and therefore drawn unconditionally on top; the turret and barrel are how the player reads facing and type. `build_tank_variants.py::_in_ring()` enforces a keep-out radius **including each decoration's own extent** — the first version checked only the centre point, which let a camo patch centred at r=0.70 with a 0.27 half-diagonal reach 0.43 and sit on the turret.
+- **Building decals are clipped to the silhouette via `clip_children`.** Building outlines vary enormously, so `BuildingSkin.attach()` sets the sprite to `CLIP_CHILDREN_AND_DRAW` and the decal is drawn deliberately *larger* than any single building (`DECAL_REACH`); the engine cuts the overflow. Under-covering is the dangerous direction — the decal's own arc edge showing up mid-wall reads worse than one hanging off the building. It also copies `region_enabled`/`region_rect` from the parent, because `fortified_wall` is 2×2 region-sliced `Piece`s and without that each quadrant gets a full copy of the decal.
+- **The four overlays coexist at 48px because they read on different channels**: armor plate = silhouette growth + darkening, camo = large low-contrast colour fields, marking = tiny high-contrast dot, damage = small near-black plus one near-white torn edge. Damage tiers are still gated on *coverage* growing (4.36% → 8.78% for tanks, 15.58% → 29.54% for buildings), the one signal that survives the 5.33× downsample. `enemy.gd::_set_overlays_visible()` hides all of them together for a camouflaged MIRAGE — the old code toggled only `plate_sprite`, and every new overlay would otherwise have been one more thing to remember.
+
+`wooden_wall` keeps its hand-drawn `wooden_wall_dmg0..2` and does **not** take the generic decal. It's the reference point for the trade: worth drawing per-building art for, where the other dozen structures aren't.
 
 ### Enemies: variety gated by floor, not stat inflation
 

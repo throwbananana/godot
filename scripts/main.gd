@@ -1264,7 +1264,10 @@ func _grant_treasure_room_reward() -> void:
 
 	if powerup_scene:
 		var p_inst = powerup_scene.instantiate()
-		var types = [PowerUp.Type.STAR, PowerUp.Type.LIFE, PowerUp.Type.HELMET, PowerUp.Type.BOMB]
+		# MISSILE/TIMED_BOMB 曾经完全不在这张表里 —— 房间奖励是这套架构下玩家
+		# 最稳定的道具来源 (每个宝藏房必掉一次), 而砖块/bonus 击杀是随机的。
+		# 两者不含这两种道具, 意味着不靠打砖块或 bonus 击杀就永远发现不了它们。
+		var types = [PowerUp.Type.STAR, PowerUp.Type.LIFE, PowerUp.Type.HELMET, PowerUp.Type.BOMB, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = Vector2((GRID_W / 2.0) * TILE_SIZE, (GRID_H / 2.0) * TILE_SIZE)
@@ -1591,7 +1594,14 @@ func _create_border_wall(pos: Vector2, size: Vector2) -> void:
 	map_container.add_child(body)
 
 func _spawn_brick_tile(container: Node2D, pos: Vector2, is_steel: bool = false) -> void:
-	var tex = tex_steel if is_steel else tex_brick
+	# 差分选图。这个函数有两个调用点 —— _spawn_tile() 的地形分支, 以及
+	# _spawn_base_and_walls() 摆老鹰砖圈 (铲子道具还会把它整圈换成钢),
+	# 两边都该吃到差分, 所以选图放在这里而不是调用方。
+	var group_key := "steel" if is_steel else "brick"
+	var tex: Texture2D = TerrainVariants.texture_for(
+		group_key, TerrainVariants.cell_of(pos, TILE_SIZE))
+	if not tex:
+		tex = tex_steel if is_steel else tex_brick
 	if not tex:
 		tex = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png" if is_steel else "res://assets/sprites/tiles/tile_brick.png")
 	if not tex:
@@ -1662,6 +1672,15 @@ func _tree_sway_mat() -> ShaderMaterial:
 	return _tree_sway_material
 
 func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
+	# 外观差分: 同一种地形有多张磨损/主题差分, 按格号确定性挑一张, 让整片
+	# 地形不再是同一张图复制几十遍。选图逻辑在 TerrainVariants ——
+	# 那边一个随机数都不取 (每日挑战依赖全局 RNG 流保持确定), 全靠哈希。
+	# 没有差分的地形 (ice / hard_clay / wormhole ...) 返回 null, 沿用传进来
+	# 的贴图, 所以这一句对它们是彻底的空操作。
+	var variant_tex: Texture2D = TerrainVariants.texture_for(
+		type, TerrainVariants.cell_of(pos, TILE_SIZE))
+	if variant_tex:
+		tex = variant_tex
 	if not tex:
 		return
 	if type == "trees":
@@ -2852,7 +2871,9 @@ func _grant_room_clear_reward() -> void:
 
 	if r < 0.35 and powerup_scene:
 		var p_inst = powerup_scene.instantiate()
-		var types = [PowerUp.Type.STAR, PowerUp.Type.HELMET, PowerUp.Type.LIFE, PowerUp.Type.CLOCK, PowerUp.Type.SHOVEL]
+		# 同上 (见宝藏房奖励那处注释): 补齐 MISSILE/TIMED_BOMB, 房间奖励不该是
+		# 这两种道具唯一发现不了的死角。
+		var types = [PowerUp.Type.STAR, PowerUp.Type.HELMET, PowerUp.Type.LIFE, PowerUp.Type.CLOCK, PowerUp.Type.SHOVEL, PowerUp.Type.MISSILE, PowerUp.Type.TIMED_BOMB]
 		types.shuffle()
 		p_inst.setup(types[0])
 		p_inst.position = drop_pos

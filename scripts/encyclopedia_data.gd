@@ -826,6 +826,26 @@ const ENTRIES: Array[Dictionary] = [
 		"tactics": "双人模式下注意协同分配，保证两人均有足够复活配额。"
 	},
 	{
+		"id": "item_missile",
+		"category": "ITEMS",
+		"name": "战术导弹群 (Missile Barrage)",
+		"tag": "多点集群空袭",
+		"icon": "res://assets/sprites/powerups/missile_strike.png",
+		"stats": {"获取效果": "对最多 3 处敌军集群各呼叫一次战术导弹打击, 每发 5 点伤害"},
+		"desc": "拾取后立即锁定场上敌军密度最高的至多 3 处坐标, 各降下一枚制导导弹。场上敌人不足时改为朝当前朝向的正前方发射。",
+		"tactics": "留到敌人扎堆的时候拾取收益最大；单个稀疏的敌人会浪费掉多余的呼叫次数。"
+	},
+	{
+		"id": "item_timed_bomb",
+		"category": "ITEMS",
+		"name": "联动定时炸弹 (Linked Timed Bombs)",
+		"tag": "前方延时清场",
+		"icon": "res://assets/sprites/powerups/powerup_timed_bomb.png",
+		"stats": {"获取效果": "朝向正前方部署 2 枚联动定时炸弹, 2 秒延时, 4 格爆炸范围"},
+		"desc": "在坦克当前朝向的前方连续放置两枚定时炸弹, 比商店购买的建筑版威力更大 (4 格爆炸范围)。",
+		"tactics": "拾取瞬间就已经确定了朝向, 先把炮口对准预计要炸的方向再拾取。"
+	},
+	{
 		"id": "item_gold_gem",
 		"category": "ITEMS",
 		"name": "战术金币与钻石 (Gold & Gems)",
@@ -1023,6 +1043,70 @@ const ENTRIES: Array[Dictionary] = [
 		},
 		"desc": "敌军高阶防御要塞中矗立的重型护盾发生塔，顶端悬浮高能等离子共振核心。只要塔体存活，力场笼罩下的所有敌军战车均处于完全免伤状态。",
 		"tactics": "切勿与力场内的无敌敌军硬拼。应优先集火或绕过敌军防线强攻摧毁护盾塔本体，力场崩解后敌军战车便会失去保护，即可轻松歼灭。"
+	},
+	{
+		"id": "bld_ammo_depot",
+		"category": "BUILDINGS",
+		"name": "弹药储存库 (Ammo Depot)",
+		"tag": "殉爆型障碍",
+		"icon": "res://assets/sprites/buildings/ammo_depot.png",
+		"stats": {
+			"生命值": "6 HP",
+			"殉爆效果": "被摧毁瞬间对 72px 范围内所有敌军造成 3 点爆炸伤害"
+		},
+		"desc": "堆满弹药箱的野战储存点，只要受到足够火力就会殉爆。爆炸只会伤害敌军，不会波及玩家战车。",
+		"tactics": "别急着拆——引诱敌军簇拥到弹药库附近再开火，一发引爆能同时清掉一小片敌军。"
+	},
+	{
+		"id": "bld_command_post",
+		"category": "BUILDINGS",
+		"name": "战区指挥所 (Command Post)",
+		"tag": "全场最厚障碍",
+		"icon": "res://assets/sprites/buildings/command_post.png",
+		"stats": {"生命值": "18 HP (全部建筑中最高)"},
+		"desc": "高强度装甲指挥堡垒，本身没有任何主动机制，纯粹靠血厚充当战场上最难打穿的掩体。",
+		"tactics": "当成一面加强版钢墙用——躲在它后面拖时间，或者利用它的体积卡住敌军的射线和路线。"
+	},
+	{
+		"id": "bld_sniper_nest",
+		"category": "BUILDINGS",
+		"name": "狙击哨塔 (Sniper Nest)",
+		"tag": "固定方向火力点",
+		"icon": "res://assets/sprites/buildings/sniper_nest.png",
+		"stats": {
+			"生命值": "8 HP",
+			"开火节奏": "每 3.2 秒朝固定方向发射一发",
+			"弹道": "560 px/s, 2 点伤害"
+		},
+		"desc": "只朝一个固定方向开火的敌方哨塔，射速不快但弹速快、伤害不低，站在它的射线上会持续掉血。",
+		"tactics": "认清它的朝向后从侧翼绕过，或者干脆走到它的射线之外用普通炮火慢慢磨掉它的 8 点血。"
+	},
+	{
+		"id": "bld_emp_tower",
+		"category": "BUILDINGS",
+		"name": "电磁脉冲塔 (EMP Tower)",
+		"tag": "友方压制装置",
+		"icon": "res://assets/sprites/buildings/emp_tower.png",
+		"stats": {
+			"生命值": "10 HP",
+			"脉冲效果": "每 4.5 秒对 160px 范围内所有敌军造成 1 点伤害并眩晕 1.2 秒",
+			"作用对象": "只影响敌军，对玩家战车无效"
+		},
+		"desc": "持续对周边敌军放出电磁脉冲的己方设施，脉冲只瘫痪敌方电路，对玩家战车完全无害。",
+		"tactics": "带着敌人绕着它兜圈子，脉冲的定期眩晕能帮你争取到宝贵的走位和装填时间。别误把它当成威胁去摧毁。"
+	},
+	{
+		"id": "bld_radar_station",
+		"category": "BUILDINGS",
+		"name": "雷达监测站 (Radar Station)",
+		"tag": "战场景观装置",
+		"icon": "res://assets/sprites/buildings/radar_station.png",
+		"stats": {
+			"生命值": "10 HP",
+			"扫描节奏": "每 3.5 秒播放一次扫描光效与音效"
+		},
+		"desc": "周期性亮起蓝光并发出扫描声响的监测装置，目前只是战场氛围道具，扫描本身不会暴露或影响任何一方。",
+		"tactics": "对战局没有实际影响，可以直接无视，也可以当成不错的掩体使用。"
 	},
 
 	# =========================================================================
