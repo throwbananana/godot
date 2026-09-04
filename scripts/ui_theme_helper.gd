@@ -841,6 +841,7 @@ static func get_perk_icon(opt: Dictionary) -> Texture2D:
 			"speed": icon_name = "perk_speed"
 			"heavy": icon_name = "perk_armor"
 			"train": icon_name = "perk_train"
+			"counter": icon_name = "perk_shield"
 	elif opt_type == "tier_up":
 		var name_str = str(opt.get("name", ""))
 		if "Speed" in name_str or "暴风" in name_str:
@@ -849,6 +850,8 @@ static func get_perk_icon(opt: Dictionary) -> Texture2D:
 			icon_name = "perk_atk"
 		elif "Train" in name_str or "列车" in name_str:
 			icon_name = "perk_missile"
+		elif "Counter" in name_str or "反击" in name_str:
+			icon_name = "perk_shield"
 	elif opt_type == "gold_heal":
 		icon_name = "perk_gold"
 	else:

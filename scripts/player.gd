@@ -6,6 +6,7 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const PowerUp = preload("res://scripts/power_up.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const LaserPiercer = preload("res://scripts/laser_piercer.gd")
 
 signal destroyed(pid: int)
 signal fired_bullet
@@ -60,6 +61,14 @@ var ice_particle_timer: float = 0.0
 var is_stunned: bool = false
 var stun_timer: float = 0.0
 
+# Counter Tank Parry & Riposte Mechanics
+var is_parrying: bool = false
+var parry_timer: float = 0.0
+var parry_total_duration: float = 0.34
+var parry_perfect_window: float = 0.14
+var has_charged_counter_shot: bool = false
+var parry_shield_sprite: Sprite2D = null
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shield_sprite: Sprite2D = $ShieldSprite
 
@@ -109,6 +118,15 @@ func _ready() -> void:
 		if shield_textures.size() > 0:
 			shield_sprite.texture = shield_textures[0]
 
+	# Dedicated energy buckler for counter branch parry
+	parry_shield_sprite = Sprite2D.new()
+	if shield_textures.size() > 0:
+		parry_shield_sprite.texture = shield_textures[0]
+	parry_shield_sprite.scale = Vector2(0.28, 0.28)
+	parry_shield_sprite.visible = false
+	parry_shield_sprite.z_index = 5
+	add_child(parry_shield_sprite)
+
 	var main = get_tree().current_scene
 	if main and main.rpg_mgr:
 		main.rpg_mgr.branch_changed.connect(_on_branch_changed)
@@ -150,7 +168,7 @@ func heal(amount: int) -> void:
 	tween.tween_property(sprite, "modulate", base_color, 0.1)
 
 func _update_tier_appearance() -> void:
-	var main = get_tree().current_scene
+	var main = get_tree().current_scene if (is_inside_tree() and get_tree()) else null
 	var branch = "default"
 	var b_tier = 0
 	if main and main.rpg_mgr:
@@ -178,6 +196,10 @@ func _update_tier_appearance() -> void:
 		var t_str = "t1" if b_tier <= 1 else "t2"
 		prefix = "%s_train_loco_%s" % [p_prefix, t_str]
 		_sync_train_carriages(b_tier)
+	elif branch == "counter":
+		_clear_train_carriages()
+		var t_str = "t1" if b_tier <= 1 else "t2"
+		prefix = "%s_counter_%s" % [p_prefix, t_str]
 	else:
 		_clear_train_carriages()
 		prefix = "%s_tier%d" % [p_prefix, upgrade_tier]
@@ -369,6 +391,35 @@ func _physics_process(delta: float) -> void:
 			if shield_sprite:
 				shield_sprite.visible = false
 	
+	if is_parrying:
+		parry_timer -= delta
+		if parry_shield_sprite:
+			parry_shield_sprite.visible = true
+			var buckler_dist = 22.0
+			parry_shield_sprite.global_position = global_position + facing_direction * buckler_dist
+			parry_shield_sprite.rotation = facing_direction.angle() + PI / 2.0
+			var b_tier = 1
+			if main and main.rpg_mgr:
+				b_tier = main.rpg_mgr.get_branch_tier(player_id)
+			elif player_id == 1:
+				b_tier = GameState.branch_tier
+			else:
+				b_tier = GameState.p2_branch_tier
+			var cur_window = parry_perfect_window if b_tier <= 1 else (parry_perfect_window + 0.04)
+			if parry_timer > (parry_total_duration - cur_window):
+				# Golden / Cyan energy for perfect parry window
+				parry_shield_sprite.modulate = Color(2.6, 2.2, 0.4, 0.95)
+				parry_shield_sprite.scale = Vector2(0.32, 0.32)
+			else:
+				# Electric blue for normal parry window
+				var fade_ratio = clampf(parry_timer / maxf(0.01, parry_total_duration - cur_window), 0.0, 1.0)
+				parry_shield_sprite.modulate = Color(0.6, 1.4, 2.4, 0.8 * fade_ratio)
+				parry_shield_sprite.scale = Vector2(0.26, 0.26)
+		if parry_timer <= 0.0:
+			is_parrying = false
+			if parry_shield_sprite:
+				parry_shield_sprite.visible = false
+
 	if not can_fire:
 		fire_timer -= delta
 		if fire_timer <= 0.0:
@@ -479,7 +530,8 @@ func _physics_process(delta: float) -> void:
 	if is_on_ice and get_slide_collision_count() > 0:
 		slide_direction = Vector2.ZERO
 
-	if Input.is_action_pressed(act_fire) and can_fire:
+	var wants_fire = Input.is_action_pressed(act_fire) or (player_id == 1 and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	if wants_fire and can_fire:
 		_shoot()
 
 func _shoot() -> void:
@@ -501,7 +553,7 @@ func _shoot() -> void:
 	var cd = fire_cooldown
 	if main and main.rpg_mgr:
 		cd *= main.rpg_mgr.get_fire_cooldown_mult(player_id)
-	cd = maxf(0.18 if branch == "speed" else 0.32, cd)
+	cd = maxf(0.18 if branch == "speed" else (1.10 if branch == "counter" else 0.32), cd)
 	can_fire = false
 	fire_timer = cd
 
@@ -520,6 +572,44 @@ func _shoot() -> void:
 	VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
 
 	match branch:
+		"counter":
+			# Deploy reactive energy parry buckler
+			is_parrying = true
+			parry_timer = parry_total_duration
+			if parry_shield_sprite:
+				parry_shield_sprite.visible = true
+				parry_shield_sprite.global_position = global_position + facing_direction * 22.0
+				parry_shield_sprite.rotation = facing_direction.angle() + PI / 2.0
+				parry_shield_sprite.modulate = Color(2.6, 2.2, 0.4, 0.95)
+				parry_shield_sprite.scale = Vector2(0.32, 0.32)
+
+			# Immediate frontal sweep parry for close incoming shells
+			_sweep_immediate_parry()
+
+			# Fire forward kinetic cannon or empowered Charged Counter Shot (+1 Tier)
+			var bullet = bullet_scene.instantiate()
+			bullet.direction = facing_direction
+			bullet.shooter = self
+			bullet.shooter_type = "player"
+			get_parent().add_child(bullet)
+			bullet.global_position = muzzle_pos
+
+			if has_charged_counter_shot:
+				# Charged Counter Shot upgraded +1 tier!
+				has_charged_counter_shot = false
+				bullet.damage = maxi(4, dmg * 2 + 2 + b_tier)
+				bullet.speed = 720.0
+				bullet.can_destroy_steel = true
+				bullet.armor_piercing = true
+				bullet.modulate = Color(2.5, 2.0, 0.4, 1.0)
+				VFXAnimator.spawn_shockwave(get_parent(), muzzle_pos)
+				if is_inside_tree() and get_tree():
+					SoundManager.play_hit_steel(get_tree())
+			else:
+				bullet.damage = dmg
+				bullet.speed = 520.0
+				bullet.can_destroy_steel = (b_tier >= 2)
+
 		"speed":
 			# High speed needle cannons
 			var b_speed = 720.0
@@ -693,4 +783,138 @@ func on_enter_jam() -> void:
 func on_exit_jam() -> void:
 	jam_overlap_count = max(0, jam_overlap_count - 1)
 	is_jammed = (jam_overlap_count > 0)
+
+func _sweep_immediate_parry() -> void:
+	if not is_inside_tree():
+		return
+	var bullets = get_tree().get_nodes_in_group("bullets")
+	var candidates: Array[Node2D] = []
+	for b in bullets:
+		if is_instance_valid(b) and b is Node2D:
+			candidates.append(b)
+	if candidates.size() == 0 and get_parent():
+		for ch in get_parent().get_children():
+			if ch is Node2D and (ch.is_in_group("bullets") or ch.has_method("_try_ricochet")):
+				candidates.append(ch)
+
+	for b in candidates:
+		if is_instance_valid(b) and "shooter_type" in b and b.shooter_type == "enemy":
+			var to_b = b.global_position - global_position
+			var dist = to_b.length()
+			if dist <= 58.0:
+				if facing_direction.dot(to_b.normalized()) > -0.2 or dist <= 28.0:
+					check_parry_bullet(b)
+
+func check_parry_bullet(bullet: Node2D) -> bool:
+	if not is_parrying or not is_instance_valid(bullet):
+		return false
+
+	var b_dir: Vector2 = bullet.direction if "direction" in bullet else Vector2.ZERO
+	var to_bullet = (bullet.global_position - global_position).normalized()
+	# Parry valid if bullet is in front of player or heading towards player
+	if facing_direction.dot(b_dir) > 0.6 and facing_direction.dot(to_bullet) < -0.3:
+		# Bullet moving same direction from behind - not frontal parry
+		return false
+
+	var main = get_tree().current_scene if is_inside_tree() else null
+	var b_tier = 1
+	if main and main.rpg_mgr:
+		b_tier = main.rpg_mgr.get_branch_tier(player_id)
+	elif player_id == 1:
+		b_tier = GameState.branch_tier
+	else:
+		b_tier = GameState.p2_branch_tier
+
+	var cur_window = parry_perfect_window if b_tier <= 1 else (parry_perfect_window + 0.04)
+	var is_perfect: bool = (parry_timer >= (parry_total_duration - cur_window))
+
+	# Deflect bullet
+	bullet.direction = facing_direction
+	bullet.rotation = facing_direction.angle() + PI / 2.0
+	bullet.shooter = self
+	bullet.shooter_type = "player"
+	bullet.global_position = global_position + facing_direction * 32.0
+
+	if is_perfect:
+		# +1 Bullet Tier upgrade!
+		bullet.can_destroy_steel = true
+		bullet.armor_piercing = true
+		var cur_dmg: int = bullet.damage if "damage" in bullet else 1
+		bullet.damage = maxi(4, int(cur_dmg * 2.2) + 2 + b_tier)
+		var cur_spd: float = bullet.speed if "speed" in bullet else 500.0
+		bullet.speed = maxf(720.0, cur_spd * 1.6)
+		bullet.modulate = Color(2.6, 2.2, 0.4, 1.0)
+
+		# Empower next shot & instant cooldown reset
+		has_charged_counter_shot = true
+		can_fire = true
+		fire_timer = 0.0
+
+		VFXAnimator.spawn_shockwave(get_parent(), bullet.global_position)
+		VFXAnimator.spawn_clay_debris(get_parent(), bullet.global_position)
+		if is_inside_tree() and get_tree():
+			SoundManager.play_hit_steel(get_tree())
+		if main and main.has_method("add_trauma"):
+			main.add_trauma(0.28)
+		if main and main.has_method("show_toast"):
+			main.show_toast("⚡ PERFECT PARRY! 弹反升阶·破钢穿甲！⚡")
+	else:
+		# Standard deflection
+		bullet.damage = maxi(1, bullet.damage if "damage" in bullet else 1)
+		bullet.speed = maxf(520.0, bullet.speed if "speed" in bullet else 500.0)
+		VFXAnimator.spawn_dust_puff(get_parent(), bullet.global_position)
+		if is_inside_tree() and get_tree():
+			SoundManager.play_shield_hit(get_tree())
+
+	return true
+
+func try_parry_laser(start_pos: Vector2, laser_dir: Vector2, beam_damage: int) -> bool:
+	if not is_parrying:
+		return false
+
+	# Laser parry only from frontal hemisphere
+	if laser_dir.dot(facing_direction) > 0.4:
+		return false
+
+	var main = get_tree().current_scene if is_inside_tree() else null
+	var b_tier = 1
+	if main and main.rpg_mgr:
+		b_tier = main.rpg_mgr.get_branch_tier(player_id)
+	elif player_id == 1:
+		b_tier = GameState.branch_tier
+	else:
+		b_tier = GameState.p2_branch_tier
+
+	var cur_window = parry_perfect_window if b_tier <= 1 else (parry_perfect_window + 0.04)
+	var is_perfect: bool = (parry_timer >= (parry_total_duration - cur_window))
+
+	if is_perfect:
+		# Prism Counter Refraction (棱镜全反射)
+		has_charged_counter_shot = true
+		can_fire = true
+		fire_timer = 0.0
+
+		var ref_origin = global_position + facing_direction * 20.0
+		var counter_dmg = maxi(3, beam_damage * 2 + b_tier)
+		LaserPiercer.fire_linear_laser(get_parent(), ref_origin, facing_direction, self, "player", counter_dmg)
+		if b_tier >= 2:
+			# Tier 2: Triple Prism Refraction Fan
+			LaserPiercer.fire_linear_laser(get_parent(), ref_origin, facing_direction.rotated(deg_to_rad(-18.0)), self, "player", maxi(2, beam_damage + 1))
+			LaserPiercer.fire_linear_laser(get_parent(), ref_origin, facing_direction.rotated(deg_to_rad(18.0)), self, "player", maxi(2, beam_damage + 1))
+
+		VFXAnimator.spawn_shockwave(get_parent(), global_position)
+		if is_inside_tree() and get_tree():
+			SoundManager.play_hit_steel(get_tree())
+		if main and main.has_method("add_trauma"):
+			main.add_trauma(0.32)
+		if main and main.has_method("show_toast"):
+			main.show_toast("⚡ PERFECT PARRY! 棱镜全反射！(PRISM REFRACTION) ⚡")
+	else:
+		# Normal parry: block laser at buckler
+		VFXAnimator.spawn_dust_puff(get_parent(), global_position)
+		if is_inside_tree() and get_tree():
+			SoundManager.play_shield_hit(get_tree())
+
+	return true
+
 

@@ -91,7 +91,7 @@ static var regen_lvl: int = 0
 static var builder_lvl: int = 0
 
 # RPG Branch & Archetype Specialization
-static var tank_branch: String = "default" # "default", "speed", "heavy", "train"
+static var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter"
 static var branch_tier: int = 0            # 0=Unassigned/Base, 1=Tier 1, 2=Tier 2
 
 # perk_id -> stack count (was Array[String] of unique unlocks; a single run
@@ -283,6 +283,8 @@ static func get_player_max_hp() -> int:
 		bonus_hp += 2 + branch_tier * 2
 	elif tank_branch == "train":
 		bonus_hp += 1 + branch_tier
+	elif tank_branch == "counter":
+		bonus_hp += 2 + branch_tier
 	return 1 + max_hp_lvl + bonus_hp
 
 static func reset_campaign(p_count: int = 1) -> void:

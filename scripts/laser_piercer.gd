@@ -84,6 +84,10 @@ static func fire_linear_laser(parent: Node2D, start_pos: Vector2, direction: Vec
 					collider.take_damage(beam_damage)
 				VFXAnimator.spawn_shockwave(parent, collider.global_position)
 			elif (collider.is_in_group("player") or collider.is_in_group("p1") or collider.is_in_group("p2")) and shooter_type == "enemy":
+				if collider.has_method("try_parry_laser") and collider.try_parry_laser(start_pos, direction, beam_damage):
+					final_end = collider.global_position
+					stop_beam = true
+					break
 				if collider.has_method("take_damage"):
 					collider.take_damage(beam_damage)
 				VFXAnimator.spawn_clay_debris(parent, collider.global_position)

@@ -4,6 +4,7 @@ extends StaticBody2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const KineticPushHelper = preload("res://scripts/kinetic_push_helper.gd")
 
 @export var max_health: int = 3
 var current_health: int = 3

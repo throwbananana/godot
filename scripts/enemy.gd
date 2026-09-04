@@ -8,6 +8,7 @@ const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const LaserPiercer = preload("res://scripts/laser_piercer.gd")
 const FlameJet = preload("res://scripts/flame_jet.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const KineticPushHelper = preload("res://scripts/kinetic_push_helper.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 

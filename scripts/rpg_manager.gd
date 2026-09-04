@@ -18,7 +18,7 @@ var regen_lvl: int = 0      # 纳米自愈等级
 var builder_lvl: int = 0    # 防御工程强化
 
 # RPG 分支流派与特性 (P1)
-var tank_branch: String = "default" # "default", "speed", "heavy", "train"
+var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter"
 var branch_tier: int = 0            # 0=基础, 1=一阶进阶, 2=二阶终极
 var unlocked_perks: Dictionary = {} # perk_id -> stack count, see GameState.PERK_MAX_STACKS
 
@@ -32,29 +32,13 @@ var p2_unlocked_perks: Dictionary = {}
 const PERK_STACK_CURVE := [1.0, 0.65, 0.45]
 
 ## 分支 tier 1/2 的加成表, 按 [tier0(不可达), tier1, tier2] 索引。
-##
-## 原公式是 "BASE + tier*STEP", 一个和 tier 无关的 BASE 在 tier 1 就整份到账
-## (heavy 伤害/血量 tier1 就有 +3, tier2 只多到 +5 —— tier1 已经吃到 tier2
-## 六成的预算; speed 的开火冷却加成更夸张, tier1 +1.10 对 tier2 的 +1.50)。
-## set_branch() 选完分支 tier 立刻变成 1 (从来到不了 0), 所以这份"tier1 就
-## 送掉大半预算"的爆发, 一直是分支选择那一刻的真实强度。
-##
-## 以前这不算太致命: 分支选择发生在"第一次升级", 而升级要攒经验, 通常要打
-## 穿大半个 floor 0 才轮到。现在星星不设阈值、每颗必升一级 (add_level), 命中
-## 第一颗星常常就是本局最早的几次击杀之一 —— 于是这份本该分散在 tier1/tier2
-## 两次晋级之间的爆发, 被整个搬到了全局血量最薄的 floor 0 开局, 一次性打完
-## 就是"一发秒穿一切", 读起来是难度断崖式下跌而不是变强了。
-##
-## 现在 tier1 只保留一小份 (量级对齐 _auto_level_bonus 一次普通加点), tier2
-## 原样不动 —— 分支的终极形态没有被削, 只是不再整份塞进 tier1 那一刻。
-## tools/test_player_power.gd::_check_branch_tier1_parity() 钉住 tier1 (不是
-## 从来不会发生的 tier0) 这个真实开局状态, 验证时对着旧公式量出 heavy 3.40x
-## / speed 2.10x default, 远超 tier0 那条测到的 1.70x。
 const HEAVY_HP_BONUS := [0, 1, 5]
 const HEAVY_DMG_BONUS := [0, 1, 5]
 const TRAIN_HP_BONUS := [0, 1, 3]
 const SPEED_MOVE_BONUS := [0.0, 0.25, 0.60]
 const SPEED_FIRE_BONUS := [0.0, 0.70, 1.50]
+const COUNTER_HP_BONUS := [0, 2, 4]
+const COUNTER_DMG_BONUS := [0, 1, 3]
 
 func get_branch(player_id: int = 1) -> String:
 	return tank_branch if player_id == 1 else p2_tank_branch
@@ -252,6 +236,8 @@ func get_player_max_hp(player_id: int = 1) -> int:
 		hp += HEAVY_HP_BONUS[tier]
 	elif branch == "train":
 		hp += TRAIN_HP_BONUS[tier]
+	elif branch == "counter":
+		hp += COUNTER_HP_BONUS[tier]
 	hp += int(round(get_perk_value("titan_plating", 2.0, player_id)))
 	return hp
 
@@ -274,34 +260,21 @@ func get_fire_cooldown_mult(player_id: int = 1) -> float:
 		rate += SPEED_FIRE_BONUS[tier] # 极高射速
 	elif branch == "heavy":
 		rate *= 0.85 # 重型巨炮单发威猛，装填稍慢
+	elif branch == "counter":
+		rate *= 0.50 # 反击型攻速极慢，主要依赖时机弹反破敌
 	rate += get_perk_value("rapid_loader", 0.30, player_id)
 	return 1.0 / rate
 
-## player.gd::_fire() 把冷却夹在一个地板上 (speed 分支 0.18 秒, 其余 0.32),
-## 基准冷却是 0.65。一旦夹到底, **之后每一点射速强化都是纯白给** ——
-## 升级自动给的 fire_rate_lvl、商店 90G 的 autoloader、perk rapid_loader,
-## 全部零收益, 而 UI 上照样写着"+10% 装填速度"。
-##
-## 不叠 perk 的话这事不严重 (default 22 级才撞地板, 一幕大约涨到 24 级)。
-## 但 rapid_loader 每层 +0.30 射速、可叠 3 层, 实测叠满之后**10 级就撞地板**,
-## 也就是一幕三分之一处往后所有射速来源都是零。这和之前修过的"商店扣了钱却
-## 因为到上限没发出去"是同一类问题: 玩家花了代价, 拿到的是零, 而且没有任何
-## 提示。区别只在于这次藏在一个 clamp 里。
-##
-## 处理方式也和那次一致 —— 把判断放进**能不能买/能不能选**的路径里, 而不是
-## 事后补偿。见 shop_dialog.gd::_can_buy_item 与 upgrade_selection_dialog。
-##
-## 这两个常量必须和 player.gd::_fire() 保持一致; 那边是字面量, 没有常量可以
-## import, 所以改那边要同步改这里。
 const BASE_FIRE_COOLDOWN := 0.65
 const FIRE_CD_FLOOR_SPEED := 0.18
 const FIRE_CD_FLOOR_OTHER := 0.32
+const FIRE_CD_FLOOR_COUNTER := 0.95
 
 ## 再加 extra_rate 点射速之后, 冷却是不是仍然贴在地板上 (也就是这份强化
 ## 完全没有效果)。extra_rate 默认 0 = 问"现在是不是已经到底了"。
 func is_fire_rate_capped(player_id: int = 1, extra_rate: float = 0.0) -> bool:
 	var branch = get_branch(player_id)
-	var floor_v = FIRE_CD_FLOOR_SPEED if branch == "speed" else FIRE_CD_FLOOR_OTHER
+	var floor_v = FIRE_CD_FLOOR_SPEED if branch == "speed" else (FIRE_CD_FLOOR_COUNTER if branch == "counter" else FIRE_CD_FLOOR_OTHER)
 	# get_fire_cooldown_mult 返回的是 1/rate, 所以先还原成 rate 再加。
 	var rate = 1.0 / maxf(0.0001, get_fire_cooldown_mult(player_id))
 	var cd_now = BASE_FIRE_COOLDOWN / maxf(0.0001, rate)
@@ -315,6 +288,8 @@ func get_atk_damage(player_id: int = 1) -> int:
 	var dmg = 1 + atk_bonus
 	if branch == "heavy":
 		dmg += HEAVY_DMG_BONUS[tier]
+	elif branch == "counter":
+		dmg += COUNTER_DMG_BONUS[tier]
 	dmg += int(round(get_perk_value("high_explosive", 2.0, player_id)))
 	return dmg
 

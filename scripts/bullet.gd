@@ -4,6 +4,7 @@ extends Area2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const KineticPushHelper = preload("res://scripts/kinetic_push_helper.gd")
 
 signal hit_target(target: Node2D)
 
@@ -350,6 +351,8 @@ func _on_body_entered(body: Node2D) -> void:
 			queue_free()
 		return
 	elif (body.is_in_group("player") or body.is_in_group("p1") or body.is_in_group("p2")) and shooter_type == "enemy":
+		if body.has_method("check_parry_bullet") and body.check_parry_bullet(self):
+			return
 		if not is_destroyed:
 			is_destroyed = true
 			if is_aoe:

@@ -37,7 +37,8 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 
 	for opt in cards_data:
 		var card_btn = Button.new()
-		card_btn.custom_minimum_size = Vector2(210, 240)
+		var card_w = 175 if cards_data.size() >= 4 else 210
+		card_btn.custom_minimum_size = Vector2(card_w, 240)
 		card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var is_branch: bool = str(opt.get("type", "")) == "branch"
 		var theme_type = "normal"
@@ -49,6 +50,8 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 			theme_type = "speed"
 		elif branch_name == "train" or perk_id in ["warp_drive", "nano_repair"]:
 			theme_type = "shield"
+		elif branch_name == "counter":
+			theme_type = "branch"
 		elif is_branch:
 			theme_type = "branch"
 		UIThemeHelper.apply_clay_upgrade_card_themed(card_btn, theme_type)
@@ -119,8 +122,10 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 
 	if branch == "default":
 		# First class promotion choices!
-		title_label.text = "突破阶级：选择战车进阶流派"
-		subtitle_label.text = "选择你的专属坦克职业，蜕变全新 3D 外观与专属战斗机制！"
+		if title_label:
+			title_label.text = "突破阶级：选择战车进阶流派"
+		if subtitle_label:
+			subtitle_label.text = "选择你的专属坦克职业，蜕变全新 3D 外观与专属战斗机制！"
 
 		choices.append({
 			"type": "branch",
@@ -148,10 +153,21 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 			"tag": "【多节车厢·自动火炮】",
 			"desc": "进化为重装铁道车头！后节挂载【全自动火炮车厢】，360度自动索敌消灭后方威胁！"
 		})
+
+		choices.append({
+			"type": "branch",
+			"branch": "counter",
+			"icon": "counter",
+			"name": "绝地反击型\n(Counter Vanguard)",
+			"tag": "【精准盾反·升阶逆转】",
+			"desc": "搭载能量反冲盾！开火瞬间部署能量盾反弹敌弹并反射激光，完美弹反令炮弹升阶破钢！攻速极慢。"
+		})
 	else:
 		# In branch: offer Branch Tier 2 promotion + Tactical Perks
-		title_label.text = "战术强化：战备选择 (LEVEL %d)" % rpg_mgr.level
-		subtitle_label.text = "强化当前流派阶级，或激活强力被动战术芯片！"
+		if title_label:
+			title_label.text = "战术强化：战备选择 (LEVEL %d)" % rpg_mgr.level
+		if subtitle_label:
+			subtitle_label.text = "强化当前流派阶级，或激活强力被动战术芯片！"
 
 		# Evolution option
 		if b_tier < 2:
@@ -178,6 +194,14 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 					"name": "追加火箭重炮车厢\n(Train Tier 2)",
 					"tag": "【流派二阶进化】",
 					"desc": "列车编队追加第二节【火箭重炮车厢】，周期性发射大范围迫击飞弹！"
+				})
+			elif branch == "counter":
+				choices.append({
+					"type": "tier_up",
+					"icon": "🛡️⚡",
+					"name": "超导破阵要塞\n(Counter Tier 2)",
+					"tag": "【流派二阶进化】",
+					"desc": "进阶为超导反弹重盾，弹反完美判定窗口扩宽，反弹激光升阶为三向扇面棱镜全反射！"
 				})
 
 		# Perk pool
