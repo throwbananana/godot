@@ -88,24 +88,7 @@ func _ready() -> void:
 
 	# 3. 装饰主菜单面板 (Clay Panel)
 	if menu_panel:
-		var panel_sb := StyleBoxFlat.new()
-		panel_sb.bg_color = Color(0.10, 0.08, 0.15, 0.92)
-		panel_sb.border_color = Color(0.58, 0.46, 0.72, 0.85)
-		panel_sb.border_width_left = 2
-		panel_sb.border_width_top = 2
-		panel_sb.border_width_right = 2
-		panel_sb.border_width_bottom = 2
-		panel_sb.corner_radius_top_left = 16
-		panel_sb.corner_radius_top_right = 16
-		panel_sb.corner_radius_bottom_left = 16
-		panel_sb.corner_radius_bottom_right = 16
-		panel_sb.shadow_size = 18
-		panel_sb.shadow_color = Color(0.0, 0.0, 0.0, 0.65)
-		panel_sb.content_margin_left = 18
-		panel_sb.content_margin_right = 18
-		panel_sb.content_margin_top = 14
-		panel_sb.content_margin_bottom = 14
-		menu_panel.add_theme_stylebox_override("panel", panel_sb)
+		UIThemeHelper.apply_clay_panel(menu_panel)
 
 	# 4. 配置所有按钮与高阶交互动效 (Elastic Punch & Sound)
 	_all_buttons = [

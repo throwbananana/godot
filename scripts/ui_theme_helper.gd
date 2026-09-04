@@ -374,18 +374,20 @@ static func _first_focusable(node: Node) -> Control:
 
 static func apply_clay_panel(panel: Control, bg_color: Color = Color(0.18, 0.15, 0.20, 0.92), corner_radius: int = 14) -> void:
 	if not panel: return
-	var tex_panel = TextureHelper.get_tex("res://assets/sprites/ui/ui_panel_bg.png")
+	var tex_panel = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_dialog_panel.png")
+	if not tex_panel:
+		tex_panel = TextureHelper.get_tex("res://assets/sprites/ui/ui_panel_bg.png")
 	if tex_panel:
 		var sbt = StyleBoxTexture.new()
 		sbt.texture = tex_panel
-		sbt.texture_margin_left = 22
-		sbt.texture_margin_right = 22
-		sbt.texture_margin_top = 22
-		sbt.texture_margin_bottom = 22
-		sbt.content_margin_left = 16
-		sbt.content_margin_right = 16
-		sbt.content_margin_top = 14
-		sbt.content_margin_bottom = 14
+		sbt.texture_margin_left = 32
+		sbt.texture_margin_right = 32
+		sbt.texture_margin_top = 28
+		sbt.texture_margin_bottom = 28
+		sbt.content_margin_left = 20
+		sbt.content_margin_right = 20
+		sbt.content_margin_top = 16
+		sbt.content_margin_bottom = 16
 		panel.add_theme_stylebox_override("panel", sbt)
 		return
 
@@ -469,6 +471,12 @@ static func apply_clay_slider(slider: HSlider) -> void:
 
 static func apply_clay_check_box(cb: CheckBox) -> void:
 	if not cb: return
+	var tex_chk = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_checkbox_checked.png")
+	var tex_unchk = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_checkbox_unchecked.png")
+	if tex_chk:
+		cb.add_theme_icon_override("checked", tex_chk)
+	if tex_unchk:
+		cb.add_theme_icon_override("unchecked", tex_unchk)
 	cb.add_theme_color_override("font_color", Color(0.92, 0.88, 0.95, 1.0))
 	cb.add_theme_color_override("font_hover_color", Color(1.0, 0.92, 0.60, 1.0))
 	cb.add_theme_color_override("font_pressed_color", Color(0.98, 0.85, 0.35, 1.0))
@@ -499,6 +507,20 @@ static func apply_clay_option_button(opt: OptionButton) -> void:
 
 static func apply_hud_sidepanel(panel: Control) -> void:
 	if not panel: return
+	var tex_side = TextureHelper.get_tex("res://assets/sprites/ui/ui_clay_hud_sidepanel.png")
+	if tex_side:
+		var sbt = StyleBoxTexture.new()
+		sbt.texture = tex_side
+		sbt.texture_margin_left = 22
+		sbt.texture_margin_right = 22
+		sbt.texture_margin_top = 26
+		sbt.texture_margin_bottom = 26
+		sbt.content_margin_left = 14
+		sbt.content_margin_right = 14
+		sbt.content_margin_top = 14
+		sbt.content_margin_bottom = 14
+		panel.add_theme_stylebox_override("panel", sbt)
+		return
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.10, 0.08, 0.14, 0.92)
 	sb.corner_radius_top_left = 14

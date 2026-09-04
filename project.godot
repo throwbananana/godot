@@ -26,6 +26,11 @@ window/size/viewport_height=768
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[gui]
+
+theme/custom_font="res://assets/fonts/fusion-pixel-12px-proportional-zh_hans.ttf"
+
+
 [input]
 
 move_up={
