@@ -23,6 +23,7 @@ var is_destroyed: bool = false
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_bunker")
 	# 外观差分 (通用战损贴花 + 战区覆盖层)。延迟调用: 有的建筑在 _ready() 里
 	# 才创建 sprite / 才按 rpg_mgr 改 max_health, 立即调会读到还没成形的状态。
 	BuildingSkin.attach.call_deferred(self)

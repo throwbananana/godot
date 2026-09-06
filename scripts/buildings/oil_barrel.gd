@@ -14,6 +14,7 @@ var collision_shape: CollisionShape2D
 var explosion_scene: PackedScene
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_oil_barrel")
 	add_to_group("oil_barrel")
 	add_to_group("destructible")
 	add_to_group("obstacle")
@@ -125,7 +126,11 @@ func detonate() -> void:
 		# C2. 钢墙也炸得开 —— 四个爆炸源统一口径, 见
 		#     tools/test_explosive_terrain_matrix.gd。地图边界 (border) 除外:
 		#     它同样挂在 steel 组上, 炸穿了坦克就能开出地图。
-		elif collider.is_in_group("steel") and not collider.is_in_group("border"):
+		#     强化钢墙 (reinforced_steel) 也除外, 但理由不同: 它是刻意设计成
+		#     "只有炸弹/地雷/导弹三种爆破物能破", 唯独不含油桶——一致性检查
+		#     (tools/test_explosive_terrain_matrix.gd) 因此对它是个已知例外,
+		#     不是四个爆炸源该统一的那类 bug。
+		elif collider.is_in_group("steel") and not collider.is_in_group("border") and not collider.is_in_group("reinforced_steel"):
 			if collider.is_in_group("buildings"):
 				# 玩家自建的炮塔/强化墙同时也在 steel 组里(为了扛住普通子弹),
 				# 但它们有自己的血量系统 —— 不能被这条"钢墙统一炸得开"规则当

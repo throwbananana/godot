@@ -94,13 +94,14 @@ static func target_room_count(act: int) -> int:
 const MIN_SHOPS_PER_FLOOR := 1
 const SHOP_SECOND_ROOMS := ROOM_MAX
 
-## 挑战房的四种模式, 和 main.gd::start_game() 读的 GameState.challenge_mode
+## 挑战房的五种模式, 和 main.gd::start_game() 读的 GameState.challenge_mode
 ## 是同一套字符串。按视觉幕换池子, 沿用原 _generate_spire_map() 的分配。
+## "escort" (护送友军) 是新增的第五种, 三幕都加了进去, 不挤掉任何一个原有模式。
 static func _challenge_modes_for(visual_act: int) -> Array:
 	match visual_act:
-		1: return ["bomb_rain", "night_ops", "vault"]
-		2: return ["night_ops", "bomb_rain", "night_bombs"]
-		_: return ["night_bombs", "bomb_rain", "night_ops"]
+		1: return ["bomb_rain", "night_ops", "vault", "escort"]
+		2: return ["night_ops", "bomb_rain", "night_bombs", "escort"]
+		_: return ["night_bombs", "bomb_rain", "night_ops", "escort"]
 
 
 ## 生成一层楼。

@@ -13,6 +13,7 @@ var is_opened: bool = false
 var shake_cooldown: float = 0.0
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("item_chest_key")
 	add_to_group("treasure_chest")
 	var tex = TextureHelper.get_tex("res://assets/sprites/powerups/treasure_chest.png")
 	if tex:

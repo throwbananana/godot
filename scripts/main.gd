@@ -2,6 +2,7 @@ class_name MainGame
 extends Node2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
+const AllyTank = preload("res://scripts/ally_tank.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const PowerUp = preload("res://scripts/power_up.gd")
 const SpawnStar = preload("res://scripts/spawn_star.gd")
@@ -35,9 +36,11 @@ var base_scene: PackedScene
 var powerup_scene: PackedScene
 var spawnstar_scene: PackedScene
 var landmine_hazard_scene: PackedScene
+var ally_tank_scene: PackedScene
 
 var tex_brick: Texture2D
 var tex_steel: Texture2D
+var tex_reinforced_steel: Texture2D
 var tex_water_frames: Array[Texture2D] = []
 var tex_trees: Texture2D
 var tex_sand: Texture2D
@@ -106,6 +109,9 @@ var event_dialog: PanelContainer = null
 var p1_instance: PlayerTank
 var p2_instance: PlayerTank
 var base_instance: BaseEagle
+## "escort" 挑战房要保护的友军实例, 生命周期跟 base_instance 一样是"当前
+## 房间"级别的——见 _clear_all()/_despawn_base() 旁边的清空点。
+var escort_ally_instance: AllyTank = null
 
 var score: int = 0
 var p1_lives: int = 3
@@ -461,6 +467,7 @@ func _ready() -> void:
 	powerup_scene = load("res://scenes/power_up.tscn")
 	spawnstar_scene = load("res://scenes/spawn_star.tscn")
 	landmine_hazard_scene = load("res://scenes/landmine_hazard.tscn")
+	ally_tank_scene = load("res://scenes/ally_tank.tscn")
 	moving_platform_scene = load("res://scenes/moving_platform.tscn")
 	wormhole_scene = load("res://scenes/wormhole.tscn")
 	shield_station_scene = load("res://scenes/buildings/shield_station.tscn")
@@ -492,6 +499,10 @@ func _ready() -> void:
 
 	tex_brick = TextureHelper.get_tex("res://assets/sprites/tiles/tile_brick.png")
 	tex_steel = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png")
+	# 强化钢墙暂时复用钢墙贴图, 在 _spawn_tile() 里用更深冷的色调压暗区分——
+	# 项目里"靠明度而不是另画一张图区分层级"的既有做法(当年 tile_steel 就是
+	# 这样跟 tile_ice 分开的), 真正的黏土渲染新图是后续单独的美术任务。
+	tex_reinforced_steel = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png")
 	tex_trees = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
 	tex_sand = TextureHelper.get_tex("res://assets/sprites/tiles/tile_sand.png")
 	tex_sand_dune = TextureHelper.get_tex("res://assets/sprites/tiles/tile_sand_dune.png")
@@ -723,20 +734,36 @@ const SPAWN_INTERVAL_FLOOR := 1.2
 const MAX_ALIVE_BASE := 5
 const MAX_ALIVE_CAP := 6
 
+## GameState.difficulty (玩家在标题screen选的 easy/normal/hard) 加压的三个杠杆,
+## 和上面的"难度圈" (get_difficulty_cycle, 同一幕主题第几次重打) 是两个独立的轴,
+## 乘/加在一起而不是互相替代 —— 圈数管"这局打到多后期", 这里管"这局本身多硬"。
+## 沿用"敌人强弱必须整数且看得见"那条铁律 (见 enemy.gd 装甲板注释): 三档只动
+## 数量/间隔这些一眼可数的整数, 不碰任何敌人的隐藏血量或速度乘数。
+const DIFFICULTY_ENCOUNTER_MULT := {"easy": 0.75, "normal": 1.0, "hard": 1.3}
+const DIFFICULTY_ALIVE_OFFSET := {"easy": -1, "normal": 0, "hard": 1}
+const DIFFICULTY_SPAWN_INTERVAL_MULT := {"easy": 1.25, "normal": 1.0, "hard": 0.8}
+
 var max_alive_cap: int = MAX_ALIVE_BASE
 
-static func max_alive_for(cycle: int) -> int:
-	return mini(MAX_ALIVE_CAP, MAX_ALIVE_BASE + maxi(0, cycle))
+static func max_alive_for(cycle: int, difficulty: String = "normal") -> int:
+	var offset: int = int(DIFFICULTY_ALIVE_OFFSET.get(difficulty, 0))
+	# 下限 3: 就算 easy 撞上圈 0, 场上也不能比"三个出生点各出一辆"还挤不满,
+	# 不然新手局面反而空得不自然。上限沿用原来的 MAX_ALIVE_CAP, 不因难度突破。
+	return clampi(MAX_ALIVE_BASE + maxi(0, cycle) + offset, 3, MAX_ALIVE_CAP)
 
 
-static func encounter_size(battle_type: String, cycle: int) -> int:
+static func encounter_size(battle_type: String, cycle: int, difficulty: String = "normal") -> int:
 	var base: int = int(ENCOUNTER_BASE.get(battle_type, ENCOUNTER_BASE["battle"]))
-	return base + maxi(0, cycle) * ENCOUNTER_PER_LAP
+	var raw: int = base + maxi(0, cycle) * ENCOUNTER_PER_LAP
+	var mult: float = float(DIFFICULTY_ENCOUNTER_MULT.get(difficulty, 1.0))
+	return maxi(1, int(round(raw * mult)))
 
 
-static func spawn_interval_for(battle_type: String, cycle: int) -> float:
+static func spawn_interval_for(battle_type: String, cycle: int, difficulty: String = "normal") -> float:
 	var base: float = float(SPAWN_INTERVAL_BASE.get(battle_type, SPAWN_INTERVAL_BASE["battle"]))
-	return maxf(SPAWN_INTERVAL_FLOOR, base - float(maxi(0, cycle)) * SPAWN_INTERVAL_PER_LAP)
+	var raw: float = maxf(SPAWN_INTERVAL_FLOOR, base - float(maxi(0, cycle)) * SPAWN_INTERVAL_PER_LAP)
+	var mult: float = float(DIFFICULTY_SPAWN_INTERVAL_MULT.get(difficulty, 1.0))
+	return maxf(SPAWN_INTERVAL_FLOOR, raw * mult)
 
 
 func start_game() -> void:
@@ -777,7 +804,7 @@ func start_game() -> void:
 		p1_lives = GameState.player_lives
 		p2_lives = GameState.player_lives
 		rpg_mgr.sync_from_game_state()
-		max_alive_cap = max_alive_for(GameState.get_difficulty_cycle())
+		max_alive_cap = max_alive_for(GameState.get_difficulty_cycle(), GameState.difficulty)
 
 		# 存档里没有楼层 (新开局, 或者尖塔时代的老存档) 就现生成一层;
 		# 有楼层但当前房间指向不存在的房间就挪回起始房。
@@ -922,6 +949,10 @@ func _clear_all(keep_players: bool = false) -> void:
 	# 清空的房间时 base_instance 还挂着上一间那只待删的鹰: 铲子会对着它生效,
 	# 夜战雾会把它当作追踪目标, 而它下一帧就没了。
 	base_instance = null
+	# 同一个理由: escort_ally_instance 指向的友军可能刚被 queue_free (自然阵亡
+	# 或者换房清场), 而 queue_free 是延迟生效的——不置空的话下一间房还没决定
+	# 要不要刷新友军之前, is_instance_valid() 就会先读到上一间房那个待删对象。
+	escort_ally_instance = null
 	for child in actors_container.get_children():
 		if keep_players and (child == p1_instance or child == p2_instance or child.is_in_group("player_carriage")):
 			continue
@@ -1324,6 +1355,7 @@ func _announce_room(room: Dictionary) -> void:
 				"bomb_rain": show_toast("💣 挑战房：空投炸弹雨！")
 				"night_ops": show_toast("🌙 挑战房：黑夜突袭！")
 				"night_bombs": show_toast("💀 挑战房：暗夜空投极限防守！")
+				"escort": show_toast("🛡️ 挑战房：护送友军撑到最后！友军阵亡即战败！")
 				_: show_toast("🏆 挑战房：隐秘宝藏！")
 		"elite":
 			show_toast("⚠️ 精英房：重装甲部队！")
@@ -1586,6 +1618,8 @@ func _build_map() -> void:
 				_spawn_bunker(pos, 3) # LEFT
 			elif tile_type == 44:
 				_spawn_wooden_wall(pos)
+			elif tile_type == 45:
+				_spawn_tile("reinforced_steel", pos, tex_reinforced_steel)
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters).
 	# 只在战斗房加 —— 这段是在 _build_map() 尾部无条件跑的, 跟房间类型无关;
@@ -1711,6 +1745,7 @@ func _tree_sway_mat() -> ShaderMaterial:
 	return _tree_sway_material
 
 func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
+	GameState.discover_encyclopedia_entry("tile_" + type)
 	# 外观差分: 同一种地形有多张磨损/主题差分, 按格号确定性挑一张, 让整片
 	# 地形不再是同一张图复制几十遍。选图逻辑在 TerrainVariants ——
 	# 那边一个随机数都不取 (每日挑战依赖全局 RNG 流保持确定), 全靠哈希。
@@ -1743,6 +1778,32 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 		return
 	if type == "steel":
 		_spawn_brick_tile(map_container, pos, true)
+		return
+	if type == "reinforced_steel":
+		# 比普通钢墙硬一档: 对所有子弹/激光/破钢弹一律免疫 (见 bullet.gd /
+		# laser_piercer.gd / laser_ring_cutter.gd 里 "reinforced_steel" 排除项),
+		# 只有 timed_bomb / landmine / missile_strike 三种爆破物能炸开它,
+		# 油桶不算在内 (见 oil_barrel.gd 里的例外注释)。不做 2x2 细分——
+		# 普通钢墙细分是为了配合子弹的逐格破坏, 这堵墙对子弹完全免疫,
+		# 能破坏它的爆破物又都是整块 queue_free(), 细分没有意义。
+		var body := StaticBody2D.new()
+		body.position = pos
+		body.add_to_group("steel")
+		body.add_to_group("reinforced_steel")
+
+		var r_spr := Sprite2D.new()
+		r_spr.texture = tex
+		r_spr.scale = Vector2(TILE_SCALE, TILE_SCALE)
+		r_spr.modulate = Color(0.5, 0.58, 0.7, 1.0)
+		body.add_child(r_spr)
+
+		var r_col := CollisionShape2D.new()
+		var r_shape := RectangleShape2D.new()
+		r_shape.size = Vector2(TILE_SIZE - 2, TILE_SIZE - 2)
+		r_col.shape = r_shape
+		body.add_child(r_col)
+
+		map_container.add_child(body)
 		return
 	if type == "sand":
 		var sand_area = Area2D.new()
@@ -1879,6 +1940,7 @@ func _spawn_moving_platform(pos: Vector2, axis: Vector2 = Vector2.RIGHT, dist: f
 		actors_container.add_child(plat)
 
 func _spawn_wormhole(pos: Vector2) -> void:
+	GameState.discover_encyclopedia_entry("tile_wormhole")
 	if not wormhole_scene:
 		wormhole_scene = load("res://scenes/wormhole.tscn")
 	if wormhole_scene:
@@ -1904,6 +1966,7 @@ func _spawn_wind_blower(pos: Vector2, dir: WindBlower.Direction) -> void:
 		actors_container.add_child(wb)
 
 func _spawn_conveyor(pos: Vector2, dir: ConveyorBelt.Direction) -> void:
+	GameState.discover_encyclopedia_entry("tile_conveyor")
 	if not conveyor_belt_scene:
 		conveyor_belt_scene = load("res://scenes/conveyor_belt.tscn")
 	if conveyor_belt_scene:
@@ -1913,6 +1976,7 @@ func _spawn_conveyor(pos: Vector2, dir: ConveyorBelt.Direction) -> void:
 		map_container.add_child(cb)
 
 func _spawn_jump_pad(pos: Vector2) -> void:
+	GameState.discover_encyclopedia_entry("tile_jump_pad")
 	if not jump_pad_scene:
 		jump_pad_scene = load("res://scenes/jump_pad.tscn")
 	if jump_pad_scene:
@@ -2235,6 +2299,7 @@ func get_random_empty_tile_position() -> Vector2:
 ## (见 _despawn_base)。所以下面的门位常量必须绕开这块区域, 见 room_door.gd
 ## 的 DOOR_COL 那段。
 func _spawn_base_and_walls(use_steel: bool = false) -> void:
+	GameState.discover_encyclopedia_entry("tile_base_eagle")
 	for child in base_wall_container.get_children():
 		child.queue_free()
 
@@ -2293,12 +2358,52 @@ func _despawn_base() -> void:
 ## 一只都不刷、门直接开。
 func _begin_room_encounter() -> void:
 	var cycle: int = GameState.get_difficulty_cycle()
-	total_enemies = encounter_size(GameState.battle_type, cycle)
-	spawn_interval = spawn_interval_for(GameState.battle_type, cycle)
-	max_alive_cap = max_alive_for(cycle)
+	total_enemies = encounter_size(GameState.battle_type, cycle, GameState.difficulty)
+	spawn_interval = spawn_interval_for(GameState.battle_type, cycle, GameState.difficulty)
+	max_alive_cap = max_alive_for(cycle, GameState.difficulty)
 	enemies_spawned = 0
 	enemies_alive = 0
 	spawn_timer = 0.0
+
+	if GameState.battle_type == "challenge" and GameState.challenge_mode == "escort":
+		_spawn_escort_ally()
+
+## "escort" 挑战房: 生成一名要保护到房间清空的友军, 阵亡即战败——见
+## _on_escort_ally_destroyed()。跟老鹰基地一样是当前房间级别的临时对象, 见
+## escort_ally_instance 声明处和 _clear_all() 里的置空注释。
+func _spawn_escort_ally() -> void:
+	if not ally_tank_scene:
+		return
+	escort_ally_instance = ally_tank_scene.instantiate()
+	actors_container.add_child(escort_ally_instance)
+	escort_ally_instance.ally_destroyed.connect(_on_escort_ally_destroyed)
+	# get_random_empty_tile_position() 返回的是全局坐标 (修过的坑, 见
+	# CLAUDE.md "GameArea 局部/全局坐标差一格" 一节), 所以必须在 add_child()
+	# 之后再赋值, 不能反过来。
+	escort_ally_instance.global_position = get_random_empty_tile_position()
+
+func _on_escort_ally_destroyed() -> void:
+	escort_ally_instance = null
+	show_toast("💀 友军阵亡！护送失败！")
+	add_trauma(0.6)
+	hit_stop(0.08)
+	_game_over(false)
+
+## 护送成功: 房间清空时安全撤离友军, 不算阵亡。
+##
+## 先断开信号再 queue_free()——目前 ally_tank.gd 的 queue_free() 本身不会
+## 触发 ally_destroyed (那个信号只从 _die() 发, 而 _die() 只有 take_damage()
+## 打到 0 血才会调用), 所以这条断开眼下不是必须的。留着是防将来重蹈
+## base_eagle.gd 的覆辙——那边同样的信号后来在 _exit_tree() 里补发了一次,
+## 导致"清空房间"和"基地被摧毁"在 queue_free 之后的那一帧混成了一件事
+## (见 _despawn_base() 头上的注释)。断开信号这一步比记住"以后改 ally_tank.gd
+## 时留意这个坑"更可靠。
+func _despawn_escort_ally() -> void:
+	if escort_ally_instance and is_instance_valid(escort_ally_instance):
+		if escort_ally_instance.ally_destroyed.is_connected(_on_escort_ally_destroyed):
+			escort_ally_instance.ally_destroyed.disconnect(_on_escort_ally_destroyed)
+		escort_ally_instance.queue_free()
+	escort_ally_instance = null
 
 func trigger_shovel(duration: float = 15.0) -> void:
 	# 房间清空后基地已经撤掉了 (_despawn_base)。此时再吃到铲子不能重建它 ——
@@ -2912,6 +3017,7 @@ func _on_room_cleared() -> void:
 	GameState.mark_room_cleared(GameState.current_room, true)
 	# 先撤基地再开门: 基地那一坨压在底边中段, 撤掉之后玩家才能顺畅走到南门。
 	_despawn_base()
+	_despawn_escort_ally()
 	_open_doors()
 	_refresh_minimap()
 	SoundManager.play_victory(get_tree())

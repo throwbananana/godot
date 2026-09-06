@@ -26,6 +26,7 @@ const SettingsStore = preload("res://scripts/settings_store.gd")
 @onready var btn_map_editor: Button = $CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid/MapEditorButton
 @onready var btn_settings: Button = $CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid/SettingsButton
 @onready var btn_quit: Button = $CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid/QuitButton
+@onready var btn_difficulty: Button = $CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid/DifficultyButton
 @onready var btn_test_mode: Button = $CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid/TestModeButton
 @onready var encyclopedia_dialog: EncyclopediaDialog = $EncyclopediaDialog
 @onready var settings_dialog: SettingsDialog = $SettingsDialog
@@ -93,7 +94,7 @@ func _ready() -> void:
 	# 4. 配置所有按钮与高阶交互动效 (Elastic Punch & Sound)
 	_all_buttons = [
 		btn_continue, btn_1p_campaign, btn_2p_campaign, btn_2p_arcade, btn_daily_challenge,
-		btn_encyclopedia, btn_map_editor, btn_settings, btn_quit, btn_test_mode
+		btn_encyclopedia, btn_map_editor, btn_settings, btn_quit, btn_difficulty, btn_test_mode
 	]
 
 	UIThemeHelper.apply_icon_button(btn_continue, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(24, 24))
@@ -105,6 +106,8 @@ func _ready() -> void:
 	UIThemeHelper.apply_icon_button(btn_map_editor, "res://assets/sprites/powerups/shovel.png", Vector2(20, 20))
 	UIThemeHelper.apply_icon_button(btn_settings, "res://assets/sprites/ui/ui_icon_wrench.png", Vector2(20, 20))
 	UIThemeHelper.apply_icon_button(btn_quit, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(20, 20))
+	UIThemeHelper.apply_icon_button(btn_difficulty, "res://assets/sprites/ui/ui_badge_threat_skull.png", Vector2(20, 20))
+	_refresh_difficulty_button()
 	UIThemeHelper.apply_icon_button(btn_test_mode, "res://assets/sprites/ui/ui_icon_wrench.png", Vector2(18, 18))
 
 	for btn in _all_buttons:
@@ -125,6 +128,7 @@ func _ready() -> void:
 	btn_map_editor.pressed.connect(_on_map_editor_pressed)
 	btn_settings.pressed.connect(_on_settings_pressed)
 	btn_quit.pressed.connect(_on_quit_pressed)
+	btn_difficulty.pressed.connect(_on_difficulty_pressed)
 	btn_test_mode.pressed.connect(_on_test_mode_pressed)
 	# 本进程之前已经输对过暗号 (比如从测试菜单/对局里 "返回标题" 回来的) ——
 	# 按钮保持解锁状态, 不需要重新输一遍。
@@ -354,6 +358,20 @@ func _on_settings_pressed() -> void:
 
 func _on_quit_pressed() -> void:
 	get_tree().quit()
+
+
+## 循环 easy -> normal -> hard -> easy。直接写 GameState.difficulty, 不经过
+## reset_campaign() (见 game_state.gd 里 difficulty 声明处的理由) —— 选好之后
+## 无论点哪个模式按钮进对局, 都是这个值, 不需要在每个 _start_* 里再传一遍。
+func _on_difficulty_pressed() -> void:
+	SoundManager.play_shot(get_tree())
+	GameState.cycle_difficulty()
+	_refresh_difficulty_button()
+
+
+func _refresh_difficulty_button() -> void:
+	if btn_difficulty:
+		btn_difficulty.text = "难度: " + GameState.difficulty_label()
 
 
 ## 暗号监听必须挂在 _input() 而不是 _unhandled_input()。

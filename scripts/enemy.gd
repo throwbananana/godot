@@ -110,6 +110,7 @@ var fire_interval: float = 1.2
 var fire_timer: float = 0.0
 var change_dir_timer: float = 0.0
 var freeze_timer: float = 0.0
+var dodge_scan_timer: float = 0.0 # Hard 难度躲子弹的扫描节流, 见 _check_hard_bullet_dodge()
 var is_on_sand: bool = false
 var sand_overlap_count: int = 0
 var is_on_ice: bool = false
@@ -141,6 +142,17 @@ var is_leaping: bool = false
 var jump_cooldown_timer: float = 0.0
 const JUMP_COOLDOWN: float = 3.5
 var leap_shadow: Sprite2D = null
+
+# 激光坦克: 开火前停步锁定目标方向并蓄力, 用一排格数指示器显示蓄力进度
+# (原来是 fire_timer 一到就顺发, 玩家在光柱出现前完全看不出方向也来不及躲)。
+# LASER_CHARGE_TIME 必须小于 fire_interval (3.8s), 否则蓄力窗口会跨到上一次
+# 冷却还没转完就开始, 见 _setup_tank_type() 里 LASER 那一档。
+const LASER_CHARGE_TIME: float = 1.2
+const LASER_CHARGE_SEGMENTS: int = 4
+var laser_charge_container: Node2D = null
+var laser_charge_segment_sprites: Array[Sprite2D] = []
+var laser_segment_tex_lit: Texture2D = null
+var laser_segment_tex_dim: Texture2D = null
 
 # 火墙坦克火墙轨迹
 var firewall_trail_queue: Array[Node2D] = []
@@ -210,6 +222,7 @@ func _ready() -> void:
 		if s_tex:
 			shield_bubble_textures.append(s_tex)
 	_setup_tank_type()
+	GameState.discover_encyclopedia_entry("enemy_" + EnemyType.keys()[enemy_type].to_lower())
 	rotation = facing_direction.angle() + PI / 2.0
 	change_dir_timer = randf_range(1.0, 2.5)
 	fire_timer = randf_range(1.2, 2.5)
@@ -851,6 +864,13 @@ func _physics_process(delta: float) -> void:
 			_choose_new_direction()
 			change_dir_timer = randf_range(1.5, 3.5)
 
+		# Hard 难度: 躲避迎面而来的玩家子弹。排除会被这个机制破坏身份的类型——
+		# 粉碎者/推土机的定位就是"正面莽穿一切", 潜伏/钻地/驻塞/伪装中的单位
+		# 保持原有的静止或专属演出不被打断 (伪装中还会露出移动痕迹, 等于自己
+		# 暴露位置, 跟 _update_tree_transparency() 跳过伪装 MIRAGE 是同一条理由)。
+		if GameState.difficulty == "hard" and enemy_type != EnemyType.CRUSHER and enemy_type != EnemyType.BULLDOZER and not is_in_ambush and not is_burrowed and not is_burrowing and not is_cannon_deployed and not is_camouflaged:
+			_check_hard_bullet_dodge(delta)
+
 	# 2. Mirage Tank Optical Camouflage State Machine
 	if enemy_type == EnemyType.MIRAGE:
 		if velocity.length_squared() < 10.0:
@@ -939,6 +959,23 @@ func _physics_process(delta: float) -> void:
 			var charge_flash = int(Time.get_ticks_msec() / 75) % 2 == 0
 			sprite.modulate = Color(1.2, 2.4, 3.0) if charge_flash else Color(1.0, 1.0, 1.0)
 
+	# 8b. 激光坦克: 开火前 LASER_CHARGE_TIME 秒停步锁定目标方向并蓄力,
+	# 用一排格数指示器显示蓄力进度, 让玩家能提前判断光柱方向躲避——
+	# 原来是 fire_timer 一到就顺发, 光柱出现的同一帧才看得出方向, 完全来不及反应。
+	elif enemy_type == EnemyType.LASER:
+		if fire_timer <= LASER_CHARGE_TIME:
+			var target = _find_target()
+			if target and is_instance_valid(target):
+				var to_target = target.global_position - global_position
+				if abs(to_target.x) > abs(to_target.y):
+					facing_direction = Vector2.RIGHT if to_target.x > 0 else Vector2.LEFT
+				else:
+					facing_direction = Vector2.DOWN if to_target.y > 0 else Vector2.UP
+				rotation = facing_direction.angle() + PI / 2.0
+			_update_laser_charge_indicator(fire_timer)
+		else:
+			_hide_laser_charge_indicator()
+
 	# 9. 工程坦克: 10 秒周期内在周围随机建造地形或建筑
 	elif enemy_type == EnemyType.ENGINEER:
 		build_timer -= delta
@@ -994,6 +1031,24 @@ func _physics_process(delta: float) -> void:
 	if enemy_type != EnemyType.FLAMETHROWER and enemy_type != EnemyType.SUICIDE and enemy_type != EnemyType.CRUSHER and not is_in_ambush and not is_burrowed:
 		fire_timer -= delta
 		if fire_timer <= 0.0:
+			# Hard 难度: 开火前先转向瞄准最近的目标 (玩家或基地老鹰, 复用
+			# _find_target() 已有的"谁近打谁"判定), 而不是继续朝巡逻方向打空气。
+			# 只在这一刻改 facing_direction/rotation, 不碰移动速度或路线, 所以
+			# 巡逻节奏在视觉上不变——变的只是"开枪那一下朝哪打", 炮塔在开火瞬间
+			# 转向目标本身就是玩家看得见的信号, 不是藏在数值里的隐性加成
+			# (同一条铁律见 "Enemy toughness is integer and visible" 那段)。
+			# SNIPER/LASER 排除在外: 两者都已经在自己的蓄力段里持续瞄准并有
+			# 蓄力闪烁/格数提示, 这里再设一遍是重复功。
+			if GameState.difficulty == "hard" and enemy_type != EnemyType.SNIPER and enemy_type != EnemyType.LASER:
+				var aim_target = _find_target()
+				if aim_target and is_instance_valid(aim_target):
+					var to_target = aim_target.global_position - global_position
+					if to_target.length_squared() > 1.0:
+						if abs(to_target.x) > abs(to_target.y):
+							facing_direction = Vector2.RIGHT if to_target.x > 0 else Vector2.LEFT
+						else:
+							facing_direction = Vector2.DOWN if to_target.y > 0 else Vector2.UP
+						rotation = facing_direction.angle() + PI / 2.0
 			_shoot()
 			fire_timer = randf_range(fire_interval * 0.8, fire_interval * 1.3)
 
@@ -1002,6 +1057,8 @@ func _physics_process(delta: float) -> void:
 		move_speed = 0.0 # 草丛潜伏期间或驻扎要塞形态下牢固抓地不移动
 	elif enemy_type == EnemyType.SNIPER and fire_timer <= 0.6:
 		move_speed = 0.0 # 狙击手开火前夕停步静止架枪蓄力
+	elif enemy_type == EnemyType.LASER and fire_timer <= LASER_CHARGE_TIME:
+		move_speed = 0.0 # 激光坦克蓄力期间停步锁定, 方向不会在蓄力途中变来变去
 	elif is_on_ice:
 		move_speed *= 1.35 # Enemies slide fast across ice
 		if enemy_type == EnemyType.WARP:
@@ -1165,6 +1222,64 @@ func _handle_bulldozer_push(col_node: Object) -> void:
 	# 4. 无法推动的硬性障碍（例如外墙边框），选择新方向
 	_choose_new_direction()
 
+## 生成/复用激光坦克的蓄力格数指示器: 一排小方块, 挂在坦克本体 (self) 下方,
+## 从暗到亮按蓄力进度依次点亮。挂在 self 而不是 sprite 上是因为两者都会跟着
+## rotation 转向目标, 指示器需要每帧反向抵消这份旋转才能保持水平朝上, 见
+## _update_laser_charge_indicator()。纯代码生成的实心方块纹理 (不经过 Blender
+## 渲染管线) —— 这是一个功能性战术提示图标, 不是世界美术, 和 missile_strike.gd
+## 的瞄准准星 reticle_target.png 是同一类东西, 不需要走黏土渲染那一套。
+func _ensure_laser_charge_indicator() -> void:
+	if is_instance_valid(laser_charge_container):
+		return
+
+	if not laser_segment_tex_lit:
+		var img_lit := Image.create(6, 10, false, Image.FORMAT_RGBA8)
+		img_lit.fill(Color(0.3, 2.4, 2.8, 1.0))
+		laser_segment_tex_lit = ImageTexture.create_from_image(img_lit)
+	if not laser_segment_tex_dim:
+		var img_dim := Image.create(6, 10, false, Image.FORMAT_RGBA8)
+		img_dim.fill(Color(0.12, 0.16, 0.2, 0.85))
+		laser_segment_tex_dim = ImageTexture.create_from_image(img_dim)
+
+	laser_charge_container = Node2D.new()
+	laser_charge_container.position = Vector2(0.0, -34.0)
+	laser_charge_container.z_index = 20
+	laser_charge_container.visible = false
+	add_child(laser_charge_container)
+
+	laser_charge_segment_sprites.clear()
+	var spacing := 8.0
+	var start_x := -spacing * float(LASER_CHARGE_SEGMENTS - 1) * 0.5
+	for i in range(LASER_CHARGE_SEGMENTS):
+		var seg := Sprite2D.new()
+		seg.texture = laser_segment_tex_dim
+		seg.position = Vector2(start_x + spacing * i, 0.0)
+		laser_charge_container.add_child(seg)
+		laser_charge_segment_sprites.append(seg)
+
+## 每帧刷新蓄力指示器: 按剩余蓄力时间点亮对应格数, 并反向抵消坦克自身旋转
+## 让指示条始终保持水平, 不会跟着炮塔转向一起打转。
+func _update_laser_charge_indicator(remaining: float) -> void:
+	_ensure_laser_charge_indicator()
+	laser_charge_container.visible = true
+	laser_charge_container.rotation = -rotation
+
+	var progress = 1.0 - clampf(remaining / LASER_CHARGE_TIME, 0.0, 1.0)
+	var lit_count = clampi(int(ceil(progress * LASER_CHARGE_SEGMENTS)), 0, LASER_CHARGE_SEGMENTS)
+	for i in range(laser_charge_segment_sprites.size()):
+		laser_charge_segment_sprites[i].texture = laser_segment_tex_lit if i < lit_count else laser_segment_tex_dim
+
+	# 格数全部点亮后再叠加一层脉冲缩放, 强调"下一帧就要开火了"这个最后的信号
+	if lit_count >= LASER_CHARGE_SEGMENTS:
+		var pulse = 1.0 + sin(Time.get_ticks_msec() * 0.03) * 0.25
+		laser_charge_container.scale = Vector2(pulse, pulse)
+	else:
+		laser_charge_container.scale = Vector2(1.0, 1.0)
+
+func _hide_laser_charge_indicator() -> void:
+	if is_instance_valid(laser_charge_container):
+		laser_charge_container.visible = false
+
 func _choose_new_direction() -> void:
 	var dirs = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
 	var weights = [1.0, 3.0, 2.0, 2.0] # 倾向于向下推进
@@ -1180,6 +1295,50 @@ func _choose_new_direction() -> void:
 
 	facing_direction = chosen
 	rotation = facing_direction.angle() + PI / 2.0
+
+## Hard 难度专属: 侧移躲开正冲着自己飞来的玩家子弹。
+##
+## 节流到每 HARD_DODGE_SCAN_INTERVAL 秒扫一次 "bullet" 组, 而不是每帧扫——
+## 一场遭遇同屏最多 6 辆敌方坦克 (MAX_ALIVE_CAP), 子弹数量通常不大, 但每帧
+## 对每辆敌方坦克都做一次全场子弹遍历仍然是不必要的开销。
+##
+## 只认定"弹道方向的单位向量"与"子弹指向本坦克的方向"夹角小于
+## HARD_DODGE_ANGLE_COS 对应角度的子弹为威胁 —— 路过但打不中的子弹不会触发,
+## 不然满屏子弹时敌人会一直抽搐式换向, 反而更好打。
+const HARD_DODGE_DETECT_RADIUS := 130.0
+const HARD_DODGE_ANGLE_COS := 0.82 # 约 35 度锥形
+const HARD_DODGE_SCAN_INTERVAL := 0.12
+const HARD_DODGE_COMMIT_TIME := 0.5 # 侧移方向至少保持这么久, 不被巡逻换向立刻覆盖
+
+func _check_hard_bullet_dodge(delta: float) -> void:
+	dodge_scan_timer -= delta
+	if dodge_scan_timer > 0.0:
+		return
+	dodge_scan_timer = HARD_DODGE_SCAN_INTERVAL
+
+	for b in get_tree().get_nodes_in_group("bullet"):
+		if not is_instance_valid(b) or b.shooter_type != "player":
+			continue
+		var to_enemy: Vector2 = global_position - b.global_position
+		var dist := to_enemy.length()
+		if dist < 4.0 or dist > HARD_DODGE_DETECT_RADIUS:
+			continue
+		if b.direction == Vector2.ZERO:
+			continue
+		var bullet_dir: Vector2 = b.direction.normalized()
+		if bullet_dir.dot(to_enemy.normalized()) < HARD_DODGE_ANGLE_COS:
+			continue
+
+		# 找到一发冲着自己来的子弹: 垂直于弹道横向闪避。转 90 度后必然不再
+		# 迎着子弹的方向走, 至于往哪一侧闪没有优劣之分, 随机挑。
+		var perp := bullet_dir.rotated(PI / 2.0 if randf() < 0.5 else -PI / 2.0)
+		if abs(perp.x) > abs(perp.y):
+			facing_direction = Vector2.RIGHT if perp.x > 0 else Vector2.LEFT
+		else:
+			facing_direction = Vector2.DOWN if perp.y > 0 else Vector2.UP
+		rotation = facing_direction.angle() + PI / 2.0
+		change_dir_timer = HARD_DODGE_COMMIT_TIME
+		return # 一次只处理最先扫到的一发, 躲开它就够了
 
 func _shoot() -> void:
 	if not bullet_scene:

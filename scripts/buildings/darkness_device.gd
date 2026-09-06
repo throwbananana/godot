@@ -17,6 +17,7 @@ var tex_unlit: Texture2D
 var tex_lit: Texture2D
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_darkness_device")
 	add_to_group("darkness_device")
 	add_to_group("building")
 	add_to_group("destructible")

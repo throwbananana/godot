@@ -52,6 +52,12 @@ const CustomMapStore = preload("res://scripts/custom_map_store.gd")
 # 42 = Tactical Bunker DOWN
 # 43 = Tactical Bunker LEFT
 # 44 = Movable Wooden Wall (Movable timber barricade: can be pushed by contact or kinetic impacts, crushes bricks/damages enemies on contact, destructible)
+# 45 = Reinforced Steel Wall (一档比普通钢墙(2)更硬的墙: 对所有子弹/激光/破钢弹
+#     免疫, 不可被推移, 只有 timed_bomb / landmine / missile_strike 三种爆破物
+#     能炸开——刻意不含油桶。不加入 border 组, 仍是可攻克的地形而非地图边界。
+#     见 bullet.gd / laser_piercer.gd / laser_ring_cutter.gd / kinetic_push_helper.gd
+#     里的 "reinforced_steel" 排除项, 以及 tools/test_explosive_terrain_matrix.gd。
+#     贴图暂时复用钢墙贴图压暗色调, 尚未走 Blender 渲染管线出专属美术。)
 
 # 1. 经典十字交叉防线 (Classic Crossroad - with Reinforced Hard Clay Chokepoints)
 const TEMPLATE_CLASSIC = [

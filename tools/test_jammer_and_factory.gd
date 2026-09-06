@@ -10,6 +10,23 @@ extends SceneTree
 #                           no longer comes from an XP pool at all -- see
 #                           rpg_manager.gd::add_level().)
 
+## Set by _fail() and checked once at the very end of _run_tests(). Calling
+## quit(1) immediately at each failure site does NOT work here: quit() only
+## records the intended exit code and asks the main loop to stop at its next
+## iteration, it does not interrupt the current synchronous call stack. This
+## file's tests are almost entirely synchronous (no awaits between them), so a
+## quit(1) fired mid-suite gets silently overwritten by the quit(0) at the
+## bottom of _run_tests() before the engine ever acts on it -- verified
+## empirically: with the old "quit(1) at each failure site" version, breaking
+## player.gd's rotation line still produced exit code 0. A single flag checked
+## once, after every sub-test has run, is the only version that isn't at the
+## mercy of where an unrelated await happens to sit in this file.
+var _failed := false
+
+func _fail(msg: String) -> void:
+	print("[FAIL] " + msg)
+	_failed = true
+
 func _init() -> void:
 	# Nodes added this early (before the engine's first idle frame) don't get
 	# synchronous _ready() -- same lesson as test_risk_reward_perks.gd.
@@ -21,14 +38,19 @@ func _run_tests() -> void:
 	print("==================================================")
 
 	_test_jammer_toggles_is_jammed_and_inverts_input()
+	_test_jammer_actually_reverses_movement_and_facing()
 	_test_jammer_releases_bodies_on_destroy()
 	_test_factory_survives_doubles_reward()
 	await _test_factory_destroyed_halves_reward() # uses `await process_frame` internally to let queue_free() actually take effect
 	_test_factory_absent_is_a_no_op()
 	_test_double_level_up_does_not_error()
 
-	print("\n>>> ALL JAMMER TOWER & FACTORY CHECKS PASSED! <<<")
-	quit(0)
+	if _failed:
+		print("\n>>> JAMMER TOWER & FACTORY CHECKS FAILED <<<")
+		quit(1)
+	else:
+		print("\n>>> ALL JAMMER TOWER & FACTORY CHECKS PASSED! <<<")
+		quit(0)
 
 func _make_jammer() -> Node2D:
 	var scene = load("res://scenes/buildings/signal_jammer_tower.tscn")
@@ -66,6 +88,66 @@ func _test_jammer_toggles_is_jammed_and_inverts_input() -> void:
 	jammer.queue_free()
 	p1.queue_free()
 	print("  [PASS] is_jammed toggles correctly; input inversion math confirmed.")
+
+func _test_jammer_actually_reverses_movement_and_facing() -> void:
+	print("\n[STEP] Jam field flips velocity, facing_direction AND turret rotation together...")
+	# The previous test above only checks vector algebra in the abstract
+	# (-UP == DOWN) -- it never actually drives player.gd's own
+	# _physics_process(), so it can't catch a "split-brain" regression where
+	# movement and the turret/rotation stop reading the same inverted vector
+	# (e.g. someone inverts velocity but leaves rotation reading raw input,
+	# or vice versa). That would look exactly like the bug players report:
+	# "the turret spun around but the tank kept driving the way I pressed"
+	# (or the reverse). This drives the real function with simulated input
+	# and checks all three channels independently against the true expected
+	# direction, not against each other.
+	#
+	# Deliberately NOT assert(): a failed assert() here only unwinds this one
+	# function and returns control to _run_tests(), which keeps going and
+	# still reaches quit(0) at the end -- verified empirically by temporarily
+	# breaking player.gd's rotation line and running this test standalone:
+	# it printed "SCRIPT ERROR: Assertion failed" but the run still finished
+	# with ">>> ALL JAMMER TOWER & FACTORY CHECKS PASSED! <<<" and exit code
+	# 0, which run_tests.ps1 (keys off $p.ExitCode alone) reads as a green
+	# "ok". _fail() (print + set the module-level _failed flag, checked once
+	# at the bottom of _run_tests()) is what actually fails the suite here.
+	var p1 = _make_player(1)
+
+	Input.action_press("p1_move_up")
+
+	# Baseline: unjammed, pressing "up" should drive the tank up in every
+	# channel that reads direction.
+	p1.is_jammed = false
+	p1._physics_process(0.016)
+	if not (p1.velocity.y < 0.0):
+		_fail("unjammed 'up' should move the tank up, got velocity %s" % p1.velocity)
+		return
+	if not (p1.facing_direction == Vector2.UP):
+		_fail("unjammed 'up' should face up, got %s" % p1.facing_direction)
+		return
+	var rot_dir_normal = Vector2.from_angle(p1.rotation - PI / 2.0)
+	if not rot_dir_normal.is_equal_approx(Vector2.UP):
+		_fail("unjammed turret rotation should point up, decodes to %s" % rot_dir_normal)
+		return
+
+	# Jammed: the whole point of the hazard is that velocity, facing_direction
+	# AND turret rotation all invert together -- never just one of them.
+	p1.is_jammed = true
+	p1._physics_process(0.016)
+	if not (p1.velocity.y > 0.0):
+		_fail("jammed 'up' should actually drive the tank DOWN, got velocity %s" % p1.velocity)
+		return
+	if not (p1.facing_direction == Vector2.DOWN):
+		_fail("jammed 'up' should face DOWN (reversed), got %s" % p1.facing_direction)
+		return
+	var rot_dir_jammed = Vector2.from_angle(p1.rotation - PI / 2.0)
+	if not rot_dir_jammed.is_equal_approx(Vector2.DOWN):
+		_fail("jammed turret rotation should point DOWN (reversed), decodes to %s" % rot_dir_jammed)
+		return
+
+	Input.action_release("p1_move_up")
+	p1.queue_free()
+	print("  [PASS] Velocity, facing_direction, and turret rotation all reverse together -- no split-brain visual/logic mismatch.")
 
 func _test_jammer_releases_bodies_on_destroy() -> void:
 	print("\n[STEP] Destroying the tower mid-overlap releases anyone still jammed...")

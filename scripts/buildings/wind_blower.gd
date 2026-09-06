@@ -22,6 +22,7 @@ var particle_timer: float = 0.0
 @onready var wind_shape: CollisionShape2D = $WindArea/CollisionShape2D
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_wind_blower")
 	add_to_group("building")
 	add_to_group("buildings")
 	add_to_group("wind_blower")

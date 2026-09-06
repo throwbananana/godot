@@ -19,6 +19,15 @@ func _run_tests() -> void:
 	# 完全可能一个都不剩。所以这里扫多个种子, 只要有一层楼分出了挑战房
 	# 就算通过; 卡成"每层必须有"的话, 测试会在完全正常的小地图上随机变红。
 	print("1. Testing Floor Map Challenge Room Generation...")
+	# 这条断言守着随机生成的楼层内容 (challenge_mode 是从 FloorMap 的随机池子
+	# 里抽的), 之前写成裸 assert() 撞过一次真事故: 加了新模式 "escort" 进池子
+	# 之后, 这里的硬编码名单没跟着更新, 抽中 "escort" 就断言失败——而且不是
+	# 优雅地报错, 是**真的把整个测试进程挂起 120 秒直到 run_tests.ps1 超时杀掉**,
+	# 跟 [[assert-on-random-precondition-hangs]] 里那条"assert 守随机前置条件是
+	# 潜在 TIMEOUT"完全对上号。换成显式 print("[FAIL]")+quit(1)+return, 而不是
+	# 继续用 assert——这个位置只会执行一次、后面没有别的 quit() 会覆盖它,
+	# 所以不需要整个文件搬成 _failed 标志位那一套。
+	var valid_modes := ["bomb_rain", "night_ops", "vault", "night_bombs", "escort"]
 	var found_challenges = 0
 	for attempt in range(12):
 		GameState.reset_campaign(1)
@@ -26,8 +35,12 @@ func _run_tests() -> void:
 			var room = GameState.floor_rooms[k]
 			if room["type"] == "challenge":
 				found_challenges += 1
-				print("   Found challenge room [%s] mode: %s" % [k, room.get("challenge_mode", "N/A")])
-				assert(room.get("challenge_mode", "") in ["bomb_rain", "night_ops", "vault", "night_bombs"], "Invalid challenge mode!")
+				var mode = str(room.get("challenge_mode", "N/A"))
+				print("   Found challenge room [%s] mode: %s" % [k, mode])
+				if not (mode in valid_modes):
+					print("[FAIL] Invalid challenge mode '%s' -- not in %s (FloorMap._challenge_modes_for() probably grew a new mode this list doesn't know about yet)" % [mode, valid_modes])
+					quit(1)
+					return
 		if found_challenges > 0:
 			break
 	assert(found_challenges > 0, "No challenge rooms found across 12 generated floors!")

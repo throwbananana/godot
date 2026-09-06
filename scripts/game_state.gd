@@ -6,6 +6,28 @@ enum GameMode { CAMPAIGN, ARCADE, DAILY_CHALLENGE }
 static var mode: GameMode = GameMode.CAMPAIGN
 static var player_count: int = 1 # 1=单人, 2=本地双人
 
+## 难度：影响战斗中的敌人数量 (main.gd::encounter_size()/max_alive_for()/
+## spawn_interval_for()) 与 AI 行为 (enemy.gd 里 GameState.difficulty == "hard"
+## 的瞄准/躲避分支)。title_screen.gd 用一个循环按钮直接写这个字段，**不经过
+## reset_campaign()** —— 玩家选一次就应该一直生效，开新战役不该把它冲回默认值，
+## 跟 mode/player_count (每次开局都由按钮显式指定) 是两类字段。
+static var difficulty: String = "normal" # "easy" / "normal" / "hard"
+const DIFFICULTIES: Array[String] = ["easy", "normal", "hard"]
+
+static func difficulty_label(d: String = "") -> String:
+	var val = d if not d.is_empty() else difficulty
+	match val:
+		"easy": return "简单 EASY"
+		"hard": return "困难 HARD"
+		_: return "普通 NORMAL"
+
+## 标题screen 的循环按钮调用：easy -> normal -> hard -> easy -> ...
+static func cycle_difficulty() -> void:
+	var idx = DIFFICULTIES.find(difficulty)
+	if idx < 0:
+		idx = 1 # 找不到 (脏数据) 就当作从 normal 开始循环
+	difficulty = DIFFICULTIES[(idx + 1) % DIFFICULTIES.size()]
+
 ## 隐藏测试模式的解锁状态。title_screen.gd 在标题界面监听键盘序列
 ## "throwbanana" 或手柄序列 上上下下左左右右 X A B Y, 命中后置 true, 显示
 ## 那颗平时隐藏的 TEST MODE 按钮。**故意是纯运行期状态, 不落盘**: 不写进
@@ -223,7 +245,7 @@ static var p2_branch_tier: int = 0
 
 # Battle Configuration
 static var battle_type: String = "battle"
-static var challenge_mode: String = "" # "", "bomb_rain", "night_ops", "vault", "night_bombs"
+static var challenge_mode: String = "" # "", "bomb_rain", "night_ops", "vault", "night_bombs", "escort"
 # 这里曾经还有 total_enemies_override / boss_enabled 两个 static var, 全项目
 # (含 .tscn) 除声明处外零引用 —— 既没人写也没人读, 但摆在"Battle Configuration"
 # 名下很像是可用的旋钮。遭遇规模实际由 main.gd::start_game() 按 battle_type
@@ -620,6 +642,8 @@ static func save_campaign() -> void:
 		"secret_room_found": secret_room_found,
 		"rooms_cleared": rooms_cleared,
 		"shop_reroll_cost": shop_reroll_cost,
+		"discovered_encyclopedia": discovered_encyclopedia,
+		"difficulty": difficulty,
 	}
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
@@ -657,6 +681,8 @@ static func load_campaign() -> bool:
 	p2_branch = str(d.get("p2_branch", "default"))
 	p2_branch_tier = int(d.get("p2_branch_tier", 0))
 	p2_unlocked_perks = _load_perk_dict(d.get("p2_unlocked_perks", {}))
+	discovered_encyclopedia = _load_perk_dict(d.get("discovered_encyclopedia", {}))
+	difficulty = str(d.get("difficulty", "normal"))
 	max_hp_lvl = int(d.get("max_hp_lvl", 0))
 	atk_bonus = int(d.get("atk_bonus", 0))
 	shop_atk_bonus_purchases = int(d.get("shop_atk_bonus_purchases", 0))

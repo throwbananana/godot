@@ -5,6 +5,18 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const EncyclopediaData = preload("res://scripts/encyclopedia_data.gd")
+const GameState = preload("res://scripts/game_state.gd")
+
+# 只有"遇到才算数"的条目才会被雾化: 敌人/道具/建筑/地形。UPGRADES (tree_/perk_)
+# 和 TANKS 里玩家自己的分支 (player_*) 是玩家自身的成长路线, 不是"遇到"的
+# 外部目标, 天然不在这四个前缀里, 所以永远保持全开 —— 不需要额外的白名单。
+const LOCKABLE_PREFIXES := ["enemy_", "item_", "bld_", "tile_"]
+
+const LOCKED_NAME := "？？？ 未知目标"
+const LOCKED_TAG := "尚未解锁"
+const LOCKED_ICON := "res://assets/sprites/ui/ui_icon_lock_key.png"
+const LOCKED_DESC := "在战斗中遇到该目标后，图鉴条目将自动解锁并显示完整数据。"
+const LOCKED_TACTICS := "继续游戏，遇到实体目标即可解锁。"
 
 signal closed
 
@@ -111,6 +123,17 @@ func _update_tab_buttons_appearance() -> void:
 		var is_selected: bool = (tab["id"] == current_category)
 		UIThemeHelper.apply_clay_tab_button(btn, is_selected)
 
+func _is_locked(entry: Dictionary) -> bool:
+	var id := str(entry.get("id", ""))
+	var gated := false
+	for prefix in LOCKABLE_PREFIXES:
+		if id.begins_with(prefix):
+			gated = true
+			break
+	if not gated:
+		return false
+	return not GameState.discovered_encyclopedia.has(id)
+
 func _rebuild_item_list() -> void:
 	# Clear old list buttons
 	for child in item_list_vbox.get_children():
@@ -123,14 +146,15 @@ func _rebuild_item_list() -> void:
 
 	for i in range(entries.size()):
 		var entry = entries[i]
+		var locked = _is_locked(entry)
 		var item_btn = Button.new()
 		item_btn.custom_minimum_size = Vector2(0, 46)
 		item_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		item_btn.text = "  " + entry.get("name", "Unknown")
+		item_btn.text = "  " + (LOCKED_NAME if locked else entry.get("name", "Unknown"))
 		item_btn.clip_text = true
 
-		# Add small icon if available
-		var icon_path = str(entry.get("icon", ""))
+		# Add small icon if available (locked entries always show the lock icon)
+		var icon_path = LOCKED_ICON if locked else str(entry.get("icon", ""))
 		if not icon_path.is_empty():
 			var tex = TextureHelper.get_tex(icon_path)
 			if tex:
@@ -154,6 +178,10 @@ func _select_entry(entry: Dictionary, selected_btn: Button = null) -> void:
 	for btn in active_item_buttons:
 		var is_sel = (btn == selected_btn)
 		UIThemeHelper.apply_clay_list_item(btn, is_sel)
+
+	if _is_locked(entry):
+		_show_locked_detail()
+		return
 
 	# Update Icon
 	var icon_path = str(entry.get("icon", ""))
@@ -201,6 +229,37 @@ func _select_entry(entry: Dictionary, selected_btn: Button = null) -> void:
 	# Update Descriptions & Tactical Tips
 	desc_text.text = str(entry.get("desc", "No archive records available."))
 	tactics_text.text = str(entry.get("tactics", "No tactical notes recorded."))
+
+func _show_locked_detail() -> void:
+	icon_texture.texture = TextureHelper.get_tex(LOCKED_ICON)
+	detail_name.text = LOCKED_NAME
+	detail_tag.text = "【 " + LOCKED_TAG + " 】"
+
+	for child in stats_vbox.get_children():
+		child.queue_free()
+
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	var lbl_k = Label.new()
+	lbl_k.text = "• 遭遇状态:"
+	lbl_k.custom_minimum_size = Vector2(90, 0)
+	lbl_k.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45, 1.0))
+	lbl_k.add_theme_font_size_override("font_size", 12)
+	row.add_child(lbl_k)
+
+	var lbl_v = Label.new()
+	lbl_v.text = "尚未遇到"
+	lbl_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl_v.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl_v.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0, 1.0))
+	lbl_v.add_theme_font_size_override("font_size", 12)
+	row.add_child(lbl_v)
+
+	stats_vbox.add_child(row)
+
+	desc_text.text = LOCKED_DESC
+	tactics_text.text = LOCKED_TACTICS
 
 func open_dialog() -> void:
 	visible = true

@@ -258,7 +258,22 @@ func _clear_train_carriages() -> void:
 			c.queue_free()
 	attached_carriages.clear()
 
+const POWERUP_ENCYCLOPEDIA_IDS := {
+	PowerUp.Type.STAR: "item_star",
+	PowerUp.Type.BOMB: "item_bomb",
+	PowerUp.Type.CLOCK: "item_clock",
+	PowerUp.Type.HELMET: "item_helmet",
+	PowerUp.Type.SHOVEL: "item_shovel",
+	PowerUp.Type.LIFE: "item_life",
+	PowerUp.Type.MISSILE: "item_missile",
+	PowerUp.Type.TIMED_BOMB: "item_timed_bomb",
+	PowerUp.Type.PISTON: "item_piston",
+	PowerUp.Type.IFF_FLAG: "item_iff_flag",
+}
+
 func apply_powerup(type: PowerUp.Type) -> void:
+	if POWERUP_ENCYCLOPEDIA_IDS.has(type):
+		GameState.discover_encyclopedia_entry(POWERUP_ENCYCLOPEDIA_IDS[type])
 	var main = get_tree().current_scene
 	var p_name = "P1" if player_id == 1 else "P2"
 	match type:

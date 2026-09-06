@@ -10,6 +10,7 @@ var heal_interval: float = 1.4
 var heal_radius: float = 160.0
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_repair_station")
 	add_to_group("buildings")
 	var tex = TextureHelper.get_tex("res://assets/sprites/buildings/repair_station.png")
 	if tex: sprite.texture = tex

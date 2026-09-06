@@ -18,6 +18,7 @@ var anim_timer: float = 0.0
 var shock_timers: Dictionary = {} # target_instance_id -> cooldown_remaining
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_electric_wall")
 	add_to_group("electric_wall")
 	add_to_group("steel")
 	add_to_group("hazard")

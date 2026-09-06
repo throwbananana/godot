@@ -18,6 +18,7 @@ var tex_lamp: Texture2D
 var tex_lamp_lit: Texture2D
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_street_lamp")
 	add_to_group("street_lamp")
 	add_to_group("building")
 	add_to_group("destructible")

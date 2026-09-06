@@ -176,6 +176,13 @@ theme_override_colors/font_color = Color(0.88, 0.48, 0.44, 1)
 theme_override_font_sizes/font_size = 12
 text = "EXIT (退出)"
 
+[node name="DifficultyButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
+custom_minimum_size = Vector2(197, 34)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.75, 0.4, 1)
+theme_override_font_sizes/font_size = 12
+text = "难度: 普通 NORMAL"
+
 [node name="TestModeButton" type="Button" parent="CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid"]
 visible = false
 custom_minimum_size = Vector2(197, 34)

@@ -62,7 +62,7 @@ func _run() -> void:
 	await process_frame
 
 	for source in ["timed_bomb", "missile_strike", "oil_barrel", "landmine"]:
-		for terrain in ["brick", "steel", "hard_clay", "sand_dune"]:
+		for terrain in ["brick", "steel", "hard_clay", "sand_dune", "reinforced_steel"]:
 			results["%s|%s" % [source, terrain]] = await _trial(source, terrain)
 
 	_print_matrix()
@@ -103,6 +103,8 @@ func _trial(source: String, terrain: String) -> String:
 			# 沙丘没有独立的 _spawn_*_tile, 它走通用的 _spawn_tile 分派,
 			# 而且那个函数固定往 map_container 里塞 (不收 container 参数)。
 			_main._spawn_tile("sand_dune", local, _main.tex_sand_dune)
+		"reinforced_steel":
+			_main._spawn_tile("reinforced_steel", local, _main.tex_reinforced_steel)
 
 	# 先让物理跑一帧: intersect_shape 要等 broadphase 刷新才看得见新加的刚体
 	# (油桶和地雷都走物理查询, 不等的话它们会认为周围一片空)。
@@ -147,7 +149,7 @@ func _sample_tiles(local: Vector2) -> Array:
 	var out: Array = []
 	# 这个脚本 extends SceneTree, 所以 get_nodes_in_group 直接就在 self 上,
 	# 没有 get_tree() 可调。
-	for g in ["brick", "steel", "hard_clay", "sand_dune"]:
+	for g in ["brick", "steel", "hard_clay", "sand_dune", "reinforced_steel"]:
 		for n in get_nodes_in_group(g):
 			if not is_instance_valid(n) or not (n is Node2D):
 				continue
@@ -190,15 +192,16 @@ func _detonate(source: String, global_pos: Vector2) -> void:
 
 
 func _print_matrix() -> void:
-	print("\n%-16s %-8s %-8s %-10s %-10s" % ["爆炸源", "砖块", "钢墙(白砖)", "硬黏土", "沙丘"])
-	print("-".repeat(60))
+	print("\n%-16s %-8s %-8s %-10s %-10s %-12s" % ["爆炸源", "砖块", "钢墙(白砖)", "硬黏土", "沙丘", "强化钢墙"])
+	print("-".repeat(72))
 	for source in ["timed_bomb", "missile_strike", "oil_barrel", "landmine"]:
-		print("%-16s %-8s %-11s %-11s %-10s" % [
+		print("%-16s %-8s %-11s %-11s %-10s %-12s" % [
 			source,
 			results.get("%s|brick" % source, "?"),
 			results.get("%s|steel" % source, "?"),
 			results.get("%s|hard_clay" % source, "?"),
 			results.get("%s|sand_dune" % source, "?"),
+			results.get("%s|reinforced_steel" % source, "?"),
 		])
 	print("")
 
@@ -302,3 +305,24 @@ func _check_consistency() -> void:
 	# (见 CLAUDE.md), 而 timed_bomb / missile_strike / landmine 都是先扫 brick
 	# 组再无条件 queue_free —— 结果碰巧和 take_hit(99) 一样, 但走的不是同一条
 	# 路。哪天硬黏土的血量或掉落规则改了, 这三处会静默地绕过去。
+
+	# 4. 强化钢墙 (reinforced_steel) 是唯一一处**故意**不满足"四源一致"的地形:
+	#    炸弹/地雷/导弹三个必须一致地炸得掉, 油桶必须一致地炸不掉。这是设计
+	#    决定 (见 oil_barrel.gd 里的排除注释), 不是要放进上面第 1 条的通用
+	#    一致性循环里去要求"四个都一样"——那样写反而会把这个故意的例外
+	#    误判成 bug。
+	var can_break: Array[String] = ["timed_bomb", "missile_strike", "landmine"]
+	var wrong_break: Array[String] = []
+	for s in can_break:
+		if str(results.get("%s|reinforced_steel" % s, "")) != "炸掉":
+			wrong_break.append(s)
+	if wrong_break.is_empty():
+		ok("强化钢墙: 炸弹/地雷/导弹三者都能炸开")
+	else:
+		fail("强化钢墙本该被炸弹/地雷/导弹炸开, 但这些没炸开: %s" % ", ".join(wrong_break))
+
+	var oil_result = str(results.get("oil_barrel|reinforced_steel", ""))
+	if oil_result == "炸掉":
+		fail("强化钢墙不该被油桶炸开 (设计上刻意排除油桶), 但实际被炸掉了")
+	else:
+		ok("强化钢墙: 油桶按设计对它没有效果 (%s)" % oil_result)

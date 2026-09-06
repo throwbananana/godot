@@ -297,7 +297,13 @@ func _on_body_entered(body: Node2D) -> void:
 			queue_free()
 		return
 	elif body.is_in_group("steel"):
-		if is_kinetic_push and can_destroy_steel and not body.is_in_group("border") and KineticPushHelper.can_push(body, can_destroy_steel):
+		# 强化钢墙 (tile_reinforced_steel, "reinforced_steel" 组) 比普通钢墙还硬一档:
+		# 对子弹而言它和 border 一样打不穿, 不管有没有破钢弹——三处 `not border`
+		# 判定统一加上 `not reinforced_steel`, 而不是单独给它开一个新分支, 这样
+		# 它自动继承 border 现有的"打不动"反馈(冷钢火星、不算破坏)。它能不能被
+		# 炸开是另一件事, 由 timed_bomb/landmine/missile_strike/oil_barrel 各自
+		# 判定, 见 tools/test_explosive_terrain_matrix.gd。
+		if is_kinetic_push and can_destroy_steel and not body.is_in_group("border") and not body.is_in_group("reinforced_steel") and KineticPushHelper.can_push(body, can_destroy_steel):
 			KineticPushHelper.try_push(body, direction, can_destroy_steel, self)
 			if not is_destroyed:
 				is_destroyed = true
@@ -306,7 +312,7 @@ func _on_body_entered(body: Node2D) -> void:
 				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 				queue_free()
 			return
-		var pierces_this_steel = armor_piercing and can_destroy_steel and not body.is_in_group("border")
+		var pierces_this_steel = armor_piercing and can_destroy_steel and not body.is_in_group("border") and not body.is_in_group("reinforced_steel")
 		if not is_destroyed:
 			if is_aoe:
 				_trigger_aoe_explosion()
@@ -316,7 +322,7 @@ func _on_body_entered(body: Node2D) -> void:
 			# 走冷钢火星 (spawn_ricochet_spark) —— 它说的是"换个目标"; 打得动
 			# 就沿用碎屑, 因为下面几行马上会把它拆掉, 那是"继续推进"。
 			# 拆分前两种情况共用同一张图, 玩家从画面上读不出该往哪走。
-			var will_break_this := can_destroy_steel and not body.is_in_group("border")
+			var will_break_this := can_destroy_steel and not body.is_in_group("border") and not body.is_in_group("reinforced_steel")
 			if will_break_this:
 				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
 			else:
@@ -328,7 +334,7 @@ func _on_body_entered(body: Node2D) -> void:
 			else:
 				is_destroyed = true
 				queue_free()
-		if can_destroy_steel and not body.is_in_group("border"):
+		if can_destroy_steel and not body.is_in_group("border") and not body.is_in_group("reinforced_steel"):
 			if not destroyed_bodies.has(body):
 				destroyed_bodies.append(body)
 				VFXAnimator.spawn_shockwave(get_parent(), body.global_position)

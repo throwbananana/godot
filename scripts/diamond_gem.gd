@@ -62,6 +62,7 @@ func _physics_process(delta: float) -> void:
 
 func _on_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player") or body.is_in_group("p1") or body.is_in_group("p2"):
+		GameState.discover_encyclopedia_entry("item_gold_gem")
 		var main = get_tree().current_scene
 		if main:
 			var g_val = gold_value + (GameState.current_act - 1) * 20

@@ -73,6 +73,7 @@ class Piece extends StaticBody2D:
 				p_wall.call_deferred("_check_empty")
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_fortified_wall")
 	# 外观差分: 加固墙是玩家一格一格摆出来的, 一道长墙就是同一张图连贴 N 次 ——
 	# 建筑里唯一真正撞上"平铺重复"问题的一个, 所以按格号确定性挑一张变体。
 	# 选到的贴图整块墙 (四个 Piece) 共用, 象限切分由各 Piece 的 region_rect 做,

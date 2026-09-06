@@ -200,7 +200,10 @@ func _perform_slice_sweep() -> void:
 		for steel in tree.get_nodes_in_group("steel"):
 			if not is_instance_valid(steel) or steel in destroyed_blocks:
 				continue
-			if steel.is_in_group("border"):
+			# 强化钢墙 (reinforced_steel) 比普通钢墙硬一档: 连破钢等级的切割都打
+			# 不穿它, 只有 timed_bomb/landmine/missile_strike 能破——跟 border
+			# 走同一条"直接跳过"路径。
+			if steel.is_in_group("border") or steel.is_in_group("reinforced_steel"):
 				continue
 			if global_position.distance_to(steel.global_position) <= cutting_radius + 6.0:
 				destroyed_blocks.append(steel)

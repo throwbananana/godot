@@ -25,21 +25,37 @@ static func can_push(target: Node, can_destroy_steel: bool = false) -> bool:
 	if not target.is_inside_tree():
 		return false
 
-	# 地图边框永不可推移
-	if target.is_in_group("border"):
+	# 地图边框永不可推移；强化钢墙比普通钢墙更硬一档, 对火力(包括破钢弹/激光)
+	# 免疫, 同理也不该被推——不然一辆装甲够厚的推土机就能把"全场打不穿"的
+	# 墙推着走, 跟它本该只怕三种爆破物的设计矛盾。两条都要在 steel 判定之前
+	# (steel 那一行会先 return can_destroy_steel, 见下面 roller_wall 那段注释
+	# 说的同一类"提前 return 吞掉后面分支"问题)。
+	if target.is_in_group("border") or target.is_in_group("reinforced_steel"):
 		return false
 
 	# 已经在移动中
 	if "is_moving" in target and target.is_moving:
 		return false
 
+	# 滑轮墙 (roller_wall.gd) 出于别的理由也挂在 steel 组里——它要在
+	# _is_position_blocked_solid() 里被当成一堵能把单位夹死的实心墙, 也要挡激光
+	# 穿透——但按上面文档写的规则, 它在"推力等级"上属于普通动能弹就能推的那一档
+	# ("非钢体建筑"), 必须在 steel 判定之前单独放行。之前的顺序是先判 steel 再判
+	# roller_wall, 而 roller_wall 恒真地同时满足 steel, 于是永远在 steel 那一行
+	# 就 return can_destroy_steel 提前退出了, 下面 roller_wall 那个分支实际上是
+	# 死代码, 造成"文档写着普通弹能推, 实际必须破钢弹"的静默不一致——
+	# tools/test_kinetic_push_and_squeeze.gd 里两条 try_push(wall, ..., false, ...)
+	# 断言一直在报 SCRIPT ERROR 失败, 只是 quit(0) 把退出码盖成了 0 没人发现。
+	if target.is_in_group("roller_wall"):
+		return true
+
 	# 钢制障碍与重型钢质建筑：严格取决于破坏等级是否可破钢
 	if target.is_in_group("steel"):
 		return can_destroy_steel
 
-	# 砖块、硬泥、木墙、滑轮墙、普通建筑与路障道具：普通动能弹即可推移
+	# 砖块、硬泥、木墙、普通建筑与路障道具：普通动能弹即可推移
 	if target.is_in_group("brick") or target.is_in_group("hard_clay") or \
-	   target.is_in_group("roller_wall") or target.is_in_group("wooden_wall") or \
+	   target.is_in_group("wooden_wall") or \
 	   target.is_in_group("buildings") or target.is_in_group("building") or \
 	   target.is_in_group("oil_barrel") or target.is_in_group("street_lamp") or \
 	   target.is_in_group("pipe_conduit"):

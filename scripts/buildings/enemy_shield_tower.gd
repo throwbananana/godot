@@ -23,6 +23,7 @@ var frame_textures: Array[Texture2D] = []
 @onready var field_visual: Node2D = $FieldVisual
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_enemy_shield_tower")
 	add_to_group("building")
 	add_to_group("buildings")
 	add_to_group("enemy_building")

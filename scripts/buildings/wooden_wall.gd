@@ -19,6 +19,7 @@ var base_texture: Texture2D
 var explosion_scene: PackedScene
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_wooden_wall")
 	add_to_group("buildings")
 	add_to_group("building")
 	add_to_group("wooden_wall")

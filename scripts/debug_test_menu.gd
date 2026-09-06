@@ -40,6 +40,7 @@ const CHALLENGE_MODE_OPTIONS := [
 	["bomb_rain", "💣 炸弹雨 (Bomb Rain)"],
 	["night_ops", "🌑 夜战 (Night Ops)"],
 	["night_bombs", "🌑💣 夜战+炸弹雨 (Night + Bombs)"],
+	["escort", "🛡️ 护送友军 (Escort Ally)"],
 ]
 
 var status_label: Label

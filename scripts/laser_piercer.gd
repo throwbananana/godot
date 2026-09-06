@@ -63,9 +63,17 @@ static func fire_linear_laser(parent: Node2D, start_pos: Vector2, direction: Vec
 			if collider.is_in_group("brick"):
 				VFXAnimator.spawn_dust_puff(parent, collider.global_position)
 				collider.queue_free()
-			elif collider.is_in_group("steel") and not collider.is_in_group("border"):
+			elif collider.is_in_group("steel") and not collider.is_in_group("border") and not collider.is_in_group("reinforced_steel"):
 				VFXAnimator.spawn_shockwave(parent, collider.global_position)
 				collider.queue_free()
+			elif collider.is_in_group("reinforced_steel"):
+				# 强化钢墙连普通钢墙都不是的等级——这条射线本来对钢墙就是无脑
+				# queue_free(), 没有 can_destroy_steel 那道门槛, 所以必须单独排除,
+				# 否则任何激光(包括刚加的 LASER 蓄力光柱)都能一炮点掉它, 完全
+				# 违背"只有特定爆破物才能破"的设计。跟 border 一样只挡住不摧毁。
+				final_end = check_pos
+				stop_beam = true
+				break
 			elif collider.is_in_group("oil_barrel") or collider.is_in_group("street_lamp"):
 				# 同 bullet.gd 的口径: 这两样是路上道具, 不是免友伤的防御建筑,
 				# 不分 shooter_type 一律命中。此前两个组都没在这条判定链里,

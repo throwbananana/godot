@@ -17,6 +17,7 @@ var is_charged: bool = true
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_shield_station")
 	add_to_group("building")
 	add_to_group("buildings")
 	add_to_group("shield_station")
