@@ -48,6 +48,51 @@ const TILE_SCALE := TILE_SIZE / 256.0
 const DOOR_COL := 3  # 北/南门所在的列
 const DOOR_ROW := 6  # 东/西门所在的行
 
+## 下面这组是给"大房间"(26x26/52x52, 由若干张 13x13 拼成一整间) 用的通用
+## 几何公式。DOOR_COL/DOOR_ROW 两个 const 保持原样不动 (13x13 房间和已有的
+## 调用点、测试都直接认这两个字面量), 这里只是把同一套推导写成能吃任意
+## grid_w/grid_h 的版本, 在 13 上退化成完全相同的数字:
+##   center_col_for(13) == 6 == 隐含的中心列
+##   door_col_for(13)   == 3 == DOOR_COL
+##   door_row_for(13)   == 6 == DOOR_ROW
+## 26/52 是偶数, 没有单一居中格, 这里统一取"中心偏左上"的那一格
+## ((n-1)/2 整除), 跟房间大小是奇是偶无关地给出一个确定答案。
+static func center_col_for(grid_w: int) -> int:
+	return (grid_w - 1) / 2
+
+
+static func center_row_for(grid_h: int) -> int:
+	return (grid_h - 1) / 2
+
+
+## 南北门所在列 —— 复用 DOOR_COL 那条"中心减 3"的避让逻辑 (老鹰基地占中心
+## 左右各 1 格, 两个玩家出生点各再占 1 格, 中心-3 是留出这圈之后离中线最近
+## 的合法列)。13 宽时等于 6-3=3, 和 DOOR_COL 完全一致。
+static func door_col_for(grid_w: int) -> int:
+	return center_col_for(grid_w) - 3
+
+
+## 东西门所在行 —— 基地在底边, 横向门离得远, 直接取中心行即可。
+static func door_row_for(grid_h: int) -> int:
+	return center_row_for(grid_h)
+
+
+## 老鹰基地所在行 (房间最底一行)。
+static func base_row_for(grid_h: int) -> int:
+	return grid_h - 1
+
+
+## 顶边 count 个敌人出生点的列号, 首尾对齐两侧边缘、中间等距分布。
+## count=3, grid_w=13 时返回 [0, 6, 12], 和现在写死的三个出生点完全一致。
+static func enemy_spawn_cols_for(grid_w: int, count: int) -> Array[int]:
+	var out: Array[int] = []
+	if count <= 1:
+		out.append(center_col_for(grid_w))
+		return out
+	for i in range(count):
+		out.append(int(round(float(i) * float(grid_w - 1) / float(count - 1))))
+	return out
+
 var direction: int = 0
 var state: int = State.LOCKED
 var room_type: String = "normal"
@@ -228,8 +273,8 @@ func _on_body_entered(body: Node2D) -> void:
 ## 门在棋盘局部坐标系里的位置 (门本体落在边墙那一圈里)。放在 static 是因为
 ## main.gd 造边墙时要先知道缺口开在哪, 那时门还没实例化。
 static func local_position_for(dir: int, grid_w: int, grid_h: int) -> Vector2:
-	var col_x := (DOOR_COL + 0.5) * TILE_SIZE
-	var row_y := (DOOR_ROW + 0.5) * TILE_SIZE
+	var col_x := (door_col_for(grid_w) + 0.5) * TILE_SIZE
+	var row_y := (door_row_for(grid_h) + 0.5) * TILE_SIZE
 	match dir:
 		0: return Vector2(col_x, -TILE_SIZE * 0.5)                      # N
 		1: return Vector2(grid_w * TILE_SIZE + TILE_SIZE * 0.5, row_y)  # E
@@ -240,8 +285,8 @@ static func local_position_for(dir: int, grid_w: int, grid_h: int) -> Vector2:
 ## 从 dir 方向的门走进房间后, 玩家该站在哪 (棋盘局部坐标) —— 门内侧那一格。
 ## 注意传进来的 dir 是**这个房间的门**的朝向, 不是玩家的行进方向。
 static func entry_position_for(dir: int, grid_w: int, grid_h: int) -> Vector2:
-	var col_x := (DOOR_COL + 0.5) * TILE_SIZE
-	var row_y := (DOOR_ROW + 0.5) * TILE_SIZE
+	var col_x := (door_col_for(grid_w) + 0.5) * TILE_SIZE
+	var row_y := (door_row_for(grid_h) + 0.5) * TILE_SIZE
 	match dir:
 		0: return Vector2(col_x, 0.5 * TILE_SIZE)
 		1: return Vector2((grid_w - 0.5) * TILE_SIZE, row_y)

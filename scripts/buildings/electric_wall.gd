@@ -17,6 +17,22 @@ var cur_frame: int = 0
 var anim_timer: float = 0.0
 var shock_timers: Dictionary = {} # target_instance_id -> cooldown_remaining
 
+## 默认恒为 true (地图 25 号地块和玩家建造的电墙都不受影响)。只有
+## main.gd::_spawn_gated_electric_wall() 生成的"受电路控制"变体会在没接通
+## 电路之前保持这个值不变——电墙本身默认就是"通电中"(危险), 电路要做的是
+## **切断**它, 而不是给它供电, 跟 shield_station 的方向正好相反。
+var is_powered: bool = true
+
+## 电路接通后把这堵墙变成"完全惰性": 停止电击 (_try_shock_body 的守卫) 并且
+## 变得可以直接穿过 (collision_shape.disabled), 视觉上压暗到跟 shield_station
+## 没电时同一套"熄灭"配色, 停掉原本的闪烁动画。
+func set_circuit_solved(solved: bool) -> void:
+	is_powered = not solved
+	if collision_shape:
+		collision_shape.disabled = solved
+	if solved and sprite:
+		sprite.modulate = Color(0.35, 0.35, 0.4, 0.5)
+
 func _ready() -> void:
 	GameState.discover_encyclopedia_entry("bld_electric_wall")
 	add_to_group("electric_wall")
@@ -54,6 +70,12 @@ func _ready() -> void:
 	shock_area.body_entered.connect(_on_shock_body_entered)
 
 func _process(delta: float) -> void:
+	# 电路解开之后彻底熄火: 不再闪烁, 也不用再扫 shock_timers/overlapping
+	# bodies——set_circuit_solved() 已经把 modulate 压暗过一次, 这里直接
+	# return 才能保住那个暗色, 不然下面的闪烁动画每帧都会把它重新点亮。
+	if not is_powered:
+		return
+
 	# 1. Electric Lightning Animation Loop
 	if frames.size() > 0:
 		anim_timer += delta
@@ -84,6 +106,8 @@ func _on_shock_body_entered(body: Node2D) -> void:
 	_try_shock_body(body)
 
 func _try_shock_body(body: Node2D) -> void:
+	if not is_powered:
+		return
 	if not body or not is_instance_valid(body) or body == self:
 		return
 

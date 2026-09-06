@@ -73,11 +73,11 @@ func _test_ally_spawns_in_escort_room() -> void:
 	_force_challenge_room(main_node, "escort")
 	await process_frame
 
-	var ally = main_node.escort_ally_instance
+	var ally = main_node.escort_ally_instances[0] if main_node.escort_ally_instances.size() > 0 else null
 	if not (ally and is_instance_valid(ally)):
-		fail("escort 挑战房应该生成 escort_ally_instance, 但没有")
+		fail("escort 挑战房应该生成 escort_ally_instances, 但没有")
 	else:
-		ok("escort_ally_instance 已生成")
+		ok("escort_ally_instances 已生成")
 		if not ally.is_in_group("player"):
 			fail("友军应该加入 player 组, 这样 enemy.gd::_find_target() 才会把它当合法目标, 敌方子弹才打得中它")
 		else:
@@ -189,7 +189,7 @@ func _test_ally_death_triggers_defeat() -> void:
 	_force_challenge_room(main_node, "escort")
 	await process_frame
 
-	var ally = main_node.escort_ally_instance
+	var ally = main_node.escort_ally_instances[0] if main_node.escort_ally_instances.size() > 0 else null
 	if not (ally and is_instance_valid(ally)):
 		fail("友军没有正确生成, 无法继续测试阵亡逻辑")
 		main_node.queue_free()
@@ -214,7 +214,7 @@ func _test_room_clear_despawns_ally_without_defeat() -> void:
 	_force_challenge_room(main_node, "escort")
 	await process_frame
 
-	if not (main_node.escort_ally_instance and is_instance_valid(main_node.escort_ally_instance)):
+	if main_node.escort_ally_instances.is_empty() or not is_instance_valid(main_node.escort_ally_instances[0]):
 		fail("友军没有正确生成, 无法继续测试撤离逻辑")
 		main_node.queue_free()
 		await process_frame
@@ -227,10 +227,10 @@ func _test_room_clear_despawns_ally_without_defeat() -> void:
 		fail("房间清空(护送成功)不该触发战败, 但 is_game_over 变成了 true")
 	else:
 		ok("房间清空没有误触发战败")
-	if main_node.escort_ally_instance != null:
-		fail("房间清空后 escort_ally_instance 应该被置空")
+	if not main_node.escort_ally_instances.is_empty():
+		fail("房间清空后 escort_ally_instances 应该被清空")
 	else:
-		ok("escort_ally_instance 正确置空")
+		ok("escort_ally_instances 正确清空")
 
 	main_node.queue_free()
 	await process_frame
@@ -242,8 +242,8 @@ func _test_non_escort_challenge_does_not_spawn_ally() -> void:
 	_force_challenge_room(main_node, "vault")
 	await process_frame
 
-	if main_node.escort_ally_instance != null:
-		fail("vault 挑战房不该生成友军, 但 escort_ally_instance 不是 null")
+	if not main_node.escort_ally_instances.is_empty():
+		fail("vault 挑战房不该生成友军, 但 escort_ally_instances 不是空的")
 	else:
 		ok("非 escort 挑战房正确没有生成友军")
 

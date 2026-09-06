@@ -12,6 +12,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const MapTemplates = preload("res://scripts/map_templates.gd")
 const MapDirector = preload("res://scripts/map_director.gd")
+const CompositeRoomBuilder = preload("res://scripts/composite_room_builder.gd")
 const DarknessFog = preload("res://scripts/darkness_fog.gd")
 const FallingBombHazard = preload("res://scripts/falling_bomb_hazard.gd")
 const BalanceLog = preload("res://scripts/balance_log.gd")
@@ -25,8 +26,18 @@ const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 
 const TILE_SIZE: float = 48.0
 const TILE_SCALE: float = TILE_SIZE / 256.0
-const GRID_W: int = 13
-const GRID_H: int = 13
+## 普通房间恒为 13x13; 大房间(26x26)/超大房间(52x52)在 enter_room() 里改写这两个值,
+## 所以不能再是 const -- 见 CompositeRoomBuilder。
+var GRID_W: int = 13
+var GRID_H: int = 13
+
+## 屏幕上实际不被 SidePanel/边距遮挡的可视区域 (SidePanel 从 x=736 开始,
+## GameArea 从 x=48 开始, 所以横向可视约 688px; 纵向留一点边距估 720px)。
+## 这就是"视角视野还是原来的大小"的具体量化 -- 摄像机的 clamp 范围用它,
+## 普通 13x13 房间 (624x624) 比它小, clamp 会把摄像机钉在房间正中心不动,
+## 跟今天完全没有摄像机时的画面像素对像素一致; 只有 26x26/52x52 的大房间
+## 才会真正触发滚动。
+const CAMERA_VISIBLE_SIZE: Vector2 = Vector2(688.0, 720.0)
 
 var rpg_mgr: RPGManager = RPGManager.new()
 
@@ -70,6 +81,7 @@ var ammo_depot_scene: PackedScene
 var command_post_scene: PackedScene
 var sniper_nest_scene: PackedScene
 var emp_tower_scene: PackedScene
+var piston_switch_scene: PackedScene
 var factory_instances: Array[Node] = [] # tracked for the battle-end gold reward multiplier
 var battle_gold_earned: int = 0 # reset in start_game(), read by the Factory reward multiplier at _game_over()
 var battle_start_msec: int = 0 # reset in start_game(), read by the balance log at _game_over()
@@ -111,7 +123,19 @@ var p2_instance: PlayerTank
 var base_instance: BaseEagle
 ## "escort" 挑战房要保护的友军实例, 生命周期跟 base_instance 一样是"当前
 ## 房间"级别的——见 _clear_all()/_despawn_base() 旁边的清空点。
-var escort_ally_instance: AllyTank = null
+## 大/超大房间会一次性生成多只 (ESCORT_ALLY_COUNT), 所以是数组而不是单个
+## 引用; escort_ally_original_count 记着刚生成时的总数, 用来算"过半阵亡"
+## 的判负门槛 (见 _on_escort_ally_destroyed())。
+var escort_ally_instances: Array[AllyTank] = []
+var escort_ally_original_count: int = 0
+
+## 活塞开关/电路谜题的当前房间状态。color(如 "red"/"blue") -> 是否已解开
+## (circuit_solved) / 该颜色下所有受控建筑的实例 (circuit_gated_buildings)。
+## 和 escort_ally_instances 同一个理由是当前房间级别的——房间每次重建都是
+## 全新的建筑实例, 上一间房的开关状态对新房间毫无意义, 必须在 _clear_all()
+## 里跟着清空, 否则会把上一间房已经按过的开关误判成"这间房也解开了"。
+var circuit_solved: Dictionary = {}
+var circuit_gated_buildings: Dictionary = {}
 
 var score: int = 0
 var p1_lives: int = 3
@@ -200,6 +224,14 @@ var base_game_area_pos: Vector2 = Vector2(48.0, 48.0)
 var max_shake_offset: Vector2 = Vector2(10.0, 10.0)
 var trauma_decay: float = 2.4
 
+## RoomCamera 的"零滚动"偏移量, 每次进房间 (GRID_W/GRID_H 确定后) 由
+## _update_camera_bounds() 重算一次, 之后每帧只叠加抖动/跟随, 不再重算。
+## 见 _update_camera_bounds() 的推导注释。
+var camera_offset_base: Vector2 = Vector2.ZERO
+## 摄像机当前实际瞄准的房间本地坐标 (已夹在房间边界内), 每帧由
+## _update_camera_position() 刷新。
+var camera_target_local: Vector2 = Vector2.ZERO
+
 ## 战场是按 1024x768 这块基准画布手搓的固定像素坐标 (GameArea/SidePanel/
 ## 热键栏/Boss 血条一开始都以为窗口就是 1024x768)。window/stretch/aspect=
 ## "expand" 不会帮它们居中 —— 宽/高分辨率下只会往右/下多显出一截画布, 这些
@@ -228,7 +260,11 @@ func _apply_layout_offset() -> void:
 	layout_offset = (visible_size - Vector2(1024.0, 768.0)).max(Vector2.ZERO) / 2.0
 
 	base_game_area_pos = Vector2(48.0, 48.0) + layout_offset
-	game_area.position = base_game_area_pos
+	# GameArea 节点本身的 position 不再需要跟着 layout_offset 挪 -- 加了
+	# RoomCamera 之后, GameArea.position 在"世界坐标"和"摄像机世界坐标"两边
+	# 都会加一次, 换算到屏幕坐标时正好抵消 (见 _update_camera_bounds() 的
+	# 推导), 所以让它永远待在 main.tscn 里的默认值 (48,48) 就够, 不用再手写。
+	# base_game_area_pos 仍然要算, 因为 _update_camera_bounds() 拿它当输入。
 
 	if side_panel:
 		side_panel.position = Vector2(736.0, 24.0) + layout_offset
@@ -237,6 +273,62 @@ func _apply_layout_offset() -> void:
 	if hud_boss_bar:
 		hud_boss_bar.position.x = 120.0 + layout_offset.x
 		hud_boss_bar.position.y = 3.0 + layout_offset.y
+	_update_camera_bounds()
+
+## 房间中心的本地坐标 (相对 GameArea), 用整数列/行下取整再 +0.5 保证偶数宽的
+## 大/超大房间也有一个明确的"中心格" (26 宽时中心列是 12, 不是 12.5)。
+func _room_center_local() -> Vector2:
+	var center_col := (GRID_W - 1) / 2
+	var center_row := (GRID_H - 1) / 2
+	return Vector2(center_col + 0.5, center_row + 0.5) * TILE_SIZE
+
+## 摄像机是 GameArea 的子节点, 所以任意本地点 L 的屏幕坐标是
+## VP/2 + L - (camera.position + camera.offset) -- GameArea 自身的 position
+## 在这条链路里两边各出现一次, 正好消掉。要求"房间铺满可视区时,
+## 画面跟没有摄像机时逐像素一致"(即 screen(L) == base_game_area_pos + L),
+## 代入 camera.position == room_center (钉死不滚动的情形) 解出:
+##   camera.offset == VP/2 - room_center - base_game_area_pos
+## 这就是 camera_offset_base。换房间 (GRID_W/GRID_H 变了) 或窗口尺寸变了
+## 都要重算一次; 之后每帧只是在这个基准上叠加抖动, 不再重算。
+func _update_camera_bounds() -> void:
+	if not room_camera:
+		return
+	var room_center := _room_center_local()
+	camera_offset_base = get_viewport_rect().size / 2.0 - room_center - base_game_area_pos
+	room_camera.offset = camera_offset_base
+	room_camera.position = room_center
+	camera_target_local = room_center
+
+## 房间比可视窗口小(普通 13x13 房间)时摄像机钉在房间正中心不动 -- 这正是
+## "视角视野还是原来的大小"的字面实现, 普通房间在这条分支下画面跟今天完全
+## 没有摄像机时逐像素一致。房间比可视窗口大 (26x26/52x52) 时才真正夹住
+## 滚动范围, 不让镜头看到房间边界外的虚空。
+func _camera_clamp_axis(target: float, room_size: float, visible: float) -> float:
+	if room_size <= visible:
+		return room_size / 2.0
+	return clampf(target, visible / 2.0, room_size - visible / 2.0)
+
+## 每帧刷新摄像机瞄准点 (双人取中点), 在 _process() 里抖动叠加之前调用。
+func _update_camera_position() -> void:
+	if not room_camera:
+		return
+	var pts: Array[Vector2] = []
+	if p1_instance and is_instance_valid(p1_instance):
+		pts.append(map_container.to_local(p1_instance.global_position))
+	if p2_instance and is_instance_valid(p2_instance) and GameState.player_count == 2:
+		pts.append(map_container.to_local(p2_instance.global_position))
+	var target: Vector2
+	if pts.size() == 2:
+		target = (pts[0] + pts[1]) / 2.0
+	elif pts.size() == 1:
+		target = pts[0]
+	else:
+		target = _room_center_local()
+	camera_target_local = Vector2(
+		_camera_clamp_axis(target.x, GRID_W * TILE_SIZE, CAMERA_VISIBLE_SIZE.x),
+		_camera_clamp_axis(target.y, GRID_H * TILE_SIZE, CAMERA_VISIBLE_SIZE.y)
+	)
+	room_camera.position = camera_target_local
 
 ## 隐藏测试模式在战斗内的那一半 (关卡跳转在 debug_test_menu.gd 里)。F1 开关,
 ## 只在 GameState.debug_unlocked 时被 _ready() 建出来 —— "随意调用工具"按
@@ -399,6 +491,7 @@ func hit_stop(duration_sec: float = 0.05) -> void:
 @onready var base_wall_container: Node2D = $GameArea/BaseWallContainer
 @onready var actors_container: Node2D = $GameArea/ActorsContainer
 @onready var builder_ctrl: BuilderController = $GameArea/BuilderController
+@onready var room_camera: Camera2D = $GameArea/RoomCamera
 
 @onready var hud_score: Label = $HUD/SidePanel/VBox/ScoreBox/ScoreLabel
 @onready var hud_lives: Label = $HUD/SidePanel/VBox/LivesBox/LivesLabel
@@ -743,6 +836,20 @@ const DIFFICULTY_ENCOUNTER_MULT := {"easy": 0.75, "normal": 1.0, "hard": 1.3}
 const DIFFICULTY_ALIVE_OFFSET := {"easy": -1, "normal": 0, "hard": 1}
 const DIFFICULTY_SPAWN_INTERVAL_MULT := {"easy": 1.25, "normal": 1.0, "hard": 0.8}
 
+## 大/超大房间的"攻城战"加成, 叠加在上面 ENCOUNTER_BASE/MAX_ALIVE_BASE 算出
+## 的普通遭遇规模之上, 只在这一间房生效, 不改任何全局曲线。两张表分别对应
+## CLAUDE.md"敌人强弱要整数且看得见"那条铁律的两个可见维度: 更多敌人总量、
+## 更高的同屏上限 (大房间物理空间更大, 不会像 13x13 那样互相堵路)。出生点
+## 数量不在这里另开一张表——直接读 CompositeRoomBuilder.enemy_spawn_count_for(),
+## 跟拼图纸时留几个出生点缺口用的是同一个数字, 两边分别维护迟早会有一边漏改。
+const SIEGE_ENCOUNTER_MULT := {"large": 2, "huge": 4}
+const SIEGE_ALIVE_BONUS := {"large": 4, "huge": 10}
+
+## 护送风味的友军数量, 跟 CompositeRoomBuilder.enemy_spawn_count_for() 的
+## 表是两回事 (那张管地形留几个出生点, 这张管刷几只 AllyTank), 但都用同一套
+## "normal/large/huge" 键。
+const ESCORT_ALLY_COUNT := {"normal": 1, "large": 3, "huge": 4}
+
 var max_alive_cap: int = MAX_ALIVE_BASE
 
 static func max_alive_for(cycle: int, difficulty: String = "normal") -> int:
@@ -949,10 +1056,16 @@ func _clear_all(keep_players: bool = false) -> void:
 	# 清空的房间时 base_instance 还挂着上一间那只待删的鹰: 铲子会对着它生效,
 	# 夜战雾会把它当作追踪目标, 而它下一帧就没了。
 	base_instance = null
-	# 同一个理由: escort_ally_instance 指向的友军可能刚被 queue_free (自然阵亡
-	# 或者换房清场), 而 queue_free 是延迟生效的——不置空的话下一间房还没决定
-	# 要不要刷新友军之前, is_instance_valid() 就会先读到上一间房那个待删对象。
-	escort_ally_instance = null
+	# 同一个理由: escort_ally_instances 里的友军可能刚被 queue_free (自然阵亡
+	# 或者换房清场), 而 queue_free 是延迟生效的——不清空的话下一间房还没决定
+	# 要不要刷新友军之前, is_instance_valid() 就会先读到上一间房那些待删对象。
+	escort_ally_instances.clear()
+	# 同一个理由: circuit_gated_buildings 里存的建筑实例也即将被上面/下面
+	# 这几段 queue_free() 清掉, circuit_solved 则是"这间房解开了哪些颜色"的
+	# 记录, 换房之后完全作废——两者都要清空, 不然新房间的开关状态会被上一间
+	# 房残留的记录污染 (例如误判"红色电路已经解开过了")。
+	circuit_solved.clear()
+	circuit_gated_buildings.clear()
 	for child in actors_container.get_children():
 		if keep_players and (child == p1_instance or child == p2_instance or child.is_in_group("player_carriage")):
 			continue
@@ -1074,6 +1187,23 @@ func enter_room(room_key: String, entry_dir: int) -> void:
 
 	var room := GameState.current_room_data()
 	var is_combat: bool = FloorMap.is_combat_room(room)
+
+	# 大/超大房间: GRID_W/GRID_H 要在 _build_map()/_spawn_doors()/
+	# _spawn_base_and_walls() 之前就确定, 因为它们全部直接读这两个模块变量。
+	# 摄像机边界和建造范围也要跟着重算, 否则会用上一个房间的尺寸残留一帧。
+	match str(room.get("size", "normal")):
+		"large":
+			GRID_W = 26
+			GRID_H = 26
+		"huge":
+			GRID_W = 52
+			GRID_H = 52
+		_:
+			GRID_W = 13
+			GRID_H = 13
+	_update_camera_bounds()
+	if builder_ctrl:
+		builder_ctrl.set_room_bounds(GRID_W, GRID_H)
 
 	# 每间房重新判定挑战模式: battle_type/challenge_mode 是 visit_room() 按
 	# 房型刚写进 GameState 的, 而夜战雾和炸弹雨是**逐房**生效的效果, 不能
@@ -1347,6 +1477,20 @@ func _grant_treasure_room_reward() -> void:
 
 
 func _announce_room(room: Dictionary) -> void:
+	var room_size := str(room.get("size", "normal"))
+	# 大/超大房间是稀有关卡事件, 用专属播报盖过普通的按类型播报——护送风味要
+	# 把"友军阵亡即战败"换成新的过半判负规则, 攻城风味则直接点名这是一场
+	# 加大号的老鹰保卫战 (老鹰保卫战本身没有新状态, 见 _on_base_destroyed())。
+	if room_size != "normal":
+		var size_label := "大型" if room_size == "large" else "超大型"
+		if GameState.battle_type == "challenge" and GameState.challenge_mode == "escort":
+			var count: int = int(ESCORT_ALLY_COUNT.get(room_size, 1))
+			var required: int = count / 2 + 1
+			show_toast("🛡️ %s护送房：保护 %d 名友军, 至少 %d 名存活才算成功！" % [size_label, count, required])
+		else:
+			show_toast("🏰 %s攻城房：全力守住老鹰基地！" % size_label)
+		return
+
 	match str(room.get("type", "normal")):
 		"boss":
 			show_toast("👑 BOSS 房：区域指挥官要塞！")
@@ -1372,8 +1516,11 @@ func _place_players_at_entry(entry_dir: int) -> void:
 	if entry_dir >= 0:
 		base_pos = RoomDoor.entry_position_for(entry_dir, GRID_W, GRID_H)
 	else:
-		# 首次进场: 起始房中央偏下, 和以前的出生点一致。
-		base_pos = Vector2((GRID_W / 2.0) * TILE_SIZE, (GRID_H - 2.5) * TILE_SIZE)
+		# 首次进场: 起始房中央偏下, 和以前的出生点一致。起始房永远不会被
+		# _assign_room_sizes() 标记成大/超大 (它不在候选池里), 这条分支
+		# 只在 GRID_W/GRID_H 是 13 时真正跑到, 这里用通用公式只是保持
+		# 跟 _spawn_base_and_walls() 同一套写法, 不是为了真的支持大房间。
+		base_pos = Vector2((RoomDoor.center_col_for(GRID_W) + 0.5) * TILE_SIZE, (GRID_H - 2.5) * TILE_SIZE)
 
 	# 双人时把两台车沿门的切线方向分开一格, 否则两人叠在同一格里互相顶。
 	var offset := Vector2(TILE_SIZE * 0.75, 0.0)
@@ -1419,11 +1566,13 @@ func _build_border_walls(door_dirs: Array) -> void:
 	var lo := -TILE_SIZE
 	var hi_x := w + TILE_SIZE
 	var hi_y := h + TILE_SIZE
-	# 缺口在门那一格上, 由 RoomDoor.DOOR_COL / DOOR_ROW 决定 —— 不是边的中点,
-	# 因为中点会撞上底边中央的老鹰基地, 详见 room_door.gd 里那段注释。
-	var gap_x0 := RoomDoor.DOOR_COL * TILE_SIZE
+	# 缺口在门那一格上, 由 RoomDoor.door_col_for()/door_row_for() 决定 ——
+	# 不是边的中点, 因为中点会撞上底边中央的老鹰基地, 详见 room_door.gd
+	# 里那段注释。这两个函数在 GRID_W/GRID_H == 13 时精确退化成
+	# DOOR_COL/DOOR_ROW, 大/超大房间下则是同一条"避让基地"推导按新尺寸重算。
+	var gap_x0 := RoomDoor.door_col_for(GRID_W) * TILE_SIZE
 	var gap_x1 := gap_x0 + TILE_SIZE
-	var gap_y0 := RoomDoor.DOOR_ROW * TILE_SIZE
+	var gap_y0 := RoomDoor.door_row_for(GRID_H) * TILE_SIZE
 	var gap_y1 := gap_y0 + TILE_SIZE
 
 	for d in range(4):
@@ -1476,15 +1625,17 @@ func _border_rect(x0: float, y0: float, x1: float, y1: float) -> void:
 const CORRIDOR_DEPTH := 2
 
 func _carve_room_openings(layout: Array, door_dirs: Array) -> void:
+	var door_col := RoomDoor.door_col_for(GRID_W)
+	var door_row := RoomDoor.door_row_for(GRID_H)
 	for d in door_dirs:
 		for step in range(CORRIDOR_DEPTH):
 			var r := 0
 			var c := 0
 			match int(d):
-				0: r = step;               c = RoomDoor.DOOR_COL
-				2: r = GRID_H - 1 - step;  c = RoomDoor.DOOR_COL
-				3: r = RoomDoor.DOOR_ROW;  c = step
-				1: r = RoomDoor.DOOR_ROW;  c = GRID_W - 1 - step
+				0: r = step;               c = door_col
+				2: r = GRID_H - 1 - step;  c = door_col
+				3: r = door_row;           c = step
+				1: r = door_row;           c = GRID_W - 1 - step
 			if r >= 0 and r < layout.size() and c >= 0 and c < layout[r].size():
 				layout[r][c] = 0
 
@@ -1493,11 +1644,19 @@ func _build_map() -> void:
 	var door_dirs := _current_door_dirs()
 	_build_border_walls(door_dirs)
 
+	var room_size := str(GameState.current_room_data().get("size", "normal"))
+
 	var layout: Array
 	if not GameState.playtest_layout.is_empty():
 		# 关卡编辑器的"试玩"按钮: 最高优先级, 用完即清空, 只影响这一个房间。
 		layout = GameState.playtest_layout.duplicate(true)
 		GameState.playtest_layout = []
+	elif room_size != "normal":
+		# 大/超大房间: 拼 N x N 张已验收的普通 13x13 关卡, 而不是走手搓模板/
+		# MapDirector 的 13x13 硬校验 —— 见 CompositeRoomBuilder 顶部注释。
+		# 每日挑战没有 floor_rooms/size 概念, room_size 恒为 "normal", 不会
+		# 落进这个分支。
+		layout = CompositeRoomBuilder.build(room_size, GameState.current_floor, GameState.battle_type, GameState.current_act, GameState.current_room)
 	elif GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
 		# Fully procedural terrain (not one of the handcrafted templates) --
 		# "random tiles" is the point of the mode. Biome is randomized too
@@ -2000,6 +2159,64 @@ func _spawn_electric_wall(pos: Vector2) -> void:
 		ew.position = pos
 		map_container.add_child(ew)
 
+## 活塞开关。放进 actors_container 而不是 map_container——跟 shield_station/
+## pipe_conduit/wooden_wall 是同一批"非纯地形" building 的既有惯例, 不是
+## 因为它会动。
+func _spawn_piston_switch(pos: Vector2, color: String) -> void:
+	if not piston_switch_scene:
+		piston_switch_scene = load("res://scenes/buildings/piston_switch.tscn")
+	if piston_switch_scene:
+		var sw: PistonSwitch = piston_switch_scene.instantiate()
+		sw.gate_color = color
+		sw.position = pos
+		actors_container.add_child(sw)
+		sw.switch_pressed.connect(_on_circuit_switch_pressed)
+
+## 受电路控制的电墙: 默认保持 is_powered=true (跟普通电墙一样, 出生即通电/
+## 危险), 电路解开前不做任何特殊处理——它就是一堵会通电的墙, 只是额外记进
+## circuit_gated_buildings 好让 _on_circuit_switch_pressed() 找得到它。
+func _spawn_gated_electric_wall(pos: Vector2, color: String) -> void:
+	if not electric_wall_scene:
+		electric_wall_scene = load("res://scenes/buildings/electric_wall.tscn")
+	if electric_wall_scene:
+		var ew = electric_wall_scene.instantiate()
+		ew.position = pos
+		map_container.add_child(ew)
+		if not circuit_gated_buildings.has(color):
+			circuit_gated_buildings[color] = []
+		circuit_gated_buildings[color].append(ew)
+
+## 受电路控制的充能站: 出生即 is_powered=false (完全惰性, 电路解开前不可用)。
+## 这一行必须在 add_child() 之前赋值——is_powered 是普通实例变量, 赋值不需要
+## 节点已经在树里, 但 shield_station.gd::_ready() (在 add_child() 期间跑)
+## 要靠它才知道不该把 is_charged 钉回 true。
+func _spawn_gated_shield_station(pos: Vector2, color: String) -> void:
+	if not shield_station_scene:
+		shield_station_scene = load("res://scenes/buildings/shield_station.tscn")
+	if shield_station_scene:
+		var st = shield_station_scene.instantiate()
+		st.is_powered = false
+		st.position = pos
+		actors_container.add_child(st)
+		if not circuit_gated_buildings.has(color):
+			circuit_gated_buildings[color] = []
+		circuit_gated_buildings[color].append(st)
+
+## 某种颜色的活塞开关被按下: 把这个颜色底下所有还活着的受控建筑一次性
+## set_circuit_solved(true)。circuit_solved[color] 挡重复触发——同色可能有
+## 不止一个开关 (任意一个按下即算解开, OR 逻辑), 后按的那些应该是无操作,
+## 不用重放一次音效/提示。
+func _on_circuit_switch_pressed(color: String) -> void:
+	if circuit_solved.get(color, false):
+		return
+	circuit_solved[color] = true
+	for building in circuit_gated_buildings.get(color, []):
+		if is_instance_valid(building) and building.has_method("set_circuit_solved"):
+			building.set_circuit_solved(true)
+	SoundManager.play_pickup(get_tree())
+	var color_label := {"red": "红色", "blue": "蓝色"}.get(color, color)
+	show_toast("🔌 %s电路已接通！" % color_label)
+
 func _spawn_oil_barrel(pos: Vector2) -> void:
 	if not oil_barrel_scene:
 		oil_barrel_scene = load("res://scenes/buildings/oil_barrel.tscn")
@@ -2265,15 +2482,24 @@ func try_spawn_block_loot(pos: Vector2) -> void:
 func get_random_empty_tile_position() -> Vector2:
 	var empty_candidates: Array[Vector2] = []
 	var layout = current_map_layout
+	# 基地避让区按 RoomDoor 的通用公式算, 不再写死 10/4/8 —— 大/超大房间的
+	# 基地仍然只占中心 3 列 (center_col-2..center_col+2), 但那三个字面量是
+	# 按 13x13 量出来的, 房间一大就不再对齐真正的基地位置。
+	var avoid_row := RoomDoor.base_row_for(GRID_H) - 2
+	var avoid_col_lo := RoomDoor.center_col_for(GRID_W) - 2
+	var avoid_col_hi := RoomDoor.center_col_for(GRID_W) + 2
 	if layout and layout.size() > 0:
 		for r in range(layout.size()):
 			for c in range(layout[r].size()):
 				if layout[r][c] == 0:
 					# Avoid teleporting onto Eagle base
-					if r >= 10 and c >= 4 and c <= 8:
+					if r >= avoid_row and c >= avoid_col_lo and c <= avoid_col_hi:
 						continue
 					empty_candidates.append(Vector2((c + 0.5) * TILE_SIZE, (r + 0.5) * TILE_SIZE))
-	var local_pos := Vector2(randf_range(96.0, 528.0), randf_range(96.0, 528.0))
+	var local_pos := Vector2(
+		randf_range(2.0 * TILE_SIZE, (GRID_W - 2.0) * TILE_SIZE),
+		randf_range(2.0 * TILE_SIZE, (GRID_H - 2.0) * TILE_SIZE)
+	)
 	if empty_candidates.size() > 0:
 		local_pos = empty_candidates[randi() % empty_candidates.size()]
 	if map_container:
@@ -2303,19 +2529,25 @@ func _spawn_base_and_walls(use_steel: bool = false) -> void:
 	for child in base_wall_container.get_children():
 		child.queue_free()
 
+	# center_x/base_y 用 RoomDoor 的通用公式而不是字面量 6.5/12.5 —— 大/超大
+	# 房间的 GRID_W/GRID_H 不是 13, 但基地永远在"房间正中心的底边", 这两个
+	# 公式在 13x13 下精确退化回原来的字面量。
+	var center_x := (RoomDoor.center_col_for(GRID_W) + 0.5) * TILE_SIZE
+	var base_y := (RoomDoor.base_row_for(GRID_H) + 0.5) * TILE_SIZE
+
 	base_instance = base_scene.instantiate()
-	base_instance.position = Vector2(6.5 * TILE_SIZE, 12.5 * TILE_SIZE)
+	base_instance.position = Vector2(center_x, base_y)
 	base_instance.destroyed.connect(_on_base_destroyed)
 	base_wall_container.add_child(base_instance)
 	if is_iff_flag_active():
 		base_instance.set_iff_active(true)
 
 	var wall_positions = [
-		Vector2(5.5 * TILE_SIZE, 12.5 * TILE_SIZE),
-		Vector2(5.5 * TILE_SIZE, 11.5 * TILE_SIZE),
-		Vector2(6.5 * TILE_SIZE, 11.5 * TILE_SIZE),
-		Vector2(7.5 * TILE_SIZE, 11.5 * TILE_SIZE),
-		Vector2(7.5 * TILE_SIZE, 12.5 * TILE_SIZE)
+		Vector2(center_x - TILE_SIZE, base_y),
+		Vector2(center_x - TILE_SIZE, base_y - TILE_SIZE),
+		Vector2(center_x, base_y - TILE_SIZE),
+		Vector2(center_x + TILE_SIZE, base_y - TILE_SIZE),
+		Vector2(center_x + TILE_SIZE, base_y)
 	]
 
 	for p in wall_positions:
@@ -2358,33 +2590,78 @@ func _despawn_base() -> void:
 ## 一只都不刷、门直接开。
 func _begin_room_encounter() -> void:
 	var cycle: int = GameState.get_difficulty_cycle()
+	var room_size := str(GameState.current_room_data().get("size", "normal"))
 	total_enemies = encounter_size(GameState.battle_type, cycle, GameState.difficulty)
+	total_enemies *= int(SIEGE_ENCOUNTER_MULT.get(room_size, 1))
 	spawn_interval = spawn_interval_for(GameState.battle_type, cycle, GameState.difficulty)
 	max_alive_cap = max_alive_for(cycle, GameState.difficulty)
+	max_alive_cap += int(SIEGE_ALIVE_BONUS.get(room_size, 0))
 	enemies_spawned = 0
 	enemies_alive = 0
 	spawn_timer = 0.0
 
-	if GameState.battle_type == "challenge" and GameState.challenge_mode == "escort":
-		_spawn_escort_ally()
+	# 攻城房 (size != normal 且不是护送风味) 环绕更大的地图多摆几个敌人出生点,
+	# 而不是仍然只有三个点朝一个方向涌——读 CompositeRoomBuilder 的
+	# enemy_spawn_count_for(), 跟拼图纸时留几个出生点缺口是同一个数字, 不会
+	# 出现"地形只留了 5 个缺口, 这里却按 7 个出生点算坐标"这种两边对不上的
+	# 情况。护送房不改出生点数量, 因为它的看点是保护友军而不是被围攻。
+	if room_size != "normal" and not (GameState.battle_type == "challenge" and GameState.challenge_mode == "escort"):
+		var spawn_count: int = CompositeRoomBuilder.enemy_spawn_count_for(room_size)
+		enemy_spawn_points.clear()
+		for col in RoomDoor.enemy_spawn_cols_for(GRID_W, spawn_count):
+			enemy_spawn_points.append(Vector2((col + 0.5) * TILE_SIZE, 0.5 * TILE_SIZE))
 
-## "escort" 挑战房: 生成一名要保护到房间清空的友军, 阵亡即战败——见
-## _on_escort_ally_destroyed()。跟老鹰基地一样是当前房间级别的临时对象, 见
-## escort_ally_instance 声明处和 _clear_all() 里的置空注释。
-func _spawn_escort_ally() -> void:
+	if GameState.battle_type == "challenge" and GameState.challenge_mode == "escort":
+		_spawn_escort_ally(room_size)
+
+## "escort" 挑战房: 生成 1~4 名要保护到房间清空的友军 (数量按房间尺寸看
+## ESCORT_ALLY_COUNT), 阵亡过半即战败——见 _on_escort_ally_destroyed()。
+## 跟老鹰基地一样是当前房间级别的临时对象, 见 escort_ally_instances 声明处
+## 和 _clear_all() 里的清空注释。
+func _spawn_escort_ally(room_size: String = "normal") -> void:
 	if not ally_tank_scene:
 		return
-	escort_ally_instance = ally_tank_scene.instantiate()
-	actors_container.add_child(escort_ally_instance)
-	escort_ally_instance.ally_destroyed.connect(_on_escort_ally_destroyed)
-	# get_random_empty_tile_position() 返回的是全局坐标 (修过的坑, 见
-	# CLAUDE.md "GameArea 局部/全局坐标差一格" 一节), 所以必须在 add_child()
-	# 之后再赋值, 不能反过来。
-	escort_ally_instance.global_position = get_random_empty_tile_position()
+	var count: int = int(ESCORT_ALLY_COUNT.get(room_size, 1))
+	escort_ally_original_count = count
+	for i in range(count):
+		var inst: AllyTank = ally_tank_scene.instantiate()
+		actors_container.add_child(inst)
+		inst.ally_destroyed.connect(_on_escort_ally_destroyed.bind(inst))
+		# get_random_empty_tile_position() 返回的是全局坐标 (修过的坑, 见
+		# CLAUDE.md "GameArea 局部/全局坐标差一格" 一节), 所以必须在
+		# add_child() 之后再赋值, 不能反过来。
+		var pos := get_random_empty_tile_position()
+		# 多只友军挤在同一格看起来像重叠贴图, 试几次找一个离其它友军够远的
+		# 位置; 找不到就用最后抽到的那个 (总比完全不生成好)。
+		for _attempt in range(20):
+			var too_close := false
+			for other in escort_ally_instances:
+				if is_instance_valid(other) and other.global_position.distance_to(pos) < TILE_SIZE * 3.0:
+					too_close = true
+					break
+			if not too_close:
+				break
+			pos = get_random_empty_tile_position()
+		inst.global_position = pos
+		escort_ally_instances.append(inst)
 
-func _on_escort_ally_destroyed() -> void:
-	escort_ally_instance = null
-	show_toast("💀 友军阵亡！护送失败！")
+## 护送房不再是"死一个就立刻输"——大/超大房间一次要保护 3~4 只友军, 玩家
+## 不可能同时守在每一只身边, 全灭才判负会让稀有奖励房变成看运气的惩罚。
+## 改成"过半必须存活才算成功": 剩余数量严格大于半数 (floor(n/2)+1) 才算
+## 队伍还站得住, 否则判负。单只房间 (ESCORT_ALLY_COUNT["normal"]==1) 下
+## floor(1/2)+1==1, 死一个就跌破门槛, 行为跟改造前"死一个即战败"完全一致;
+## 4 只的房间下门槛是 3, 即最多容许损失 1 只 (3/4 > 半数), 而不是常见的
+## ceil(4/2)==2 那种"刚好损失一半也算及格"的读法。
+func _on_escort_ally_destroyed(instance: AllyTank) -> void:
+	escort_ally_instances.erase(instance)
+	var remaining := escort_ally_instances.size()
+	var required := escort_ally_original_count / 2 + 1
+	if remaining >= required:
+		show_toast("💀 一名友军阵亡！(剩余 %d/%d)" % [remaining, escort_ally_original_count])
+		add_trauma(0.4)
+		hit_stop(0.05)
+		return
+	show_toast("💀 护送队伍损失过半！护送失败！")
 	add_trauma(0.6)
 	hit_stop(0.08)
 	_game_over(false)
@@ -2399,11 +2676,14 @@ func _on_escort_ally_destroyed() -> void:
 ## (见 _despawn_base() 头上的注释)。断开信号这一步比记住"以后改 ally_tank.gd
 ## 时留意这个坑"更可靠。
 func _despawn_escort_ally() -> void:
-	if escort_ally_instance and is_instance_valid(escort_ally_instance):
-		if escort_ally_instance.ally_destroyed.is_connected(_on_escort_ally_destroyed):
-			escort_ally_instance.ally_destroyed.disconnect(_on_escort_ally_destroyed)
-		escort_ally_instance.queue_free()
-	escort_ally_instance = null
+	for inst in escort_ally_instances:
+		if inst == null or not is_instance_valid(inst):
+			continue
+		var bound_callable := _on_escort_ally_destroyed.bind(inst)
+		if inst.ally_destroyed.is_connected(bound_callable):
+			inst.ally_destroyed.disconnect(bound_callable)
+		inst.queue_free()
+	escort_ally_instances.clear()
 
 func trigger_shovel(duration: float = 15.0) -> void:
 	# 房间清空后基地已经撤掉了 (_despawn_base)。此时再吃到铲子不能重建它 ——
@@ -2563,17 +2843,22 @@ func _update_tree_transparency(delta: float) -> void:
 		spr.modulate.a = move_toward(spr.modulate.a, target, TREE_FADE_SPEED * delta)
 
 func _process(delta: float) -> void:
-	# Trauma Screen Shake
+	_update_camera_position()
+
+	# Trauma Screen Shake -- 现在抖动叠加在 RoomCamera.offset 上而不是
+	# GameArea.position (加了摄像机之后 GameArea.position 已经跟屏幕坐标
+	# 无关, 见 _update_camera_bounds() 的推导), 减号是因为 offset 在屏幕
+	# 坐标公式里前面带负号, 这样叠加出来的抖动方向、幅度才跟改造前一致。
 	if trauma > 0.0:
 		var shake = trauma * trauma
 		var offset = Vector2(
 			randf_range(-1.0, 1.0) * max_shake_offset.x * shake,
 			randf_range(-1.0, 1.0) * max_shake_offset.y * shake
 		)
-		game_area.position = base_game_area_pos + offset
+		room_camera.offset = camera_offset_base - offset
 		trauma = max(0.0, trauma - trauma_decay * delta)
 	else:
-		game_area.position = base_game_area_pos
+		room_camera.offset = camera_offset_base
 
 	_update_tree_transparency(delta)
 

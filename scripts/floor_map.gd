@@ -94,6 +94,13 @@ static func target_room_count(act: int) -> int:
 const MIN_SHOPS_PER_FLOOR := 1
 const SHOP_SECOND_ROOMS := ROOM_MAX
 
+## 大/超大房间是稀有的"关卡事件", 不是每层必有的常规内容 —— 见
+## CLAUDE.md 里"protect base/protect ally"那次需求讨论。概率是独立的两次
+## roll (先判超大, 没中再判大), 所以一层楼最多只会出现一个尺寸标记的房间。
+const LARGE_ROOM_CHANCE := 0.28   # ~每 3.5 层一次
+const HUGE_ROOM_CHANCE := 0.10    # 明显比 large 更稀有
+const HUGE_ROOM_MIN_ACT := 3      # 前两幕是教学期, 不该被超大房间的规模吓退
+
 ## 挑战房的五种模式, 和 main.gd::start_game() 读的 GameState.challenge_mode
 ## 是同一套字符串。按视觉幕换池子, 沿用原 _generate_spire_map() 的分配。
 ## "escort" (护送友军) 是新增的第五种, 三幕都加了进去, 不挤掉任何一个原有模式。
@@ -145,6 +152,7 @@ static func generate(act: int, seed_value: int, visual_act: int = -1) -> Diction
 	_compute_depth(rooms, start)
 	_assign_types(rooms, start, rng, visual_act)
 	var secret_key := _place_secret(rooms, rng)
+	_assign_room_sizes(rooms, key(start), rng, act)
 
 	var boss_key := ""
 	for k in rooms.keys():
@@ -176,6 +184,11 @@ static func _new_room(c: Vector2i) -> Dictionary:
 		"visited": false,
 		"secret": false,
 		"challenge_mode": "",
+		# "normal" | "large" (26x26, 4 倍) | "huge" (52x52, 16 倍) —— 见
+		# _assign_room_sizes()。跟 "type" 是两条独立的轴: 一个大房间既可能
+		# 是普通攻城战 (type 仍是 normal/elite), 也可能顺带是护送友军的
+		# 挑战房 (type 变成 challenge, challenge_mode 变成 escort)。
+		"size": "normal",
 	}
 
 
@@ -363,6 +376,69 @@ static func _assign_types(rooms: Dictionary, start: Vector2i, rng: RandomNumberG
 
 	# 剩下的一切 (通路上的房间 + 用不完的死胡同) 都是普通战斗房, _new_room()
 	# 的默认值已经是 "normal", 不用再写一遍。
+
+
+## 大/超大房间的抽取。要放在 _assign_types() 之后调用 —— 这里要读每个房间
+## 最终的 type/challenge_mode 来筛"够格"的候选, 顺序反了会读到默认值。
+##
+## 候选池只收 type 是 normal/elite, 或者 type 是 challenge 且
+## challenge_mode 已经是 escort 的房间。刻意排除另外四种挑战模式
+## (bomb_rain/night_ops/vault/night_bombs): night_ops/night_bombs 走的
+## darkness_fog.gd 里那块雾是写死的 624x624 (13x13 房间的像素尺寸), 一个大
+## 房间套上去雾只会盖住四分之一/十六分之一的地图, 是另一块要单独处理的活,
+## 这次不碰。
+##
+## 一层楼最多标记一个尺寸房间 (先判超大, 没中再判大, 两次 roll 独立但共享
+## 同一个候选池), 保持"稀有关卡事件"的定位。选中之后再独立丢一次硬币决定
+## 风味: 攻城 (维持 type 不变, main.gd 靠"没有 challenge_mode 的普通/精英战
+## 斗房自动触发老鹰保卫战"这条已有规则, 不需要新状态) 还是护送
+## (把 type 改写成 challenge、challenge_mode 改写成 escort, 复用现成的
+## AllyTank 机制, 只是 main.gd 那边要按 size 生成更多只 —— 见 Stage 3)。
+static func _assign_room_sizes(rooms: Dictionary, start_key: String, rng: RandomNumberGenerator, act: int) -> void:
+	var eligible: Array = []
+	for k in rooms.keys():
+		if str(k) == start_key:
+			continue
+		var t: String = str(rooms[k]["type"])
+		if t == "normal" or t == "elite":
+			eligible.append(str(k))
+		elif t == "challenge" and str(rooms[k]["challenge_mode"]) == "escort":
+			eligible.append(str(k))
+	if eligible.is_empty():
+		return
+
+	# 死胡同优先 (跟 boss/shop/treasure 一样的取舍: 大房间值得专门绕一趟),
+	# 没有就退而求其次挑合法候选里最深的通路房。
+	var dead_end_set := {}
+	for de in _dead_ends(rooms, start_key):
+		dead_end_set[de] = true
+	var picks: Array = []
+	for k in eligible:
+		if dead_end_set.has(k):
+			picks.append(k)
+	if picks.is_empty():
+		picks = eligible.duplicate()
+	picks.sort_custom(func(a, b): return int(rooms[a]["depth"]) > int(rooms[b]["depth"]))
+	var target_key: String = str(picks[0])
+
+	var roll := rng.randf()
+	var chosen_size := ""
+	if roll < HUGE_ROOM_CHANCE and act >= HUGE_ROOM_MIN_ACT:
+		chosen_size = "huge"
+	elif roll < HUGE_ROOM_CHANCE + LARGE_ROOM_CHANCE:
+		chosen_size = "large"
+	if chosen_size == "":
+		return
+	rooms[target_key]["size"] = chosen_size
+
+	# 风味硬币: 已经是 escort 的直接维持护送风味; 否则 50/50 决定是攻城还是
+	# 改造成护送。
+	if str(rooms[target_key]["challenge_mode"]) != "escort":
+		if rng.randf() < 0.5:
+			rooms[target_key]["type"] = "challenge"
+			rooms[target_key]["challenge_mode"] = "escort"
+		# else: 保持原 type (normal/elite), 走攻城风味 —— 老鹰保卫战本来就是
+		# 每个战斗房的默认规则, 不需要写任何额外标记。
 
 
 ## 秘密房: 挑一个**空格**, 它周围贴着的已有房间越多越好 (以撒也是这么选的 ——

@@ -29,6 +29,11 @@ script = ExtResource("2_bld")
 scale = Vector2(0.1875, 0.1875)
 z_index = 20
 
+[node name="RoomCamera" type="Camera2D" parent="GameArea"]
+position = Vector2(312, 312)
+zoom = Vector2(1, 1)
+current = true
+
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="SidePanel" type="PanelContainer" parent="HUD"]

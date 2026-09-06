@@ -757,6 +757,10 @@ static func _load_floor_rooms(raw) -> Dictionary:
 			"challenge_mode": str(r.get("challenge_mode", "")),
 			"doors": _load_bool4(r.get("doors", [])),
 			"secret_doors": _load_bool4(r.get("secret_doors", [])),
+			# "size" 是后加的字段 (大/超大房间), 漏掉这一行的话字段会在每次
+			# 读档后静默还原成 "normal" —— 跟本文件其它每一行一样, 都是
+			# 手抄字段表, 加字段必须两头一起改 (见 tools/test_persistence_roundtrip.gd)。
+			"size": str(r.get("size", "normal")),
 		}
 		result[str(k)] = room
 	return result

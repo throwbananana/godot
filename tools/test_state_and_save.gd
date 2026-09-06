@@ -131,6 +131,9 @@ func test_save_load_roundtrip() -> bool:
 	GameState.secret_room_found = true
 	GameState.floor_rooms[probe_room]["cleared"] = true
 	GameState.floor_rooms[probe_room]["visited"] = true
+	# "size" (大/超大房间标记) 是后加的字段, 靠 _load_floor_rooms() 里手抄的
+	# 白名单还原——漏抄的话这里会静默读回默认值 "normal", 而不是报错。
+	GameState.floor_rooms[probe_room]["size"] = "large"
 	# run_seed 决定这一局抽到哪批手搓地图 (MapTemplates._pick_from_pool)。
 	# 它必须跟着存档走: 存了不读回来的话, 同一个存档每次读进来都会换一批
 	# 地形 —— 已经打过的楼层也会跟着变脸。
@@ -188,8 +191,15 @@ func test_save_load_roundtrip() -> bool:
 		if not (room["doors"] is Array) or room["doors"].size() != 4:
 			print("    Error: 房间 %s 的 doors 不是长度 4 的数组" % k)
 			return false
+		if typeof(room.get("size", null)) != TYPE_STRING:
+			print("    Error: 房间 %s 的 size 不是 String" % k)
+			return false
 	if not bool(GameState.floor_rooms[probe_room]["cleared"]):
 		print("    Error: 房间的 cleared 标记没穿过存档")
+		return false
+	if str(GameState.floor_rooms[probe_room]["size"]) != "large":
+		print("    Error: 房间的 size 标记没穿过存档 (应为 large, 实为 %s) —— 大概率是 _load_floor_rooms() 的白名单漏抄了这个字段"
+			% str(GameState.floor_rooms[probe_room]["size"]))
 		return false
 	
 	GameState.delete_saved_game()

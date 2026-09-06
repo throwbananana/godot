@@ -8,6 +8,17 @@ const BunkerScript = preload("res://scripts/buildings/bunker.gd")
 
 enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL, PIPE, BUNKER, WOODEN_WALL, DARKNESS_DEVICE }
 
+## 当前房间的网格尺寸, 由 main.gd::enter_room() 在切房时同步过来 (见
+## set_room_bounds())。默认仍是普通房间的 13x13, 大/超大房间进场之前就会
+## 被改写 —— 不改的话 _is_placement_valid() 会把边界钉死在 13x13, 玩家在
+## 大房间里过了第一象限就哪儿都放不了建筑。
+var room_grid_w: int = 13
+var room_grid_h: int = 13
+
+func set_room_bounds(grid_w: int, grid_h: int) -> void:
+	room_grid_w = grid_w
+	room_grid_h = grid_h
+
 ## Battle-placement no longer spends gold directly (see GameState.structure_inventory) --
 ## these structures are shop-only stock now: buy N in shop_dialog.gd's Building
 ## Supplies section (persists across battles), each placement here consumes
@@ -305,9 +316,10 @@ func _is_placement_valid(pos: Vector2) -> bool:
 	# 换算前, 全局的最后一行/列(局部 600, 全局 648, 老鹰所在那一整行)会被
 	# 误判越界, 玩家在地图最右列/最下一行(含老鹰旁边)完全放不了任何建筑。
 	var min_bound = 24.0
-	var max_bound = 13.0 * 48.0 - 24.0
+	var max_bound_x = float(room_grid_w) * 48.0 - 24.0
+	var max_bound_y = float(room_grid_h) * 48.0 - 24.0
 	var local_pos = to_local(pos)
-	if local_pos.x < min_bound or local_pos.x > max_bound or local_pos.y < min_bound or local_pos.y > max_bound:
+	if local_pos.x < min_bound or local_pos.x > max_bound_x or local_pos.y < min_bound or local_pos.y > max_bound_y:
 		return false
 
 	var space_state = get_world_2d().direct_space_state

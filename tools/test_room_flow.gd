@@ -12,6 +12,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const FloorMap = preload("res://scripts/floor_map.gd")
 const RoomDoor = preload("res://scripts/room_door.gd")
 const ShopDialogRules = preload("res://scripts/shop_dialog.gd")
+const CompositeRoomBuilder = preload("res://scripts/composite_room_builder.gd")
 
 var failures: int = 0
 
@@ -53,8 +54,15 @@ func _run() -> void:
 	await _test_shop_stock_persists(main_inst)
 	await _test_sold_out_persists(main_inst)
 	await _test_cannot_afford(main_inst)
+	await _test_large_siege_room_geometry(main_inst)
+	await _test_huge_siege_room_geometry(main_inst)
+	await _test_large_escort_room_ally_count(main_inst)
 
 	main_inst.queue_free()
+	# 多等一帧: 大/超大房间新增的用例在退出前留下了成百上千个瓦片/多只友军的
+	# 待删节点, 只等一帧不足以让它们的 queue_free() 全部真正落地, 会在退出时
+	# 打一行 "ObjectDB instances leaked" (不影响退出码, 但没必要留着)。
+	await process_frame
 	await process_frame
 
 	print("==================================================")
@@ -512,3 +520,129 @@ func _test_cannot_afford(main_inst) -> void:
 		fail("金币不足却扣了钱 (%d -> %d)" % [before, GameState.gold])
 	else:
 		ok("金币 %d < 售价 %d: 未成交且未扣钱" % [before, target.cost])
+
+
+## 大/超大房间共用的强制进房手法: 直接改当前房间的 size/type/challenge_mode
+## 再走一遍真实的 enter_room(), 跟 test_challenges_runtime.gd/
+## test_escort_challenge.gd 逼挑战房的手法是同一个思路——手搭一份房间状态
+## 必然会和真实字段发散。
+func _force_room(main_inst, room_key: String, size: String, type: String, challenge_mode: String) -> void:
+	GameState.floor_rooms[room_key]["size"] = size
+	GameState.floor_rooms[room_key]["cleared"] = false
+	GameState.floor_rooms[room_key]["type"] = type
+	GameState.floor_rooms[room_key]["challenge_mode"] = challenge_mode
+	main_inst.enter_room(room_key, -1)
+
+
+## 大型攻城房 (26x26): GRID_W/GRID_H、鹰巢位置、敌人出生点数量、摄像机夹紧
+## 范围都要跟着 RoomDoor 的通用公式换算, 不能继续钉死在 13x13 的老数字上。
+func _test_large_siege_room_geometry(main_inst) -> void:
+	print("\n--- 大型攻城房 (26x26) 几何 ---")
+	var target := _first_combat_room()
+	if target == "":
+		fail("本层没有战斗房, 无法测试大房间")
+		return
+	await _force_room(main_inst, target, "large", "normal", "")
+	await process_frame
+
+	if main_inst.GRID_W != 26 or main_inst.GRID_H != 26:
+		fail("大房间的 GRID_W/GRID_H 应该是 26/26, 实际 %d/%d" % [main_inst.GRID_W, main_inst.GRID_H])
+	else:
+		ok("GRID_W/GRID_H 正确变成 26/26")
+
+	var center_col := RoomDoor.center_col_for(26)
+	var base_row := RoomDoor.base_row_for(26)
+	var expected_base := Vector2((center_col + 0.5) * 48.0, (base_row + 0.5) * 48.0)
+	if main_inst.base_instance == null or not is_instance_valid(main_inst.base_instance):
+		fail("大型攻城房没有生成鹰巢")
+	elif main_inst.base_instance.position.distance_to(expected_base) > 0.1:
+		fail("大房间鹰巢应在 %s, 实际 %s" % [str(expected_base), str(main_inst.base_instance.position)])
+	else:
+		ok("大房间鹰巢落在正确位置 %s" % str(expected_base))
+
+	var expected_spawn_count: int = CompositeRoomBuilder.enemy_spawn_count_for("large")
+	if main_inst.enemy_spawn_points.size() != expected_spawn_count:
+		fail("大型攻城房应有 %d 个敌人出生点, 实际 %d" % [expected_spawn_count, main_inst.enemy_spawn_points.size()])
+	else:
+		ok("大型攻城房正确有 %d 个敌人出生点" % expected_spawn_count)
+
+	var door_col := RoomDoor.door_col_for(26)
+	var spawn_on_door := 0
+	for p in main_inst.enemy_spawn_points:
+		if int(p.x / 48.0) == door_col:
+			spawn_on_door += 1
+	if spawn_on_door > 0:
+		fail("%d 个敌人出生点落在了门廊列 %d 上" % [spawn_on_door, door_col])
+
+	var vis: Vector2 = main_inst.CAMERA_VISIBLE_SIZE
+	var cam: Vector2 = main_inst.room_camera.position
+	var room_px := 26.0 * 48.0
+	if cam.x < vis.x / 2.0 - 0.5 or cam.x > room_px - vis.x / 2.0 + 0.5 \
+			or cam.y < vis.y / 2.0 - 0.5 or cam.y > room_px - vis.y / 2.0 + 0.5:
+		fail("大房间摄像机 %s 越出了 clamp 范围" % str(cam))
+	else:
+		ok("大房间摄像机在 clamp 范围内: %s" % str(cam))
+
+
+## 超大攻城房 (52x52): 跟大房间同一套断言, 只是尺寸/出生点数不同, 顺带确认
+## 公式不是只对 26 这一个数字凑巧算对。
+func _test_huge_siege_room_geometry(main_inst) -> void:
+	print("\n--- 超大攻城房 (52x52) 几何 ---")
+	var target := _first_combat_room()
+	if target == "":
+		fail("本层没有战斗房, 无法测试超大房间")
+		return
+	await _force_room(main_inst, target, "huge", "normal", "")
+	await process_frame
+
+	if main_inst.GRID_W != 52 or main_inst.GRID_H != 52:
+		fail("超大房间的 GRID_W/GRID_H 应该是 52/52, 实际 %d/%d" % [main_inst.GRID_W, main_inst.GRID_H])
+	else:
+		ok("GRID_W/GRID_H 正确变成 52/52")
+
+	var center_col := RoomDoor.center_col_for(52)
+	var base_row := RoomDoor.base_row_for(52)
+	var expected_base := Vector2((center_col + 0.5) * 48.0, (base_row + 0.5) * 48.0)
+	if main_inst.base_instance == null or not is_instance_valid(main_inst.base_instance):
+		fail("超大攻城房没有生成鹰巢")
+	elif main_inst.base_instance.position.distance_to(expected_base) > 0.1:
+		fail("超大房间鹰巢应在 %s, 实际 %s" % [str(expected_base), str(main_inst.base_instance.position)])
+	else:
+		ok("超大房间鹰巢落在正确位置 %s" % str(expected_base))
+
+	var expected_spawn_count: int = CompositeRoomBuilder.enemy_spawn_count_for("huge")
+	if main_inst.enemy_spawn_points.size() != expected_spawn_count:
+		fail("超大攻城房应有 %d 个敌人出生点, 实际 %d" % [expected_spawn_count, main_inst.enemy_spawn_points.size()])
+	else:
+		ok("超大攻城房正确有 %d 个敌人出生点" % expected_spawn_count)
+
+	var vis: Vector2 = main_inst.CAMERA_VISIBLE_SIZE
+	var cam: Vector2 = main_inst.room_camera.position
+	var room_px := 52.0 * 48.0
+	if cam.x < vis.x / 2.0 - 0.5 or cam.x > room_px - vis.x / 2.0 + 0.5 \
+			or cam.y < vis.y / 2.0 - 0.5 or cam.y > room_px - vis.y / 2.0 + 0.5:
+		fail("超大房间摄像机 %s 越出了 clamp 范围" % str(cam))
+	else:
+		ok("超大房间摄像机在 clamp 范围内: %s" % str(cam))
+
+
+## 大型护送房: 一次性生成的友军数量要按 ESCORT_ALLY_COUNT["large"] 走,
+## 而不是继续只生成一只。
+func _test_large_escort_room_ally_count(main_inst) -> void:
+	print("\n--- 大型护送房: 友军数量 ---")
+	var target := _first_combat_room()
+	if target == "":
+		fail("本层没有战斗房, 无法测试大护送房")
+		return
+	await _force_room(main_inst, target, "large", "challenge", "escort")
+	await process_frame
+
+	var expected: int = int(main_inst.ESCORT_ALLY_COUNT.get("large", 1))
+	var alive := 0
+	for inst in main_inst.escort_ally_instances:
+		if is_instance_valid(inst):
+			alive += 1
+	if alive != expected:
+		fail("大型护送房应生成 %d 只友军, 实际 %d" % [expected, alive])
+	else:
+		ok("大型护送房正确生成 %d 只友军" % expected)
