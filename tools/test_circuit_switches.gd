@@ -15,6 +15,8 @@ extends SceneTree
 ## [[assert-on-random-precondition-hangs]]。
 
 const GameState = preload("res://scripts/game_state.gd")
+const BombSwitch = preload("res://scripts/buildings/bomb_switch.gd")
+const EnergyWall = preload("res://scripts/buildings/energy_wall.gd")
 
 var failures: int = 0
 
@@ -51,10 +53,13 @@ func _run() -> void:
 	print(">>> CIRCUIT / PISTON SWITCH TEST <<<")
 	print("==================================================")
 
-	_test_electric_wall_gating()
+	await _test_electric_wall_gating()
 	await _test_shield_station_gating()
 	_test_piston_switch_latches()
+	_test_bomb_switch_destructible()
+	_test_energy_wall_immunity()
 	await _test_full_wiring_via_playtest_layout()
+	await _test_bomb_switch_energy_wall_wiring()
 
 	print("==================================================")
 	if failures > 0:
@@ -68,6 +73,11 @@ func _run() -> void:
 ## 普通电墙 (tile 25 / 玩家建造) 完全不受影响: 默认 is_powered=true,
 ## set_circuit_solved(true) 之后变成完全惰性——不再电人, 碰撞关掉。
 func _test_electric_wall_gating() -> void:
+	# 注意本函数改成 async (调用处 await 它): set_circuit_solved() 里的碰撞体
+	# 改动是 set_deferred, 不是同步生效——这是为了让开关在真实游戏里能在
+	# body_entered (物理查询 flush 期间) 调用它而不撞 "Can't change this
+	# state while flushing queries" (跟 shop_dialog.gd 的 reroll 同一类坑,
+	# 见 CLAUDE.md), 所以这里也要等一帧再检查 disabled。
 	print("\n--- 电墙 gating ---")
 	var wall_scene: PackedScene = load("res://scenes/buildings/electric_wall.tscn")
 	var wall = wall_scene.instantiate()
@@ -88,6 +98,7 @@ func _test_electric_wall_gating() -> void:
 		ok("通电状态下电墙正常电击坦克")
 
 	wall.set_circuit_solved(true)
+	await process_frame # collision_shape.disabled 是 set_deferred, 要等一帧
 	if wall.is_powered:
 		fail("set_circuit_solved(true) 之后 is_powered 应该是 false")
 	else:
@@ -184,6 +195,126 @@ func _test_piston_switch_latches() -> void:
 	bullet_stub.queue_free()
 
 
+## 可摧毁开关: 2 HP, 打两下才炸, 炸的时候恰好发一次 switch_pressed。
+func _test_bomb_switch_destructible() -> void:
+	print("\n--- 可摧毁开关 (bomb_switch) ---")
+	var switch_scene: PackedScene = load("res://scenes/buildings/bomb_switch.tscn")
+	var sw = switch_scene.instantiate()
+	sw.gate_color = "red"
+	root.add_child(sw)
+
+	var emitted: Array = []
+	sw.switch_pressed.connect(func(color): emitted.append(color))
+
+	sw.take_damage(1)
+	if sw.is_destroyed or not emitted.is_empty():
+		fail("开关只挨了 1 点伤害 (满血 2) 就被打爆了")
+	else:
+		ok("开关扛住第一下 (1/2 血) 没有提前触发")
+
+	sw.take_damage(1)
+	if not sw.is_destroyed:
+		fail("开关打满 2 点伤害后应该被摧毁, 但 is_destroyed 仍是 false")
+	elif emitted.size() != 1 or emitted[0] != "red":
+		fail("开关打爆时应该恰好发出一次 'red', 实际 %s" % str(emitted))
+	else:
+		ok("开关打满血量后正确摧毁并发出一次 'red'")
+
+	sw.queue_free()
+
+
+## 能量墙: 对一切火力免疫的核心是"不挂 buildings/building 组、也不暴露
+## take_damage/destroy"——这里直接断言分组和方法表, 而不是逐个重放 9 处
+## 判定逻辑 (那是 bullet.gd/laser_piercer.gd 等文件自己的事, 这里只保证
+## energy_wall 满足它们全部依赖的那个前提)。set_circuit_solved(true) 才是
+## 唯一能让它消失的路径。
+func _test_energy_wall_immunity() -> void:
+	print("\n--- 能量墙 (energy_wall) 免疫与摧毁 ---")
+	var wall_scene: PackedScene = load("res://scenes/buildings/energy_wall.tscn")
+	var wall = wall_scene.instantiate()
+	wall.gate_color = "blue"
+	root.add_child(wall)
+
+	if not wall.is_in_group("steel") or not wall.is_in_group("border"):
+		fail("能量墙必须同时在 steel 和 border 组里才能继承全套免疫反馈")
+	elif wall.is_in_group("buildings") or wall.is_in_group("building"):
+		fail("能量墙不能挂 buildings/building 组, 否则会在 bullet.gd 的 elif 链里抢在 steel 分支之前短路掉免疫")
+	elif wall.has_method("take_damage") or wall.has_method("destroy"):
+		fail("能量墙不该暴露 take_damage()/destroy()——那两个方法名会被 bullet.gd 的鸭子分派直接调用, 绕过免疫")
+	else:
+		ok("能量墙分组/方法表满足全免疫前提 (steel+border, 无 buildings, 无 take_damage/destroy)")
+
+	wall.set_circuit_solved(false)
+	if wall.is_queued_for_deletion():
+		fail("set_circuit_solved(false) 不该摧毁能量墙")
+	else:
+		ok("set_circuit_solved(false) 对能量墙无效果 (还没解开)")
+
+	wall.set_circuit_solved(true)
+	if not wall.is_queued_for_deletion():
+		fail("set_circuit_solved(true) 之后能量墙应该被摧毁 (queue_free)")
+	else:
+		ok("set_circuit_solved(true) 后能量墙正确摧毁——唯一的摧毁路径")
+
+
+## 集成测试: 打爆开关 (52/53) -> 摧毁受控能量墙 (54/55) 这条链路, 跟压力板
+## 走的是同一份 main.gd::_on_circuit_switch_pressed(), 只是触发方式换成直接
+## 调用 take_damage() 而不是驱动坦克重叠——bomb_switch 打爆判定本身已经在
+## _test_bomb_switch_destructible() 里独立验过, 这里只验"main.gd 接线有没有
+## 把它和 _spawn_energy_wall() 接到一起"。
+func _test_bomb_switch_energy_wall_wiring() -> void:
+	print("\n--- 集成: 打爆开关 -> 摧毁能量墙 ---")
+	GameState.reset_campaign(1)
+
+	var layout: Array = []
+	for r in range(13):
+		var row: Array = []
+		for c in range(13):
+			row.append(0)
+		layout.append(row)
+	layout[6][6] = 53 # 蓝色可摧毁开关
+	layout[7][6] = 55 # 蓝色能量墙
+	GameState.playtest_layout = layout
+
+	var main_inst = load("res://scenes/main.tscn").instantiate()
+	root.add_child(main_inst)
+	await process_frame
+	await process_frame
+
+	var bomb_sw: BombSwitch = null
+	var energy_wall: EnergyWall = null
+	for child in main_inst.actors_container.get_children():
+		if child is BombSwitch:
+			bomb_sw = child
+	for child in main_inst.map_container.get_children():
+		if child is EnergyWall:
+			energy_wall = child
+
+	if bomb_sw == null or energy_wall == null:
+		fail("没能同时找到蓝色可摧毁开关和蓝色能量墙实例——tile_type==53/55 的分派可能没接上")
+		main_inst.queue_free()
+		await process_frame
+		return
+	ok("蓝色可摧毁开关与蓝色能量墙均已通过真实地块分派生成")
+
+	bomb_sw.take_damage(99)
+	# queue_free() 在 await process_frame 之后已经真正释放节点 (不只是标记
+	# 待删), 这里必须用 is_instance_valid() 而不是在可能已被释放的实例上调
+	# is_queued_for_deletion()——那样会撞 "Cannot call method on a
+	# previously freed instance" 报错, 而且这个报错不会被计进 fail(), 会让
+	# 一个已经崩掉的检查悄悄读成 PASSED。
+	await process_frame
+
+	if is_instance_valid(energy_wall):
+		fail("打爆蓝色开关之后, 蓝色能量墙应该被摧毁, 但它还在场上")
+	else:
+		ok("打爆蓝色开关后, 蓝色能量墙正确被摧毁——完整接线验证通过")
+
+	main_inst.queue_free()
+	await process_frame
+	await process_frame
+
+
 ## 集成测试: 走真实的 main.gd::_build_map() 地块分派。用
 ## GameState.playtest_layout 塞一张只有开关+受控电墙的最小布局, 把玩家挪到
 ## 开关格子上再走几帧物理, 断言电墙的碰撞体被正确禁用——这条链路覆盖了
@@ -213,12 +344,12 @@ func _test_full_wiring_via_playtest_layout() -> void:
 	await process_frame
 
 	var gated_wall: ElectricWall = null
-	for child in main_inst.actors_container.get_children():
+	for child in main_inst.map_container.get_children():
 		if child is ElectricWall:
 			gated_wall = child
 			break
 	if gated_wall == null:
-		fail("没有在 actors_container 里找到蓝色受控电墙实例——tile_type==49 的分派可能没接上")
+		fail("没有在 map_container 里找到蓝色受控电墙实例——tile_type==49 的分派可能没接上")
 		main_inst.queue_free()
 		await process_frame
 		return

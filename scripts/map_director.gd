@@ -77,7 +77,10 @@ const TIER2_EXTRA_FAMILIES_WATER_BIOMES := ["drift"]
 ## 坦克永远过不去的地形 (砖和黏土能打掉, 所以不算)。
 ## 25 是电墙: 它是 StaticBody2D 且加入 steel 组, 只有 3 阶等离子弹能打穿,
 ## 对绝大多数单位而言和钢墙没区别。
-const HARD_BLOCK := [2, 3, 25]
+## 48/49 (受控电墙)、54/55 (能量墙)、52/53 (可摧毁开关) 同理都是 StaticBody2D,
+## 物理上挡坦克——46/47 (压力板开关) 和 50/51 (受控充能站) 是 Area2D 纯触发,
+## 不挡人, 刻意不列进来 (跟 13 号普通充能站不进 HARD_BLOCK 是同一个道理)。
+const HARD_BLOCK := [2, 3, 25, 48, 49, 52, 53, 54, 55]
 
 ## 摆渡/越障装置: 移动平台 (10/11/23)、虫洞 (12)、跳板 (22)。
 ##
@@ -101,6 +104,13 @@ const RESERVED := [
 ]
 
 const MAX_ATTEMPTS := 8
+
+## 开关/电路谜题只在档 2 (floor>=5) 才会出现在程序生成图里, 跟
+## TIER2_EXTRA_FAMILIES (shield_tower/emp) 同一档——都是"玩家此时已经在
+## 手写模板里见过"的新机制。CHANCE 不是 1.0: 保留一部分档 2 的图完全没有
+## 电路谜题, 免得每张后期图长得都一样。
+const CIRCUIT_GATE_MIN_TIER := 2
+const CIRCUIT_GATE_CHANCE := 0.35
 
 
 static func tier_for_floor(floor_idx: int) -> int:
@@ -136,6 +146,7 @@ static func build(floor_idx: int, act: int, custom_seed: int = 0, tier_override:
 		var grid := MapGenerator.generate_planned(plan, rng)
 		_enforce_reserved(grid)
 		_repair_connectivity(grid)
+		_place_circuit_gate(grid, tier, rng)
 		if validate(grid, tier).is_empty():
 			return grid
 
@@ -162,7 +173,7 @@ static func validate(grid: Array, tier: int = -1) -> Array:
 			# 这条边界却没跟着挪 —— 相当于给这条校验焊死了一个过期的天花板,
 			# FAMILY_TILES 就算加了这些族, generate_planned() 只要摆出一格,
 			# validate() 也会把整张图当"地形号越界"打回去重摇。
-			if v < 0 or v > 44:
+			if v < 0 or v > 55:
 				problems.append("(%d,%d) 地形号 %d 越界" % [r, c, v])
 
 	for p in RESERVED:
@@ -298,6 +309,76 @@ static func _repair_connectivity(grid: Array) -> void:
 			if int(grid[cur.y][cur.x]) in HARD_BLOCK:
 				grid[cur.y][cur.x] = 0
 	_enforce_reserved(grid)
+
+
+## 程序生成图里的开关/电路谜题: 跟手写模板 (TEMPLATE_CIRCUIT_VAULT /
+## TEMPLATE_CIRCUIT_MAZE) 的设计约束完全一样——受控墙只能封一条*可选*捷径或
+## 支线, 绝不能是唯一主路——但这里不是靠人工摆放来保证, 是靠"先摆、再让
+## build() 已有的 validate() 兜底"这条更省事也更稳的路子:
+##   1. 找一个"挡上了会真的封住点什么"的空地格当受控墙 (临时拿 2 号钢墙占位
+##      算可达性, 跟正式生成的墙具体是哪个 tile_type 无关——48/49/54/55
+##      现在都在 HARD_BLOCK 里, 可达性判定对它们一视同仁);
+##   2. 开关摆在"挡墙之后仍然可达"的格子里, 保证玩家不挖地图边界也摸得到它;
+##   3. 挡墙具体挑哪个格子可能恰好碰上唯一主路 (把某个出生点也隔断了)——
+##      不在这里单独判断, 直接交给 build() 循环尾部的 validate(): 挡坏了主路
+##      的图会被判不合格, 整次 attempt 重来, 跟其它任何一种生成失误的兜底
+##      路径完全一样, 不用在这个函数里重复写一遍 reachable_from_base 的判定。
+static func _place_circuit_gate(grid: Array, tier: int, rng: RandomNumberGenerator) -> void:
+	if tier < CIRCUIT_GATE_MIN_TIER:
+		return
+	if rng.randf() > CIRCUIT_GATE_CHANCE:
+		return
+
+	var reachable_before := reachable_from_base(grid)
+
+	var wall_candidates: Array[Vector2i] = []
+	for r in range(1, 12):
+		for c in range(1, 12):
+			var p := Vector2i(c, r)
+			if p in RESERVED:
+				continue
+			if int(grid[r][c]) != 0:
+				continue
+			var original: int = grid[r][c]
+			grid[r][c] = 2 # 借用普通钢墙 (已在 HARD_BLOCK 里) 模拟"挡住"
+			var reachable_after := reachable_from_base(grid)
+			grid[r][c] = original
+			if reachable_after.size() < reachable_before.size():
+				wall_candidates.append(p)
+	if wall_candidates.is_empty():
+		return
+	var wall_cell: Vector2i = wall_candidates[rng.randi_range(0, wall_candidates.size() - 1)]
+
+	# 正式确定挡墙格之后, 开关只能摆在"挡上这堵墙之后仍然可达"的格子里——
+	# 否则开关自己就在被封死的那半边, 玩家永远够不着它。
+	var original_wall: int = grid[wall_cell.y][wall_cell.x]
+	grid[wall_cell.y][wall_cell.x] = 2
+	var reachable_with_wall := reachable_from_base(grid)
+	grid[wall_cell.y][wall_cell.x] = original_wall
+
+	var switch_candidates: Array[Vector2i] = []
+	for cell in reachable_with_wall:
+		if cell == wall_cell:
+			continue
+		if cell in RESERVED:
+			continue
+		if int(grid[cell.y][cell.x]) != 0:
+			continue
+		if cell.distance_to(wall_cell) < 2.0:
+			continue
+		switch_candidates.append(cell)
+	if switch_candidates.is_empty():
+		return
+	var switch_cell: Vector2i = switch_candidates[rng.randi_range(0, switch_candidates.size() - 1)]
+
+	var color_idx := rng.randi_range(0, 1)
+	var use_bomb_switch := rng.randf() < 0.5
+	if use_bomb_switch:
+		grid[switch_cell.y][switch_cell.x] = 52 if color_idx == 0 else 53
+		grid[wall_cell.y][wall_cell.x] = 54 if color_idx == 0 else 55
+	else:
+		grid[switch_cell.y][switch_cell.x] = 46 if color_idx == 0 else 47
+		grid[wall_cell.y][wall_cell.x] = 48 if color_idx == 0 else 49
 
 
 ## 兜底图: 一张一定能玩的对称纯地形图。写死在这里而不是引用 MapTemplates,

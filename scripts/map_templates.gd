@@ -58,6 +58,27 @@ const CustomMapStore = preload("res://scripts/custom_map_store.gd")
 #     见 bullet.gd / laser_piercer.gd / laser_ring_cutter.gd / kinetic_push_helper.gd
 #     里的 "reinforced_steel" 排除项, 以及 tools/test_explosive_terrain_matrix.gd。
 #     贴图暂时复用钢墙贴图压暗色调, 尚未走 Blender 渲染管线出专属美术。)
+# 46 = Piston Switch RED (压力板: 任意坦克开上去永久按下, 广播红色电路"接通"事件。
+#     不挡子弹/坦克, Area2D 纯触发。见 scripts/buildings/piston_switch.gd。)
+# 47 = Piston Switch BLUE (同 46, 蓝色电路。)
+# 48 = Circuit-Gated Electric Wall RED (跟普通电墙(25)完全一样, 出生即通电危险,
+#     红色电路接通后变为完全惰性且可穿过——不是摧毁, 是断电。
+#     见 scripts/buildings/electric_wall.gd::set_circuit_solved()。)
+# 49 = Circuit-Gated Electric Wall BLUE (同 48, 蓝色电路。)
+# 50 = Circuit-Gated Shield Station RED (跟普通充能站(13)相反方向: 出生即
+#     is_powered=false 完全不可用, 红色电路接通后立即可用 (免等首次冷却)。
+#     见 scripts/buildings/shield_station.gd::set_circuit_solved()。)
+# 51 = Circuit-Gated Shield Station BLUE (同 50, 蓝色电路。)
+# 52 = Bomb Switch RED (可摧毁开关: 2 HP 的 StaticBody2D, 会挡坦克, 靠子弹/
+#     爆炸物打爆而不是开上去触发——"打爆开关"式谜题用这个而不是压力板 46/47。
+#     打爆后跟 46/47 发同一个 switch_pressed 信号, 可以和压力板共用同一个
+#     颜色电路 (OR 逻辑)。见 scripts/buildings/bomb_switch.gd。)
+# 53 = Bomb Switch BLUE (同 52, 蓝色电路。)
+# 54 = Energy Wall RED (对一切火力免疫的墙——子弹/激光/动能推移/四种爆破物/
+#     CRUSHER 近战全部打不穿, 唯一摧毁手段是同色的 bomb_switch (52/53) 被打爆。
+#     实现上复用 border 组的免疫语义, 不挂 buildings 组。
+#     见 scripts/buildings/energy_wall.gd。)
+# 55 = Energy Wall BLUE (同 54, 蓝色电路。)
 
 # 1. 经典十字交叉防线 (Classic Crossroad - with Reinforced Hard Clay Chokepoints)
 const TEMPLATE_CLASSIC = [
@@ -1504,6 +1525,48 @@ const TEMPLATE_APEX_SOLAR_COLLIDER = [
 	[0, 8, 31, 25, 0, 0, 0, 0, 0, 25, 34, 8, 0]
 ]
 
+# 80. 电路密室 (Circuit Vault) -- 中央开阔战斗场地两侧各嵌一间用钢墙封死的
+# 密室, 分别用压力板 (46/48/50, 红) 和可摧毁开关 (53/55/51, 蓝) 两种触发
+# 方式开启, 里面各放一台受控充能站当奖励。两间密室都只封着奖励本身, 主路
+# 线完全不经过它们 (可通过 col 0/2/6/10/12 的空地绕行), 不触发开关也能
+# 正常打完这个房间——见 CLAUDE.md "受控墙只能封可选支线, 不能是唯一主路"。
+const TEMPLATE_CIRCUIT_VAULT = [
+	[0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+	[0, 0, 0, 0, 0, 46, 0, 53, 0, 0, 0, 0, 0],
+	[0, 1, 0, 2, 2, 2, 0, 2, 2, 2, 0, 1, 0],
+	[0, 1, 0, 2, 50, 48, 0, 55, 51, 2, 0, 1, 0],
+	[0, 1, 0, 2, 2, 2, 0, 2, 2, 2, 0, 1, 0],
+	[2, 2, 0, 1, 1, 3, 3, 3, 1, 1, 0, 2, 2],
+	[0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 9, 0, 9, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0]
+]
+
+# 81. 电路密境迷宫 (Circuit Maze) -- 跟 80 号同一套"密室封着奖励、不封主路"
+# 结构, 换成砖墙收窄成走廊的迷宫外观, 触发方式对调: 压力板走蓝色
+# (47/49/51), 可摧毁开关走红色 (52/54/50) —— 两张图凑在一起能让玩家在
+# 同一幕里见全两种触发方式跟两种颜色的组合, 不会因为总是同一种配色/触发
+# 方式而误以为两者是绑死的。
+const TEMPLATE_CIRCUIT_MAZE = [
+	[0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+	[0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+	[0, 0, 0, 1, 0, 47, 0, 52, 0, 1, 0, 0, 0],
+	[0, 1, 0, 2, 2, 2, 0, 2, 2, 2, 0, 1, 0],
+	[0, 1, 0, 2, 51, 49, 0, 54, 50, 2, 0, 1, 0],
+	[0, 1, 0, 2, 2, 2, 0, 2, 2, 2, 0, 1, 0],
+	[2, 2, 0, 1, 1, 3, 3, 3, 1, 1, 0, 2, 2],
+	[0, 0, 0, 0, 0, 4, 4, 4, 0, 0, 0, 0, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 9, 0, 9, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+	[0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0]
+]
+
 # 商店房专属地图 —— 之前商店走的是普通 "battle" 池, 跟战斗房抽同一批手搓
 # 模板, 而 main.gd::_build_shop_room() 只是把货位摆在固定格子 (col 2/6/10,
 # row 4/8) 和换货机 (10,10) 上, 从不检查那几格底下是不是砖/钢/水 —— 抽到
@@ -1558,6 +1621,7 @@ const TEMPLATE_MIN_FLOOR: Dictionary = {
 	TEMPLATE_CONDUIT_CROSSFIRE: 2, TEMPLATE_RADAR_COMMAND_CENTER: 2, TEMPLATE_SNIPER_AMMO_DEPOT: 2,
 	TEMPLATE_BUNKER_REDOUBT: 2, TEMPLATE_ARACHNID_BUNKER_ASSAULT: 2, TEMPLATE_RADAR_SNIPER_FORTRESS: 2,
 
+	TEMPLATE_CIRCUIT_VAULT: 5, TEMPLATE_CIRCUIT_MAZE: 5,
 	TEMPLATE_INFERNO_JAMMER_REFINERY: 3, TEMPLATE_TURBINE_FERRY_STRAIT: 4,
 	TEMPLATE_WARP_TESLA_CRUCIBLE: 5, TEMPLATE_APEX_SOLAR_COLLIDER: 5,
 	TEMPLATE_TESLA_CONVEYOR_FOUNDRY: 5, TEMPLATE_GLACIAL_WORMHOLE_CITADEL: 5,
@@ -1630,8 +1694,8 @@ static func validate_layout(grid: Array) -> Array[String]:
 	for r in range(13):
 		for c in range(13):
 			var v := int(grid[r][c])
-			if v < 0 or v > 44:
-				errs.append("(%d,%d) 地形号 %d 越界 (合法 0-44)" % [r, c, v])
+			if v < 0 or v > 55:
+				errs.append("(%d,%d) 地形号 %d 越界 (合法 0-55)" % [r, c, v])
 	for c in [5, 6, 7]:
 		if int(grid[12][c]) != 0:
 			errs.append("鹰巢格 (12,%d) 必须为空" % c)
@@ -1712,7 +1776,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 	elif battle_type == "challenge" or GameState.mode == GameState.GameMode.DAILY_CHALLENGE:
 		match current_act:
 			1:
-				var pc1 = [TEMPLATE_CHECKERBOARD, TEMPLATE_CITADEL, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_ENEMY_SHIELD_BASTION, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_BUNKER_REDOUBT, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA, TEMPLATE_MOMENTUM_PINBALL_REDOUBT, TEMPLATE_FACTORY_BARRICADE_SIEGE]
+				var pc1 = [TEMPLATE_CHECKERBOARD, TEMPLATE_CITADEL, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_ENEMY_SHIELD_BASTION, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_PIPELINE_PINBALL_NEXUS, TEMPLATE_BUNKER_REDOUBT, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA, TEMPLATE_MOMENTUM_PINBALL_REDOUBT, TEMPLATE_FACTORY_BARRICADE_SIEGE, TEMPLATE_CIRCUIT_VAULT]
 				return _pick_from_pool(pc1, floor_idx, room_entropy)
 			2:
 				var pc2 = [TEMPLATE_NAVAL_DELTA, TEMPLATE_OIL_REFINERY, TEMPLATE_JUMP_ARCHIPELAGO, TEMPLATE_QUICKSAND_FOUNDRY, TEMPLATE_DEMOLITION_TRENCH, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_SHIELD_LABYRINTH, TEMPLATE_WIND_TEMPEST, TEMPLATE_INFERNO_REFINERY, TEMPLATE_SNIPER_AMMO_DEPOT, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_ENGINEER_FACTORY_COMPLEX, TEMPLATE_TESLA_CONVEYOR_FOUNDRY, TEMPLATE_QUICKSAND_BUNKER_OUTPOST, TEMPLATE_NAVAL_FERRY_SALVAGE, TEMPLATE_INFERNO_JAMMER_REFINERY, TEMPLATE_TURBINE_FERRY_STRAIT]
@@ -1725,7 +1789,7 @@ static func get_layout_for_stage(floor_idx: int, battle_type: String, act: int =
 	elif battle_type == "elite":
 		match current_act:
 			1:
-				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA, TEMPLATE_MOMENTUM_PINBALL_REDOUBT, TEMPLATE_FACTORY_BARRICADE_SIEGE]
+				var p1 = [TEMPLATE_CITADEL, TEMPLATE_CHECKERBOARD, TEMPLATE_MIRAGE_JUNGLE_MAZE, TEMPLATE_SHIELD_OUTPOST, TEMPLATE_CONVEYOR_FACTORY, TEMPLATE_NIGHT_HIGHWAY, TEMPLATE_HYPERDRIVE_PINBALL, TEMPLATE_JAMMER_OUTPOST, TEMPLATE_FACTORY_ESCORT, TEMPLATE_CONDUIT_CROSSFIRE, TEMPLATE_RADAR_COMMAND_CENTER, TEMPLATE_ARACHNID_BUNKER_ASSAULT, TEMPLATE_RADAR_SNIPER_FORTRESS, TEMPLATE_WOODEN_FORTRESS_LABYRINTH, TEMPLATE_BUNKER_CROSSFIRE_VALLEY, TEMPLATE_PIPE_AMMO_REFLEX_ARENA, TEMPLATE_MOMENTUM_PINBALL_REDOUBT, TEMPLATE_FACTORY_BARRICADE_SIEGE, TEMPLATE_CIRCUIT_MAZE]
 				p1 += CustomMapStore.eligible_layouts(1, "elite", floor_idx)
 				return _pick_from_pool(p1, floor_idx, room_entropy)
 			2:

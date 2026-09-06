@@ -163,3 +163,44 @@ func _test_large_room_clamp(main_inst, size: int) -> void:
 				% [str(corner), str(cam), lo_x, hi_x, lo_y, hi_y])
 	if bad == 0:
 		ok("%d 个角落测试全部通过, 摄像机始终夹在房间边界内" % corners.size())
+
+	# 上面这段只查了 room_camera.position 这一个数字属性有没有落在合法范围
+	# 内——这正是真实 bug (玩家反馈"大地图看不到坦克, 只看到移动") 能够
+	# 蒙混过关的原因: camera.position 每帧都在合法范围内正确更新, 但
+	# camera.offset 沿用了钉死模式那套按 room_center 校准的公式, 代入跟随
+	# 目标后两者相消, 玩家在屏幕上的实际投影坐标退化成一个跟目标点无关的
+	# 常数, 常数本身落在 1024x768 画布之外——纯粹检查 position 数值完全看
+	# 不出这个问题。这里补上"投影到屏幕坐标后必须落在游戏区列内"的断言,
+	# 直接复现 _update_camera_bounds() 顶部注释里 screen(L) 那条公式。
+	await _test_followed_point_projects_onscreen(main_inst, room_px)
+
+
+## 断言"被跟随的目标点"投影到屏幕坐标后落在游戏区列内 (base_game_area_pos
+## 到 base_game_area_pos+CAMERA_VISIBLE_SIZE), 而不是钉死模式那套公式算出来
+## 的、跟目标点无关的画布外常数。分别测房间正中心 (跟随不被夹住的典型情形)
+## 和一个夹墙边缘点 (跟随被夹住的情形), 两种情形都必须过。
+func _test_followed_point_projects_onscreen(main_inst, room_px: float) -> void:
+	var vis: Vector2 = main_inst.CAMERA_VISIBLE_SIZE
+	var vp: Vector2 = main_inst.get_viewport_rect().size
+	var base: Vector2 = main_inst.base_game_area_pos
+	var screen_lo: Vector2 = base - Vector2(EPS, EPS)
+	var screen_hi: Vector2 = base + vis + Vector2(EPS, EPS)
+
+	var samples := {
+		"房间正中心 (不被夹住)": Vector2(room_px / 2.0, room_px / 2.0),
+		"贴近左上角 (被夹住)": Vector2(10.0, 10.0),
+	}
+	var bad := 0
+	for label in samples:
+		var local_pos: Vector2 = samples[label]
+		main_inst.p1_instance.global_position = main_inst.map_container.to_global(local_pos)
+		await process_frame
+		var cam: Vector2 = main_inst.room_camera.position
+		var offset: Vector2 = main_inst.room_camera.offset
+		var screen: Vector2 = vp / 2.0 + local_pos - cam - offset
+		if screen.x < screen_lo.x or screen.x > screen_hi.x or screen.y < screen_lo.y or screen.y > screen_hi.y:
+			bad += 1
+			fail("跟随目标 [%s] 投影到屏幕坐标 %s, 应落在游戏区列 x[%.1f,%.1f] y[%.1f,%.1f] 内, 却跑出去了 (camera.offset 可能还在用钉死模式的公式)"
+				% [label, str(screen), screen_lo.x, screen_hi.x, screen_lo.y, screen_hi.y])
+	if bad == 0:
+		ok("被跟随目标的屏幕投影正确落在游戏区列内 (%d 个采样点)" % samples.size())

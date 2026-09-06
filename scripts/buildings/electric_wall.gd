@@ -26,10 +26,16 @@ var is_powered: bool = true
 ## 电路接通后把这堵墙变成"完全惰性": 停止电击 (_try_shock_body 的守卫) 并且
 ## 变得可以直接穿过 (collision_shape.disabled), 视觉上压暗到跟 shield_station
 ## 没电时同一套"熄灭"配色, 停掉原本的闪烁动画。
+##
+## 触发链路是 piston_switch.gd::_on_body_entered() (Area2D.body_entered) ->
+## main.gd::_on_circuit_switch_pressed() -> 这里, 全程都在物理查询 flush 期间
+## 同步调用。直接改 collision_shape.disabled 会撞上引擎那句 "Can't change
+## this state while flushing queries" (shop_dialog.gd::_on_reroll_pressed()
+## 同一类, 见 CLAUDE.md), 所以碰撞体的改动要 call_deferred 到 flush 结束后。
 func set_circuit_solved(solved: bool) -> void:
 	is_powered = not solved
 	if collision_shape:
-		collision_shape.disabled = solved
+		collision_shape.set_deferred("disabled", solved)
 	if solved and sprite:
 		sprite.modulate = Color(0.35, 0.35, 0.4, 0.5)
 

@@ -70,6 +70,8 @@ var treasure_key_scene: PackedScene
 var diamond_gem_scene: PackedScene
 var street_lamp_scene: PackedScene
 var electric_wall_scene: PackedScene
+var bomb_switch_scene: PackedScene
+var energy_wall_scene: PackedScene
 var oil_barrel_scene: PackedScene
 var signal_jammer_tower_scene: PackedScene
 var factory_scene: PackedScene
@@ -288,13 +290,42 @@ func _room_center_local() -> Vector2:
 ## 画面跟没有摄像机时逐像素一致"(即 screen(L) == base_game_area_pos + L),
 ## 代入 camera.position == room_center (钉死不滚动的情形) 解出:
 ##   camera.offset == VP/2 - room_center - base_game_area_pos
-## 这就是 camera_offset_base。换房间 (GRID_W/GRID_H 变了) 或窗口尺寸变了
-## 都要重算一次; 之后每帧只是在这个基准上叠加抖动, 不再重算。
+## 这就是钉死模式的 offset。换房间 (GRID_W/GRID_H 变了) 或窗口尺寸变了都要
+## 重算一次; 之后每帧只是在这个基准上叠加抖动, 不再重算。
+##
+## 大/超大房间的跟随模式不能照搬这条 offset —— 曾经这样实现过, 是一个真实
+## 出现过的 bug (玩家反馈"大地图看不到坦克, 只看到移动"): 跟随模式下
+## camera.position 每帧都在变 (追着玩家的本地坐标 L), 不再是常量
+## room_center。把 screen(L) = VP/2 + L - camera.position - offset 代入
+## camera.position == L (没被夹住时的跟随结果) 化简, L 会跟自己抵消掉,
+## 结果 screen(L) = VP/2 - offset + (room_center 项的残留) —— 一个**跟 L
+## 无关的常数**, 换算下来落在 room_center + base_game_area_pos, 对超大房间
+## 而言远远超出 1024x768 画布之外。也就是说摄像机属性(position/offset)
+## 每帧都在正确更新、连通性和地形分派也都正常, 但玩家在屏幕上的实际投影
+## 位置纹丝不动地钉在画布外的同一个点上——只有夹墙(clamp)生效的边缘地带
+## 才会因为 L 和 camera.position 出现差值而露出一点点画面, 这正好对应
+## "摄像机不跟随、只有卡边时才动一下"的症状。
+##
+## 跟随模式需要一条不挂 room_center 的独立公式: 让"任意被跟随的本地点"都
+## 落在游戏区列的正中央 (base_game_area_pos + CAMERA_VISIBLE_SIZE/2), 而不是
+## 复用钉死模式那个针对常量 room_center 校准出来的偏移量。推导方式相同,
+## 只是把"钉死点 room_center"换成"跟随模式下屏幕上应该显示被跟随点的锚点":
+##   camera.offset == VP/2 - (base_game_area_pos + CAMERA_VISIBLE_SIZE/2)
+## 按轴分别判定是否进入跟随模式 (跟 _camera_clamp_axis 的 room_size <= visible
+## 判据保持一致), 因为两个方向理论上可能不同时超出可视区 (虽然目前大/超大
+## 房间恒为正方形, 两轴总是同时触发)。
 func _update_camera_bounds() -> void:
 	if not room_camera:
 		return
 	var room_center := _room_center_local()
-	camera_offset_base = get_viewport_rect().size / 2.0 - room_center - base_game_area_pos
+	var vp := get_viewport_rect().size
+	var pinned_offset := vp / 2.0 - room_center - base_game_area_pos
+	var follow_anchor := base_game_area_pos + CAMERA_VISIBLE_SIZE / 2.0
+	var follow_offset := vp / 2.0 - follow_anchor
+	camera_offset_base = Vector2(
+		follow_offset.x if GRID_W * TILE_SIZE > CAMERA_VISIBLE_SIZE.x else pinned_offset.x,
+		follow_offset.y if GRID_H * TILE_SIZE > CAMERA_VISIBLE_SIZE.y else pinned_offset.y
+	)
 	room_camera.offset = camera_offset_base
 	room_camera.position = room_center
 	camera_target_local = room_center
@@ -1779,6 +1810,26 @@ func _build_map() -> void:
 				_spawn_wooden_wall(pos)
 			elif tile_type == 45:
 				_spawn_tile("reinforced_steel", pos, tex_reinforced_steel)
+			elif tile_type == 46:
+				_spawn_piston_switch(pos, "red")
+			elif tile_type == 47:
+				_spawn_piston_switch(pos, "blue")
+			elif tile_type == 48:
+				_spawn_gated_electric_wall(pos, "red")
+			elif tile_type == 49:
+				_spawn_gated_electric_wall(pos, "blue")
+			elif tile_type == 50:
+				_spawn_gated_shield_station(pos, "red")
+			elif tile_type == 51:
+				_spawn_gated_shield_station(pos, "blue")
+			elif tile_type == 52:
+				_spawn_bomb_switch(pos, "red")
+			elif tile_type == 53:
+				_spawn_bomb_switch(pos, "blue")
+			elif tile_type == 54:
+				_spawn_energy_wall(pos, "red")
+			elif tile_type == 55:
+				_spawn_energy_wall(pos, "blue")
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters).
 	# 只在战斗房加 —— 这段是在 _build_map() 尾部无条件跑的, 跟房间类型无关;
@@ -2166,7 +2217,7 @@ func _spawn_piston_switch(pos: Vector2, color: String) -> void:
 	if not piston_switch_scene:
 		piston_switch_scene = load("res://scenes/buildings/piston_switch.tscn")
 	if piston_switch_scene:
-		var sw: PistonSwitch = piston_switch_scene.instantiate()
+		var sw = piston_switch_scene.instantiate()
 		sw.gate_color = color
 		sw.position = pos
 		actors_container.add_child(sw)
@@ -2214,8 +2265,34 @@ func _on_circuit_switch_pressed(color: String) -> void:
 		if is_instance_valid(building) and building.has_method("set_circuit_solved"):
 			building.set_circuit_solved(true)
 	SoundManager.play_pickup(get_tree())
-	var color_label := {"red": "红色", "blue": "蓝色"}.get(color, color)
+	var color_label: String = {"red": "红色", "blue": "蓝色"}.get(color, color)
 	show_toast("🔌 %s电路已接通！" % color_label)
+
+## 可摧毁开关: 跟 _spawn_piston_switch 接同一个 switch_pressed 信号 ->
+## _on_circuit_switch_pressed, 两种触发方式共用一份 circuit_solved 状态。
+func _spawn_bomb_switch(pos: Vector2, color: String) -> void:
+	if not bomb_switch_scene:
+		bomb_switch_scene = load("res://scenes/buildings/bomb_switch.tscn")
+	if bomb_switch_scene:
+		var sw = bomb_switch_scene.instantiate()
+		sw.gate_color = color
+		sw.position = pos
+		actors_container.add_child(sw)
+		sw.switch_pressed.connect(_on_circuit_switch_pressed)
+
+## 能量墙: 出生即对一切火力免疫, 只有同色开关 (压力板或可摧毁款均可) 触发后
+## set_circuit_solved(true) 才会让它自我摧毁——见 energy_wall.gd 顶部注释。
+func _spawn_energy_wall(pos: Vector2, color: String) -> void:
+	if not energy_wall_scene:
+		energy_wall_scene = load("res://scenes/buildings/energy_wall.tscn")
+	if energy_wall_scene:
+		var ew = energy_wall_scene.instantiate()
+		ew.gate_color = color
+		ew.position = pos
+		map_container.add_child(ew)
+		if not circuit_gated_buildings.has(color):
+			circuit_gated_buildings[color] = []
+		circuit_gated_buildings[color].append(ew)
 
 func _spawn_oil_barrel(pos: Vector2) -> void:
 	if not oil_barrel_scene:

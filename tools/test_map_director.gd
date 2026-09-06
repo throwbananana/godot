@@ -42,6 +42,7 @@ func _init() -> void:
 	_check_repair()
 	_check_fallback()
 	_check_layout_pipeline()
+	_check_circuit_gate()
 
 	print("==================================================")
 	if failures > 0:
@@ -246,3 +247,57 @@ func _check_layout_pipeline() -> void:
 		ok("%d 组 (act x floor) 全部合格, 含 5 个程序生成层" % checked)
 	else:
 		fail("共 %d/%d 组不合格" % [bad, checked])
+
+
+## 程序生成图里的开关/电路谜题 (_place_circuit_gate): 只在档 2 (floor>=5)
+## 才可能出现, 出现时必须自带一对合法的同色开关+受控墙 (46-55 号地块),
+## 且哪怕这次真摆上了, 图依然要能通过完整验收 (包括可达性)——摆坏了应该
+## 被 validate() 拦下重摇, 而不是带着一张隔断的图流出去。
+func _check_circuit_gate() -> void:
+	print("\n--- 程序生成的开关/电路谜题 ---")
+	var switch_tiles := [46, 47, 52, 53]
+	var wall_tiles := [48, 49, 54, 55]
+	var seen_gate := 0
+	var bad := 0
+	var floor0_leaked := 0
+	var N := 60
+	for i in range(N):
+		# floor 0 (档 0) 绝不该出现电路谜题——跟"floor 0 应该是纯地形图"
+		# 同一条底线, 混进电路谜题会让入门楼层混进只有档 2 才该有的机制。
+		var g0 = MapDirector.build(0, 1)
+		for r in range(13):
+			for c in range(13):
+				if int(g0[r][c]) in switch_tiles or int(g0[r][c]) in wall_tiles:
+					floor0_leaked += 1
+
+		var g = MapDirector.build(5, 1)
+		var has_switch := false
+		var has_wall := false
+		for r in range(13):
+			for c in range(13):
+				var v := int(g[r][c])
+				if v in switch_tiles:
+					has_switch = true
+				elif v in wall_tiles:
+					has_wall = true
+		if has_switch or has_wall:
+			seen_gate += 1
+			if not (has_switch and has_wall):
+				bad += 1
+				if bad == 1:
+					fail("floor 5 的图只有开关没有墙 (或反之)——摆了一半")
+		var problems = MapDirector.validate(g, 2)
+		if not problems.is_empty():
+			bad += 1
+			if bad == 1:
+				fail("floor 5 的图 (可能带电路谜题) 没通过验收: %s" % str(problems))
+
+	if floor0_leaked > 0:
+		fail("floor 0 的图里出现了 %d 处开关/受控墙地块——档禁没生效" % floor0_leaked)
+	elif bad > 0:
+		fail("%d/%d 张 floor 5 的图有问题" % [bad, N])
+	elif seen_gate == 0:
+		fail("采样 %d 张 floor 5 的图, 一次电路谜题都没摆出来 (CIRCUIT_GATE_CHANCE 是不是失效了)" % N)
+	else:
+		ok("floor 0 无泄漏; floor 5 采样 %d 张, %d 张摆出电路谜题, 全部开关/墙成对且通过验收"
+			% [N, seen_gate])
