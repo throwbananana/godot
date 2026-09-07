@@ -321,16 +321,23 @@ static func get_act_name(act_idx: int = -1) -> String:
 	var suffix = "" if cycle == 0 else "  [重临 x%d / Lap %d]" % [cycle + 1, cycle + 1]
 	return "ACT %d: %s%s" % [a, base_name, suffix]
 
+## 曾经在这里手抄了一份 heavy/train/counter/trench 的加成公式, 和
+## RPGManager 那四张 *_HP_BONUS 表各自独立维护 —— 结果没有一条真的对得上:
+## heavy 是 `2+tier*2` (tier1=4, 表里是 1; tier2=6, 表里是 5), train 是
+## `1+tier` (tier1=2, 表里是 1), counter/trench 是 `2+tier` (tier1=3, 表里
+## 都是 2)。两边只有 tier2 的 counter/trench 碰巧对上。这份地图回退值
+## (没有存活 RPGManager 时用, 比如地图界面) 因此和真正战斗里的血量对不上。
+## 直接引用 RPGManager 的表 (GDScript 的类常量不需要实例就能读), 单一数据源。
 static func get_player_max_hp() -> int:
 	var bonus_hp = 0
 	if tank_branch == "heavy":
-		bonus_hp += 2 + branch_tier * 2
+		bonus_hp += RPGManager.HEAVY_HP_BONUS[branch_tier]
 	elif tank_branch == "train":
-		bonus_hp += 1 + branch_tier
+		bonus_hp += RPGManager.TRAIN_HP_BONUS[branch_tier]
 	elif tank_branch == "counter":
-		bonus_hp += 2 + branch_tier
+		bonus_hp += RPGManager.COUNTER_HP_BONUS[branch_tier]
 	elif tank_branch == "trench":
-		bonus_hp += 2 + branch_tier
+		bonus_hp += RPGManager.TRENCH_HP_BONUS[branch_tier]
 	return 1 + max_hp_lvl + bonus_hp
 
 static func reset_campaign(p_count: int = 1) -> void:

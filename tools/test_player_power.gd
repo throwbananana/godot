@@ -61,6 +61,7 @@ func _run() -> void:
 	_check_regen_beatable()
 	await _check_regen_lockout_wired()
 	_check_train_scales()
+	_check_train_total_dps_parity()
 	_check_no_selling_zero()
 	_check_branch_opening_parity()
 	_check_branch_tier1_parity()
@@ -265,6 +266,81 @@ func _check_train_scales() -> void:
 			% ", ".join(bad)
 			+ "主炮一路涨到 7-13 伤的时候, 写死 1/2 的车厢会被稀释成个位数占比, "
 			+ "train 的分支特色就名存实亡了")
+
+
+# ------------------------------------------------------------ 2b. train 总输出
+
+## _check_train_scales() 只测车厢占总输出的*比例*, 从没把 train 的*总* DPS
+## (主炮 + 两节车厢) 摆到 heavy/speed 旁边比过一次绝对量级。更关键的是,
+## train 的主炮伤害加成以前完全写死在 player.gd 的武器分支里 (`dmg + 1 +
+## b_tier`), 不走 RPGManager.get_atk_damage() —— 上面 4/5 号的开局平价检查
+## 只调这个函数, 所以 train 的主炮加成从来没被任何一条平价检查看见过。
+## 把它挪进 RPGManager.TRAIN_DMG_BONUS 之后 (集中管理, 见该文件注释) 这条
+## 缺口才第一次能被量出来: 直接搬用旧公式在 tier1 会算出 x3.0 的开局倍差,
+## 比 heavy 当年那次 tier1 3.40x 的 bug 还夸张。TRAIN_DMG_BONUS 改成
+## [0, 0, 1] 之后 (tier1 = 0, 车厢本身就是 tier1 的回报, 不需要主炮再叠一份)
+## tier0/tier1 那两条平价检查天然会把这个新加的加成量进去, 不需要专门再测
+## tier1——但 tier2 之后的*总*输出 (主炮 6-7 伤 + 两节车厢) 摆没摆到位从来
+## 没人测过, 这条补上。
+##
+## 不把 default 拉进这个对比: default 在 upgrade_tier==2/3 时每次开火会多打
+## 一发子弹 (双弹), 现有任何一条测试都没建模这部分, 硬拉进来对比找到的会是
+## default 自己的口径缺口, 和 train 无关。这里只保证 train/heavy/speed 三个
+## "单目标持续输出"分支互相之间同一量级。
+const TRAIN_TOTAL_DPS_SPREAD_CEILING := 1.6
+
+func _check_train_total_dps_parity() -> void:
+	print("\n--- train 总输出 (主炮+车厢) 要和 heavy/speed 同一量级 ---")
+	var host := Node.new()
+	host.set_script(load("res://tools/_player_power_host.gd"))
+	root.add_child(host)
+	var prev_scene = current_scene
+	current_scene = host
+
+	var head := TrainStub.new()
+	head.player_id = 1
+	root.add_child(head)
+	var carriage_scene: PackedScene = load("res://scenes/train_carriage.tscn")
+
+	var bad: Array[String] = []
+	var detail := PackedStringArray()
+	for lvl in [12, 18, 24]:
+		var mt := _mgr_at(lvl, "train", 2)
+		host.rpg_mgr = mt
+
+		var car = carriage_scene.instantiate()
+		car.leader_node = head
+		root.add_child(car)
+		var turret: int = car._carriage_damage(false)
+		var rocket: int = car._carriage_damage(true)
+		car.free()
+
+		var main_dps := float(mt.get_atk_damage(1)) / _cd_for(mt, "train")
+		var car_dps := (float(turret) + float(rocket)) / 0.85 # fire_interval, train_carriage.gd::_ready
+		var train_total := main_dps + car_dps
+
+		var mh := _mgr_at(lvl, "heavy", 2)
+		var ms := _mgr_at(lvl, "speed", 2)
+		var heavy_dps := float(mh.get_atk_damage(1)) / _cd_for(mh, "heavy")
+		var speed_dps := float(ms.get_atk_damage(1)) / _cd_for(ms, "speed")
+
+		var hi := maxf(train_total, maxf(heavy_dps, speed_dps))
+		var lo := minf(train_total, minf(heavy_dps, speed_dps))
+		var spread := hi / maxf(0.001, lo)
+		detail.append("%d级 train=%.1f heavy=%.1f speed=%.1f (x%.2f)" % [lvl, train_total, heavy_dps, speed_dps, spread])
+		if spread > TRAIN_TOTAL_DPS_SPREAD_CEILING:
+			bad.append("%d 级倍差 x%.2f" % [lvl, spread])
+
+	head.free()
+	current_scene = prev_scene
+	host.free()
+
+	if bad.is_empty():
+		ok("train 总输出 vs heavy/speed: %s (上限 x%.2f)" % [" / ".join(detail), TRAIN_TOTAL_DPS_SPREAD_CEILING])
+	else:
+		fail("train 总输出偏离 heavy/speed 太多: %s —— %s"
+			% [", ".join(bad), " / ".join(detail)]
+			+ "; 车厢伤害是不是又写死了, 或者 TRAIN_DMG_BONUS 改动之后没有重新校准")
 
 
 # ---------------------------------------------------------------- 3. 不卖零

@@ -35,6 +35,19 @@ const PERK_STACK_CURVE := [1.0, 0.65, 0.45]
 const HEAVY_HP_BONUS := [0, 1, 5]
 const HEAVY_DMG_BONUS := [0, 1, 5]
 const TRAIN_HP_BONUS := [0, 1, 3]
+## train 主炮的伤害加成。原来是硬编码在 player.gd 武器分支里的 `dmg + 1 +
+## b_tier`, 不走这张表 —— 后果是 get_atk_damage() 对 train 分支永远只返回
+## "1 + atk_bonus", 而 tools/test_player_power.gd 的 tier0/tier1 分支平价
+## 检查就是靠调这个函数量 DPS 的, 所以 train 真实的主炮强度从来没被那两条
+## 闸门看见过。
+##
+## 集中到这张表之后立刻暴露了问题: 原公式在 tier1 (1级, atk_bonus=0) 算出
+## 主炮伤害 3, 是 default (伤害 1) 的 3 倍, DPS 倍差 x3.0 —— 比 heavy 当年
+## 那次 tier1 3.40x 的 bug 还夸张, 只是因为不走这张表所以从来没被测试
+## 抓到过。tier1 定为 0、tier2 定为 1: tier1 的"开局回报"本来就该是那节
+## 立刻挂上的炮塔车厢 (拿到 CARRIAGE_SHARE_FLOOR 测的那份独立 DPS), 不需要
+## 主炮再叠一份; tier2 给 +1, 和当时一起解锁的 can_destroy_steel 呼应。
+const TRAIN_DMG_BONUS := [0, 0, 1]
 const SPEED_MOVE_BONUS := [0.0, 0.25, 0.60]
 const SPEED_FIRE_BONUS := [0.0, 0.70, 1.50]
 const COUNTER_HP_BONUS := [0, 2, 4]
@@ -314,6 +327,8 @@ func get_atk_damage(player_id: int = 1) -> int:
 	var dmg = 1 + atk_bonus
 	if branch == "heavy":
 		dmg += HEAVY_DMG_BONUS[tier]
+	elif branch == "train":
+		dmg += TRAIN_DMG_BONUS[tier]
 	elif branch == "counter":
 		dmg += COUNTER_DMG_BONUS[tier]
 	elif branch == "trench":

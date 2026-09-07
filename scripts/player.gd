@@ -97,6 +97,12 @@ var bullet_scene: PackedScene
 var explosion_scene: PackedScene
 var carriage_scene: PackedScene
 var attached_carriages: Array[Node2D] = []
+var train_respawn_timer: float = 0.0
+## 车厢阵亡后多久补回来。TrainCarriage.destroyed 信号原来完全没人接 ——
+## 车厢一旦在战斗中被打掉, 剩下这一整局都不会再补, tier2 打到只剩机车裸奔
+## 也是正常状态。设一个有感知的等待 (不是即时白给), 让车厢确实是"可以再战
+## 一场"的资源而不是一次性的。
+const TRAIN_CARRIAGE_RESPAWN_TIME := 12.0
 
 var base_color: Color = Color(1.0, 1.0, 1.0)
 var hit_tween: Tween
@@ -238,18 +244,33 @@ func _sync_train_carriages(b_tier: int) -> void:
 			valid_carriages.append(c)
 	attached_carriages = valid_carriages
 
+	# 按类型判断缺哪节, 不是按数量。原来只看 size()==0 / size()==1, 在
+	# "炮塔活着、火箭被打掉"这种情况下会算错: 剩下的那节车厢是炮塔, 但
+	# size()==1 的分支会把它当成"还没长出来的炮塔", 拿它去当火箭的 leader
+	# setup 出第二节火箭, 变成两节火箭、没有炮塔。
+	var turret_carriage: Node2D = null
+	var has_rocket := false
+	for c in attached_carriages:
+		if "carriage_type" in c:
+			if c.carriage_type == "turret":
+				turret_carriage = c
+			elif c.carriage_type == "rocket":
+				has_rocket = true
+
 	# First carriage: Turret Wagon
-	if attached_carriages.size() == 0:
-		var c1 = carriage_scene.instantiate()
-		get_parent().add_child(c1)
-		c1.setup(self, "turret", false)
-		attached_carriages.append(c1)
+	if turret_carriage == null:
+		turret_carriage = carriage_scene.instantiate()
+		get_parent().add_child(turret_carriage)
+		turret_carriage.setup(self, "turret", false)
+		turret_carriage.destroyed.connect(_on_carriage_destroyed)
+		attached_carriages.append(turret_carriage)
 
 	# Second carriage (Tier 2): Rocket Artillery Wagon
-	if b_tier >= 2 and attached_carriages.size() == 1:
+	if b_tier >= 2 and not has_rocket:
 		var c2 = carriage_scene.instantiate()
 		get_parent().add_child(c2)
-		c2.setup(attached_carriages[0], "rocket", false)
+		c2.setup(turret_carriage, "rocket", false)
+		c2.destroyed.connect(_on_carriage_destroyed)
 		attached_carriages.append(c2)
 
 func _clear_train_carriages() -> void:
@@ -257,6 +278,27 @@ func _clear_train_carriages() -> void:
 		if is_instance_valid(c):
 			c.queue_free()
 	attached_carriages.clear()
+	train_respawn_timer = 0.0
+
+## TrainCarriage.destroyed 信号的唯一接线端。之前这个信号发出去了但没人接,
+## 车厢被打掉之后 attached_carriages 里那个失效引用要等下一次
+## _sync_train_carriages() (选分支/升 tier/重新 _ready()) 才会被清掉, 而
+## tier2 之后这三个触发点在一局内都不会再发生 —— 所以车厢就是打没了。
+func _on_carriage_destroyed(c: Node2D) -> void:
+	attached_carriages.erase(c)
+	if is_dying:
+		return # 机车自己也在死, _die() 会自己处理, 不需要再排一次重生
+	train_respawn_timer = TRAIN_CARRIAGE_RESPAWN_TIME
+
+## 由 _physics_process() 每帧调用。拆成独立函数方便测试直接快进
+## (train_respawn_timer 12 秒, 不该也不需要在测试里真等 12 秒)。
+func _process_train_respawn(delta: float) -> void:
+	if train_respawn_timer <= 0.0:
+		return
+	train_respawn_timer -= delta
+	if train_respawn_timer <= 0.0:
+		train_respawn_timer = 0.0
+		_update_tier_appearance()
 
 const POWERUP_ENCYCLOPEDIA_IDS := {
 	PowerUp.Type.STAR: "item_star",
@@ -408,6 +450,8 @@ func _physics_process(delta: float) -> void:
 
 	if regen_lockout > 0.0:
 		regen_lockout -= delta
+
+	_process_train_respawn(delta)
 
 	var main = get_tree().current_scene
 	if main and main.rpg_mgr:
@@ -723,7 +767,7 @@ func _shoot() -> void:
 			var bullet = bullet_scene.instantiate()
 			bullet.direction = facing_direction
 			bullet.speed = 580.0
-			bullet.damage = dmg + 1 + b_tier
+			bullet.damage = dmg # get_atk_damage() already folds in RPGManager.TRAIN_DMG_BONUS
 			bullet.can_destroy_steel = (b_tier >= 2)
 			bullet.shooter = self
 			bullet.shooter_type = "player"
@@ -804,10 +848,16 @@ func _die() -> void:
 	if is_dying:
 		return
 	is_dying = true
-	for c in attached_carriages:
+	# 强制走每节车厢自己的 take_damage()/_die() 链路 (爆炸+冲击波+destroyed
+	# 信号), 和 enemy.gd::TRAIN_BOSS 死亡时对自己车厢做的处理一致 —— 直接
+	# queue_free() 车厢会跳过它自己的死亡表现, 看起来像凭空消失。复制一份
+	# 数组再遍历: take_damage() 会同步触发 _on_carriage_destroyed(), 它会
+	# 从 attached_carriages 里 erase(c), 直接遍历原数组会在迭代时改动它。
+	for c in attached_carriages.duplicate():
 		if is_instance_valid(c):
-			c.queue_free()
+			c.take_damage(999)
 	attached_carriages.clear()
+	train_respawn_timer = 0.0
 
 	if explosion_scene:
 		var exp_inst = explosion_scene.instantiate()

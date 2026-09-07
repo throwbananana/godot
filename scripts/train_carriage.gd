@@ -89,6 +89,39 @@ func setup(leader: Node2D, type: String, enemy_flag: bool = false) -> void:
 		rotation = leader.rotation
 	_load_textures()
 
+	if not is_enemy:
+		_apply_scaled_max_health()
+		var main = get_tree().current_scene
+		if main and "rpg_mgr" in main and main.rpg_mgr and not main.rpg_mgr.stats_changed.is_connected(_on_stats_changed):
+			main.rpg_mgr.stats_changed.connect(_on_stats_changed)
+
+## 车厢血量原来是写死的 5, 永远不随等级/tier/act 成长 —— 到后期它相对越来
+## 越脆, 是整条分支唯一一处不吃任何成长曲线的数值。取一半 max_hp_lvl (整数
+## 除法), 呼应 _carriage_damage() 已经在用的"车厢是额外枪管, 只拿半份成长"
+## 的取舍, 不给满额免得车厢比机车本体还肉。
+func _scaled_max_health() -> int:
+	var base := 5
+	var main = get_tree().current_scene
+	if main == null or not ("rpg_mgr" in main) or main.rpg_mgr == null:
+		return base
+	return base + int(main.rpg_mgr.max_hp_lvl) / 2
+
+func _apply_scaled_max_health() -> void:
+	var new_max = _scaled_max_health()
+	max_health = new_max
+	current_health = new_max
+
+## 挂在 rpg_mgr.stats_changed 上, 让血量上限跟着升级实时涨, 而不是只在车厢
+## 刚生成那一刻拍死一个值。上限变化多少, current_health 就跟着补多少 ——
+## 满血的车厢升级后还是满血, 已经掉的那部分血量不会被这次调整偷偷补回来。
+func _on_stats_changed() -> void:
+	if is_enemy:
+		return
+	var new_max = _scaled_max_health()
+	if new_max != max_health:
+		current_health += new_max - max_health
+		max_health = new_max
+
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(leader_node):
 		# Leader is dead; explode carriage
