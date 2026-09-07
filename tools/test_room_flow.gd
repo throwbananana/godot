@@ -232,7 +232,15 @@ func _test_transition_keeps_player_hp(main_inst) -> void:
 		ok("过门后玩家是同一个实例, 血量保持 %d/%d" % [p2.current_health, p2.max_health])
 
 	# 落点必须在门内侧那一格, 不能还站在上一个房间的位置上。
-	var expect := RoomDoor.entry_position_for(FloorMap.opposite(dir), 13, 13)
+	#
+	# 这里不能硬编码 13x13: to_room 的类型是 normal/elite/escort 挑战房都有
+	# 资格被 FloorMap._assign_room_sizes() 标记成 large(26x26)/huge(52x52)
+	# (概率见该函数, ~每 3.5 层一次大房间), 而 main_inst.enter_room() 早就
+	# 按真实房间尺寸重算过 GRID_W/GRID_H 了 (main.gd:1225-1234) —— 直接读
+	# main_inst 上现成的值, 不要自己再猜一遍房间多大。这条曾经在偶然抽到
+	# 大/超大房间当邻居时报"落点太远", 其实落点是对的, 错的是这里期望值
+	# 用的房间尺寸。
+	var expect := RoomDoor.entry_position_for(FloorMap.opposite(dir), main_inst.GRID_W, main_inst.GRID_H)
 	if p2.position.distance_to(expect) > 60.0:
 		fail("过门后玩家落点 %s 离入口 %s 太远" % [str(p2.position), str(expect)])
 	else:
