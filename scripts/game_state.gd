@@ -600,7 +600,17 @@ const SAVE_PATH = "user://campaign_save.json"
 static func has_saved_game() -> bool:
 	return FileAccess.file_exists(SAVE_PATH)
 
-static func save_campaign() -> void:
+## 把整局战役状态打成一个字典。
+##
+## 从 save_campaign() 里拆出来的, 因为**联机也要传同一份东西**: 客户端加入
+## 战役合作时必须完整接管主机的这一局 (幕数、金币、天赋、楼层图、当前房间)。
+##
+## 拆开而不是各写一份的理由是硬的: `tools/test_persistence_roundtrip.gd` 会
+## 反射 GameState 的全部字段, 要求每一个都能穿过 save/load 往返, 漏一个就变红。
+## 联机同步走同一个字典, 就等于**白拿了这条保障** —— 以后给 GameState 加字段,
+## 忘了同步的话那个测试会先叫起来, 而不是等到某一局联机里"客户端的天赋莫名
+## 少了一条"。两份手写清单是绝对会分家的。
+static func campaign_to_dict() -> Dictionary:
 	# floor_rooms 是"字典套字典, 里面还有数组", JSON 能原样吞下去, 不需要像
 	# 原来的 spire_nodes 那样先把 Vector2 拆成 {x, y} —— FloorMap 的房间字典
 	# 刻意只用 int/bool/String/Array, 就是为了免掉那一层手工序列化 (以及它
@@ -652,24 +662,33 @@ static func save_campaign() -> void:
 		"discovered_encyclopedia": discovered_encyclopedia,
 		"difficulty": difficulty,
 	}
+	return save_dict
+
+
+const NetSessionCls = preload("res://scripts/net_session.gd")
+
+
+static func save_campaign() -> void:
+	# **联机客户端一律不写存档。**
+	#
+	# 加入战役合作之后, 这台机器的 GameState 装的是**主机那一局**
+	# (campaign_from_dict 整个覆盖过)。而 save_campaign() 的三个调用点
+	# (visit_room / mark_room_cleared / mark_secret_found) 每过一道门就会
+	# 触发一次 —— 不拦的话, "陪朋友打一局联机战役"会把自己的
+	# campaign_save.json 覆盖成别人的进度, 而且是静默的、不可逆的。
+	#
+	# 拦在这里而不是三个调用点上: 少一处漏, 而且以后新增调用点自动被覆盖。
+	if NetSessionCls.is_client():
+		return
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
-		file.store_string(JSON.stringify(save_dict, "\t"))
+		file.store_string(JSON.stringify(campaign_to_dict(), "\t"))
 		file.close()
 
-static func load_campaign() -> bool:
-	if not FileAccess.file_exists(SAVE_PATH):
-		return false
-	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if not file:
-		return false
-	var json_str = file.get_as_text()
-	file.close()
-	var json = JSON.new()
-	var err = json.parse(json_str)
-	if err != OK or not (json.data is Dictionary):
-		return false
-	var d: Dictionary = json.data
+
+## campaign_to_dict() 的逆。存档读取和联机同步共用 —— 见 campaign_to_dict()
+## 顶部关于"白拿一条回归保障"的说明。
+static func campaign_from_dict(d: Dictionary) -> void:
 	mode = int(d.get("mode", GameMode.CAMPAIGN)) as GameMode
 	player_count = int(d.get("player_count", 1))
 	current_act = int(d.get("current_act", 1))
@@ -714,6 +733,20 @@ static func load_campaign() -> bool:
 	rooms_cleared = int(d.get("rooms_cleared", 0))
 	shop_reroll_cost = int(d.get("shop_reroll_cost", SHOP_REROLL_BASE))
 
+
+static func load_campaign() -> bool:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if not file:
+		return false
+	var json_str = file.get_as_text()
+	file.close()
+	var json = JSON.new()
+	var err = json.parse(json_str)
+	if err != OK or not (json.data is Dictionary):
+		return false
+	campaign_from_dict(json.data)
 	return true
 
 
@@ -769,8 +802,37 @@ static func _load_floor_rooms(raw) -> Dictionary:
 			# 手抄字段表, 加字段必须两头一起改 (见 tools/test_persistence_roundtrip.gd)。
 			"size": str(r.get("size", "normal")),
 		}
+		# 商店货架。**这一行以前是漏的**, 而丢失是完全静默的:
+		# save_campaign() 会把 shop_stock 原样写进文件 (floor_rooms 是整份
+		# duplicate(true)), 却在这里被丢掉。后果正是 _ensure_shop_stock() 那段
+		# 注释里说必须避免的事 —— 在商店房存盘再读档, 货架重新洗一批,
+		# 换货机和它那套递增计费被完全架空。
+		#
+		# 之所以一直没人喊: test_persistence_roundtrip.gd 把 floor_rooms 整个
+		# 豁免了 ("字典套字典还带数组, 比不了嵌套结构"), 而这是那份豁免底下
+		# 唯一一个真的会丢数据的字段。联机把它顶出来了 —— 客户端接管主机的
+		# 战役状态时走的就是这条路, 货架丢了之后客户端看到的是另一批货。
+		if r.has("shop_stock"):
+			room["shop_stock"] = _load_shop_stock(r["shop_stock"])
 		result[str(k)] = room
 	return result
+
+
+## 一格货位只存 id + 成交价 + 是否卖掉 (图标和描述每次从 ShopDialog 现查),
+## 所以还原也只认这三个字段。
+static func _load_shop_stock(raw) -> Array:
+	var out: Array = []
+	if not (raw is Array):
+		return out
+	for e in raw:
+		if not (e is Dictionary):
+			continue
+		out.append({
+			"id": str(e.get("id", "")),
+			"cost": int(e.get("cost", 0)),
+			"sold": bool(e.get("sold", false)),
+		})
+	return out
 
 
 static func _load_bool4(raw) -> Array:
@@ -795,5 +857,9 @@ static func _load_perk_dict(raw) -> Dictionary:
 	return result
 
 static func delete_saved_game() -> void:
+	# 和 save_campaign() 同一个理由: 联机战役里全灭时主机会删掉自己的存档,
+	# 客户端跟着删就等于替对方的失败陪葬掉自己的进度。
+	if NetSessionCls.is_client():
+		return
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(SAVE_PATH)

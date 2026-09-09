@@ -23,6 +23,8 @@ const ShopStand = preload("res://scripts/shop_stand.gd")
 const ShopRerolder = preload("res://scripts/shop_rerolder.gd")
 const ShopDialog = preload("res://scripts/shop_dialog.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const NetSession = preload("res://scripts/net_session.gd")
+const NetPuppet = preload("res://scripts/net_puppet.gd")
 
 const TILE_SIZE: float = 48.0
 const TILE_SCALE: float = TILE_SIZE / 256.0
@@ -620,6 +622,12 @@ func _ready() -> void:
 		upgrade_dialog = upg_scene.instantiate()
 		add_child(upgrade_dialog)
 		upgrade_dialog.option_selected.connect(_on_upgrade_option_selected)
+		# 客户端选完自己的卡, 把索引报给主机去应用 (见 net_apply_remote_upgrade)。
+		upgrade_dialog.remote_option_picked.connect(func(index: int, pid: int):
+			var n := get_node_or_null("/root/Net")
+			if n:
+				n.send_upgrade_pick(index, pid)
+		)
 
 	tex_brick = TextureHelper.get_tex("res://assets/sprites/tiles/tile_brick.png")
 	tex_steel = TextureHelper.get_tex("res://assets/sprites/tiles/tile_steel.png")
@@ -758,7 +766,327 @@ func _ready() -> void:
 	if GameState.debug_unlocked:
 		_build_debug_panel()
 
+	_net_attach()
+
 	start_game()
+
+	# 客户端: 告诉主机"我的世界已经建好了"。从收到开局种子到这一行之间实测
+	# 有两秒以上 (加载全部贴图 + 建 174 块地形), 那段时间里客户端虽然已经在
+	# 发输入包了, 但屏幕上什么都没有 —— 所以主机不能拿"收到过对方的包"
+	# 当作"对方进来了"。放在 _ready() 而不是 start_game() 末尾: 后者在战役
+	# 模式下有一条提前 return, 会漏掉。
+	if NetSession.is_client():
+		var ready_net := get_node_or_null("/root/Net")
+		if ready_net:
+			ready_net.notify_ready()
+
+
+# ================================================================ 联机接线
+#
+# 这一段是 main.gd 对外暴露给 `Net` (scripts/net_manager.gd) 的全部接口。
+# 战斗逻辑本身几乎没有改动 —— 主机跑的就是单机那一套, 客户端靠
+# NetSession.is_authority() 把这些逻辑整段跳过, 只留表现层。
+
+func _net_attach() -> void:
+	var net := get_node_or_null("/root/Net")
+	if net == null:
+		return
+	net.attach_game(self)
+	if not net.peer_left.is_connected(_on_net_peer_left):
+		net.peer_left.connect(_on_net_peer_left)
+
+	if NetSession.is_active():
+		# 暂停菜单里的"重开本关"在联机下必须关掉: 它只重开按按钮的这一台,
+		# 另一端会留在一个已经不存在的世界里, 而且两端的随机种子从此分家。
+		if btn_restart_stage:
+			btn_restart_stage.disabled = true
+			btn_restart_stage.tooltip_text = "联机对局中不能单方面重开"
+		# "退出到标题"要顺带断开会话, 否则 socket 会一直挂着, 下次开房会
+		# 撞到"端口已被占用"。这条连接排在场景切换那条 lambda 后面,
+		# 但 change_scene_to_file 是延迟到帧尾执行的, 所以先断后切。
+		if btn_quit_menu:
+			btn_quit_menu.pressed.connect(func():
+				var n := get_node_or_null("/root/Net")
+				if n:
+					n.leave()
+			)
+
+	if NetSession.is_client():
+		# 客户端在快照到来之前得先有一张一样的地图。种子在 begin_match 里
+		# 已经拿到了, start_game() 会用它建图。
+		#
+		# 这台机器自己那份 GameState 的备份/还原**不在这里** —— 备份必须发生
+		# 在大厅里 (进对局之前, 还没被主机的状态覆盖), 还原在
+		# net_manager.leave()。见 NetSession.client_campaign_backup。
+		if net.has_signal("match_ended") and not net.match_ended.is_connected(_on_net_match_ended):
+			net.match_ended.connect(_on_net_match_ended)
+	if NetSession.is_host():
+		# 可破坏地形消失时把格子坐标广播出去。挂在容器的信号上而不是每种
+		# 砖块脚本里, 是因为这个项目有十几种可破坏方块 (砖/黏土/木墙/
+		# 滚墙/能量墙…), 一个个改等于十几个能漏掉的地方。
+		if not map_container.child_exiting_tree.is_connected(_on_net_tile_exiting):
+			map_container.child_exiting_tree.connect(_on_net_tile_exiting)
+
+
+func _exit_tree() -> void:
+	var net := get_node_or_null("/root/Net")
+	if net:
+		net.detach_game(self)
+
+
+func _on_net_tile_exiting(child: Node) -> void:
+	if not (child is Node2D):
+		return
+	var net := get_node_or_null("/root/Net")
+	if net == null:
+		return
+	var p: Vector2 = (child as Node2D).position
+	net.notify_tile_gone(_grid_col(p.x), _grid_col(p.y), String(child.name).left(6))
+
+
+## 坐标 -> 格号。**必须是 floor 不是 round**: 瓦片摆在格心, 即
+## (col + 0.5) * TILE_SIZE, 所以 24px 是第 0 格、72px 是第 1 格。
+## round 会把 24px(0.5) 和 48px(1.0) 都算成第 1 格 —— 两个不同的位置
+## 撞进同一个格号, 于是"删掉这一格"会删错东西或者什么都删不掉。
+func _grid_col(v: float) -> int:
+	return int(floor(v / TILE_SIZE))
+
+
+## 客户端侧: 主机说某格地形没了。
+##
+## 按 (格号 + 类型前缀) 定位, 不按节点路径 —— 两端的节点名不保证一致
+## (Godot 给重名节点自动加 @ 后缀, 而两端的生成顺序里混着 VFX 之类的
+## 本地节点)。前缀是必要的第二个维度: 一格里可能同时叠着水面精灵和水体
+## 碰撞盒, 只按格号删会把没被摧毁的那半也删掉。
+func net_remove_tile(gx: int, gy: int, tag: String = "") -> void:
+	for child in map_container.get_children():
+		if not (child is Node2D):
+			continue
+		var p: Vector2 = (child as Node2D).position
+		if _grid_col(p.x) != gx or _grid_col(p.y) != gy:
+			continue
+		if tag != "" and String(child.name).left(6) != tag:
+			continue
+		child.queue_free()
+		return
+
+
+## 客户端侧: 一辆玩家坦克的傀儡生成了。把它接到本来就存在的
+## p1_instance / p2_instance 上, 于是摄像机跟随、树冠淡出、夜战雾这些
+## 只认这两个引用的表现代码在客户端上一行都不用改。
+func net_register_player_puppet(node: Node) -> void:
+	if node.player_id == 1:
+		p1_instance = node
+	else:
+		p2_instance = node
+	if darkness_fog_instance and is_instance_valid(darkness_fog_instance):
+		darkness_fog_instance.setup_trackers(p1_instance, p2_instance, base_instance)
+
+
+## 主机侧: 打包那些"不是实体、但客户端 HUD 要用"的状态。
+## 频率只有 6Hz (见 net_manager.STATE_HZ) —— 分数和命数不需要更快。
+func net_collect_state() -> Dictionary:
+	var p1_hp := 0
+	var p1_max := 0
+	var p2_hp := 0
+	var p2_max := 0
+	if p1_instance and is_instance_valid(p1_instance):
+		p1_hp = p1_instance.current_health
+		p1_max = p1_instance.max_health
+	if p2_instance and is_instance_valid(p2_instance):
+		p2_hp = p2_instance.current_health
+		p2_max = p2_instance.max_health
+	return {
+		"score": score,
+		"p1_lives": p1_lives,
+		"p2_lives": p2_lives,
+		"left": maxi(0, total_enemies - enemies_spawned) + enemies_alive,
+		"p1_hp": p1_hp, "p1_max": p1_max,
+		"p2_hp": p2_hp, "p2_max": p2_max,
+		"over": is_game_over,
+		"victory": is_victory,
+		"map": NetSession.map_checksum,
+		# 校验和必须连着"这是哪间房"一起发。换房的那半秒里主机已经建好了新
+		# 房间, 客户端还在淡出/等 RPC —— 两边此刻本来就该不一样, 拿它去比
+		# 会报出一条吓人的"地形不一致", 而实际上什么问题都没有。
+		"room": GameState.current_room,
+		# 建造库存是**共享的一池**(本地双人也是, consume_structure_stock 不分
+		# 玩家), 所以必须以主机为准下发, 否则客户端的热键栏显示的是它自己
+		# 存档里的数字, 点下去主机却说库存不足。
+		"stock": GameState.structure_inventory,
+	}
+
+
+## 客户端侧: 把主机推下来的状态写进本地 HUD。
+func net_apply_state(state: Dictionary) -> void:
+	score = int(state.get("score", score))
+	p1_lives = int(state.get("p1_lives", p1_lives))
+	p2_lives = int(state.get("p2_lives", p2_lives))
+	_net_enemies_left = int(state.get("left", 0))
+	if int(state.get("p1_max", 0)) > 0:
+		_on_player_hp_changed(1, int(state["p1_hp"]), int(state["p1_max"]))
+	if int(state.get("p2_max", 0)) > 0:
+		_on_player_hp_changed(2, int(state["p2_hp"]), int(state["p2_max"]))
+	if state.has("stock"):
+		GameState.structure_inventory = state["stock"]
+		if hud_hotbar:
+			UIThemeHelper.update_hotbar_stock(hud_hotbar)
+	var host_map := int(state.get("map", 0))
+	# 只在"两边都认为自己在同一间房"时才比校验和 —— 换房途中的不一致是正常的,
+	# 见 net_collect_state 里 "room" 字段的注释。
+	var same_room := str(state.get("room", "")) == GameState.current_room
+	if same_room and not _net_map_warned and host_map != 0 and NetSession.map_checksum != 0 and host_map != NetSession.map_checksum:
+		_net_map_warned = true
+		push_error("[NET] 地形校验和不一致: 主机 %d / 本机 %d —— 两端的地图不是同一张, 子弹和墙的判定会对不上" % [host_map, NetSession.map_checksum])
+		show_toast("⚠️ 地图与主机不一致，请检查双方版本")
+	_update_hud()
+
+
+## 主机: 把整局战役状态推给客户端。
+##
+## 调用点是"主机侧改了 GameState 而客户端看得见后果"的那几处: 清房 (开门、
+## 发奖)、商店成交、换货、事件结算、宝物房。频率很低 (一间房几次), 所以
+## 整份推而不是做增量 —— 增量同步意味着每加一种改动都要记得加一条消息,
+## 那正是这个项目在存档那条链上吃过亏的地方 (见 campaign_to_dict 的注释)。
+func _net_push_campaign() -> void:
+	if not NetSession.is_host():
+		return
+	var net := get_node_or_null("/root/Net")
+	if net:
+		net.broadcast_campaign(GameState.campaign_to_dict())
+
+
+## 客户端: 收下主机推来的战役状态, 并把由它派生的表现刷新一遍。
+##
+## 门的开合、商店货位的售罄、小地图、HUD 全都是**从 GameState 推出来的**,
+## 所以这里不需要为每一种变化单独发一条消息 —— 状态到了, 重算一遍即可。
+func net_apply_campaign(d: Dictionary) -> void:
+	GameState.campaign_from_dict(d)
+	rpg_mgr.sync_from_game_state()
+
+	var room := GameState.current_room_data()
+	if bool(room.get("cleared", false)):
+		_open_doors()
+	if str(room.get("type", "")) == "shop":
+		_rebuild_shop_stands()
+
+	_refresh_minimap()
+	_update_hud()
+	_update_rpg_hud()
+
+
+## 主机侧: 客户端要买第 slot 号货位。
+##
+## 走的就是主机自己那条 try_purchase() —— 库存/金币/上限判断、扣账、发放、
+## 音效、写回房间字典全部复用, 没有一条"联机专用"的成交逻辑可以走偏。
+## 拒绝 (钱不够/已达上限/已卖出) 也在那里面, 所以客户端不需要预判。
+## 主机替客户端成交过多少次。诊断用 —— 出问题时第一个要分清的是"这笔账是
+## 谁下的单", 本地成交和远端请求在结果上长得一模一样。
+var _net_remote_buys_applied: int = 0
+
+
+func net_apply_buy(slot: int) -> void:
+	if not NetSession.is_host():
+		return
+	_net_remote_buys_applied += 1
+	for c in map_container.get_children():
+		if c is ShopStand and int(c.slot_index) == slot:
+			c.try_purchase()
+			return
+
+
+## 主机侧: 客户端要换货。
+func net_apply_reroll() -> void:
+	if not NetSession.is_host():
+		return
+	for c in map_container.get_children():
+		if c is ShopRerolder:
+			c.try_reroll()
+			return
+
+
+## 只重建货位, 不动房间 —— 和 _do_shop_reroll() 里那段是同一个理由 (玩家
+## 正站在货位旁边, 重建整个房间会把他挪回门口)。
+func _rebuild_shop_stands() -> void:
+	for c in map_container.get_children():
+		if c is ShopStand or c is ShopRerolder:
+			c.queue_free()
+	_build_shop_room()
+
+
+## 客户端收到过多少次换房指令。诊断用: 联机战役里"客户端没跟上房间"有两种
+## 完全不同的原因 —— 指令没到 (网络/权限), 还是到了但没走完 (被暂停/重入
+## 卡住)。这个计数把两者分开。
+var _net_rooms_entered: int = 0
+
+
+## 客户端: 主机说换房了。
+func net_enter_room(d: Dictionary, room_seed: int, room_key: String, travel_dir: int) -> void:
+	_net_rooms_entered += 1
+	GameState.campaign_from_dict(d)
+	rpg_mgr.sync_from_game_state()
+	_transition_to_room(room_key, travel_dir, room_seed)
+
+
+## 客户端 HUD 上"剩余敌人"的数字来自主机, 不是本地算的 (客户端根本不刷怪)。
+var _net_enemies_left: int = 0
+## 地图校验和只报一次警, 不然 6Hz 的状态包会把控制台刷爆。
+var _net_map_warned: bool = false
+
+
+## 建完图之后算一次地形校验和。
+##
+## 两端是各自按同一个种子跑 _build_map() 得到地图的, 不是把瓦片复制过去的。
+## 这个做法对**除了种子以外的任何输入**都很敏感: 难度、幕数、房间类型只要
+## 有一项两端不同, 生成的图就会不一样。而它的症状极其阴险 —— 画面上双方
+## 各看各的墙, 子弹在对方那边"穿墙", 却没有任何报错。所以这里必须留一个
+## 会自己喊出来的检查, 而不是指望改代码的人记得两端要一致。
+func _net_verify_map() -> void:
+	NetSession.map_checksum = NetSession.terrain_checksum(map_container, TILE_SIZE)
+	_net_map_warned = false
+
+
+func _on_net_match_ended(victory: bool, final_score: int) -> void:
+	score = final_score
+	_game_over(victory)
+
+
+## 对局中掉线。两端的处理必须不同, 而且都不能"什么都不做":
+##
+## - **客户端**: 主机没了就没有任何权威了 —— 本地既不刷怪也不判定, 留在场上
+##   只会看到一个冻住的世界。更要命的是 net_manager 断线时会 leave(),
+##   NetSession.role 归零, 于是 is_authority() 突然变成 true, 这台机器会
+##   开始用一个没有玩家坦克的场景跑刷怪逻辑。_net_disconnected 就是为了
+##   在那之前先把 _process 掐掉。
+## - **主机**: 继续单机跑就行。remote_input 已经在 net_manager 里清空,
+##   于是 2 号坦克读到的输入恒为 0, 会停在原地而不是保持最后一次按键
+##   一直往前冲 —— 后者才是"队友掉线后坦克自己撞死"的那种 bug。
+func _on_net_peer_left(_id: int) -> void:
+	if NetSession.is_host():
+		show_toast("⚠️ 队友掉线，2P 坦克已停止行动")
+		return
+	_net_disconnected = true
+	show_toast("⚠️ 与主机断开连接，正在返回标题…")
+	await get_tree().create_timer(2.0).timeout
+	if is_inside_tree():
+		get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+
+
+var _net_disconnected: bool = false
+
+
+## 复活提示的按键边沿。联机时 2 号玩家的开火键在客户端手里, 走
+## NetSession 而不是本地 Input —— 否则客户端永远复活不了自己。
+var _net_fire_prev: Dictionary = {1: false, 2: false}
+var _net_fire_edge: Dictionary = {1: false, 2: false}
+
+
+func _net_update_fire_edges() -> void:
+	for pid in [1, 2]:
+		var now := NetSession.has_bit(NetSession.input_for(pid), NetSession.IN_FIRE)
+		_net_fire_edge[pid] = now and not bool(_net_fire_prev[pid])
+		_net_fire_prev[pid] = now
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	if minimap and is_instance_valid(minimap) and minimap.is_maximized():
@@ -935,6 +1263,13 @@ func start_game() -> void:
 	p1_awaiting_revive = false
 	p2_awaiting_revive = false
 
+	# 联机对局: 两端用主机掷的同一个种子播种全局 RNG, 然后各自跑同一份
+	# _build_map()。地形因此逐块一致, 不需要把几百个瓦片复制过去 —— 这跟
+	# 每日挑战让所有人拿到同一张图用的是同一条机制 (见下面 DAILY_CHALLENGE)。
+	# 建完之后两端各算一次校验和, 对不上就吼出来 (见 _net_verify_map)。
+	if NetSession.is_active():
+		seed(NetSession.match_seed)
+
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		# 双人战役下 player_lives 是唯一的共享池, p1_lives/p2_lives 两个本局
 		# 镜像变量全程保持相等 (_lives_shared() 的所有改动点都维持这个不变式)。
@@ -980,15 +1315,23 @@ func start_game() -> void:
 		rpg_mgr.reset()
 		show_toast("2-PLAYER CO-OP ARCADE READY!")
 
+	var net := get_node_or_null("/root/Net")
+	if net and NetSession.is_active():
+		net.begin_bulk_change()
 	_clear_all()
 	_build_map()
+	if net and NetSession.is_active():
+		net.end_bulk_change()
+		_net_verify_map()
 	_spawn_base_and_walls(false)
-	_spawn_player(1)
-	if GameState.player_count == 2:
-		_spawn_player(2)
-		if hud_p2_hp_box: hud_p2_hp_box.visible = true
-	else:
-		if hud_p2_hp_box: hud_p2_hp_box.visible = false
+	# 客户端一辆坦克都不生成 —— 两辆玩家坦克都会以傀儡的形式从主机的
+	# spawn 包里过来 (见 net_register_player_puppet)。这里如果也建一辆,
+	# 场上就会有两辆 1 号坦克: 一辆本地的、一辆傀儡的。
+	if NetSession.is_authority():
+		_spawn_player(1)
+		if GameState.player_count == 2:
+			_spawn_player(2)
+	if hud_p2_hp_box: hud_p2_hp_box.visible = GameState.player_count == 2
 
 	if is_night_mode_active:
 		activate_darkness_fog()
@@ -1028,7 +1371,102 @@ func _on_rpg_level_up(new_lvl: int) -> void:
 			new_players = [1, 2]
 		pending_upgrade_players.append_array(new_players)
 		if was_empty:
-			upgrade_dialog.show_upgrade_options(rpg_mgr, pending_upgrade_players[0])
+			_show_next_upgrade()
+
+
+## 弹出队列里下一个玩家的升级选择。
+##
+## 联机时**每个人在自己的屏幕上选自己的卡**: 轮到远端那位时, 主机生成卡面
+## (rpg_mgr 只在主机这边) 并发过去, 然后暂停等他回报索引。让主机替对方选
+## 是不能接受的 —— 战役里两名玩家各有各的流派和天赋池 (p2_branch /
+## p2_unlocked_perks), 那是对方这一局的核心决策。
+func _show_next_upgrade() -> void:
+	if pending_upgrade_players.is_empty():
+		get_tree().paused = false
+		return
+	if not (upgrade_dialog and is_instance_valid(upgrade_dialog)):
+		get_tree().paused = false
+		return
+
+	var pid: int = pending_upgrade_players[0]
+	if NetSession.is_host() and pid != NetSession.local_player_id:
+		var choices: Array[Dictionary] = upgrade_dialog._generate_choices(rpg_mgr, pid)
+		_net_pending_choices = choices
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.send_upgrade_options(choices, pid)
+		show_toast("⏳ 等待队友选择强化…")
+		# 主机也要停下来等: 不停的话对方在选卡的几秒里战场照常推进, 他一回来
+		# 发现自己已经被打死了。本地双人弹这个框时同样是全局暂停。
+		get_tree().paused = true
+		return
+
+	upgrade_dialog.show_upgrade_options(rpg_mgr, pid)
+
+
+## 主机侧: 客户端报回了他选的第几张卡。
+##
+## 应用走的是本地那条一模一样的 _on_card_picked —— 没有"联机专用"的强化
+## 应用逻辑, 所以不会和单机的行为分家。current_player_id 要先摆对, 那个
+## 函数拿它决定加到谁头上。
+func net_apply_remote_upgrade(index: int, pid: int) -> void:
+	if not NetSession.is_host():
+		return
+	if index < 0 or index >= _net_pending_choices.size():
+		return
+	if not (upgrade_dialog and is_instance_valid(upgrade_dialog)):
+		return
+	upgrade_dialog.current_player_id = pid
+	upgrade_dialog._on_card_picked(_net_pending_choices[index], rpg_mgr)
+	_net_pending_choices = []
+
+
+## 主机侧: 当前是否还有一个未结算的事件框。
+##
+## 事件是共享决策, 两个人都能点。这个标志就是去重: 谁先点算谁的, 后到的
+## 那一次直接丢掉 —— 否则两个人同时点会把奖励结算两遍 (金币加两次、
+## 天赋给两层), 而且不会有任何报错。
+var _net_event_open: bool = false
+
+## 主机替客户端结算过多少次事件。诊断/测试用 —— "结算了几次"是这条链路上
+## 唯一真正危险的量 (共享奖励结算两遍不会报错), 用计数器断言比用统计量的
+## 增减去反推可靠得多。
+var _net_remote_events_resolved: int = 0
+
+
+## 主机侧: 客户端点了事件选项。
+func net_apply_event_choice(idx: int) -> void:
+	if not NetSession.is_host() or not _net_event_open:
+		return
+	_net_remote_events_resolved += 1
+	if event_dialog and is_instance_valid(event_dialog):
+		# 走的就是主机本地点按钮那条 _on_choice —— 结算规则只有这一份。
+		# 它内部会 visible = false 并 emit closed, 而 closed 接的是
+		# _on_room_dialog_closed, 那里会把战役状态推给客户端。
+		event_dialog._on_choice(idx)
+
+
+## 客户端侧: 主机推来一个事件框。
+func net_show_event(dialog_type: String, event_id: String) -> void:
+	if event_dialog and is_instance_valid(event_dialog):
+		event_dialog.setup(dialog_type, event_id)
+		event_dialog.visible = true
+
+
+## 客户端侧: 事件已经被结算了 (可能是队友点的), 把框收掉。
+func net_close_event() -> void:
+	if event_dialog and is_instance_valid(event_dialog):
+		event_dialog.visible = false
+
+
+## 客户端侧: 主机把该我选的卡面发过来了。
+func net_show_upgrade_options(options: Array, pid: int) -> void:
+	if upgrade_dialog and is_instance_valid(upgrade_dialog):
+		upgrade_dialog.show_remote_options(options, pid)
+
+
+## 主机发给远端玩家、正在等回报的那组卡面。
+var _net_pending_choices: Array[Dictionary] = []
 
 func _on_upgrade_option_selected(opt: Dictionary, player_id: int) -> void:
 	var p_tag = "P1" if player_id == 1 else "P2"
@@ -1044,10 +1482,12 @@ func _on_upgrade_option_selected(opt: Dictionary, player_id: int) -> void:
 	if not pending_upgrade_players.is_empty():
 		pending_upgrade_players.remove_at(0)
 
-	if not pending_upgrade_players.is_empty() and upgrade_dialog and is_instance_valid(upgrade_dialog):
-		upgrade_dialog.show_upgrade_options(rpg_mgr, pending_upgrade_players[0])
-	else:
-		get_tree().paused = false
+	# 强化改的是 GameState/rpg_mgr, 客户端的 HUD 和下一次同步都要跟上。
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
+		rpg_mgr.sync_to_game_state()
+	_net_push_campaign()
+
+	_show_next_upgrade()
 
 ## keep_players: 换房间时为 true —— 玩家坦克必须**跨房间存活**, 否则每过一
 ## 道门血量、无敌帧、火车车厢全部重置, 房间之间就没有连续性可言了。
@@ -1174,6 +1614,12 @@ func _on_secret_breached(d: int) -> void:
 
 
 func _on_door_entered(d: int) -> void:
+	# 换房只能由主机决定。客户端本地预测的那辆坦克碰撞是开着的 (见
+	# NetPuppet._strip_interaction 里 layer/mask 不对称的理由), 所以它**会**
+	# 真的踩到本地那扇门的 Area2D —— 不拦的话客户端会自己切到隔壁房间,
+	# 而主机还在原地, 两台机器从此各玩各的。
+	if not NetSession.is_authority():
+		return
 	if is_transitioning or is_game_over or is_victory:
 		return
 	if not GameState.can_exit(GameState.current_room, d):
@@ -1192,17 +1638,39 @@ func _on_door_entered(d: int) -> void:
 ## 跨房串味。真要做滑屏得先把房间拆成独立子场景, 那是另一次重构。
 const ROOM_FADE_SEC := 0.16
 
-func _transition_to_room(room_key: String, travel_dir: int) -> void:
+## room_seed: 联机时由主机掷出并下发, 两端用它播种再建图, 于是新房间的地形
+## 逐块一致 (和开局那次用 match_seed 是同一条机制)。0 表示单机, 不动 RNG。
+func _transition_to_room(room_key: String, travel_dir: int, room_seed: int = 0) -> void:
+	if NetSession.is_host():
+		room_seed = randi()
+		var net := get_node_or_null("/root/Net")
+		if net:
+			# **在 enter_room 之前发。** 这份字典是 visit_room() 改动之前的
+			# 状态; 客户端拿到之后跑自己那份 enter_room, 里面同样会调
+			# visit_room, 两边做的是同一次改动。发在之后的话客户端会先被写入
+			# 改动结果、再自己改一遍。
+			net.broadcast_enter_room(GameState.campaign_to_dict(), room_seed, room_key, travel_dir)
+
 	is_transitioning = true
 	if fade_layer:
 		var tw := create_tween()
+		# **淡入淡出不能被暂停卡住。**
+		#
+		# 换房是 await 在这个 tween 上的 —— 树一暂停, tween 默认跟着停,
+		# enter_room() 就永远不会被调用, 玩家卡在一块全黑的幕布后面。
+		# 单机时这不可能发生 (暂停菜单是玩家自己开的, 而他此刻正在换房),
+		# 但联机时**换房的指令来自对端**: 主机过门的那一刻, 客户端完全可能
+		# 正停在升级选卡界面里 (那个框会 get_tree().paused = true)。
+		# 于是客户端收到换房 RPC、开始淡出、然后永远停在那里。
+		tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 		tw.tween_property(fade_layer, "modulate:a", 1.0, ROOM_FADE_SEC)
 		await tw.finished
 
-	enter_room(room_key, FloorMap.opposite(travel_dir))
+	enter_room(room_key, FloorMap.opposite(travel_dir), room_seed)
 
 	if fade_layer:
 		var tw2 := create_tween()
+		tw2.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 		tw2.tween_property(fade_layer, "modulate:a", 0.0, ROOM_FADE_SEC)
 		await tw2.finished
 	is_transitioning = false
@@ -1213,7 +1681,14 @@ func _transition_to_room(room_key: String, travel_dir: int) -> void:
 ##
 ## entry_dir 是**本房间**那扇门的朝向 (玩家从哪边进来), -1 表示首次进场
 ## (站在房间中央偏下)。
-func enter_room(room_key: String, entry_dir: int) -> void:
+func enter_room(room_key: String, entry_dir: int, room_seed: int = 0) -> void:
+	# 播种要**紧挨着建图**, 不能提前到淡出动画之前: 淡出的那 0.16 秒里主机的
+	# _process 还在跑, 而屏幕抖动用的是 randf_range() —— 抖一下就吃掉几个
+	# 随机数, 客户端那边没有同样的抖动, 两边的 RNG 流当场分家, 地图就不一样了。
+	# 从这里到 _build_map() 之间是一条没有 await 的同步路径, 所以两端消耗的
+	# 随机数序列完全相同。
+	if room_seed != 0:
+		seed(room_seed)
 	GameState.visit_room(room_key)
 
 	var room := GameState.current_room_data()
@@ -1258,21 +1733,36 @@ func enter_room(room_key: String, entry_dir: int) -> void:
 				is_bomb_rain_active = true
 				bomb_rain_timer = 2.0
 
+	var net_bulk := get_node_or_null("/root/Net")
+	if net_bulk and NetSession.is_active():
+		net_bulk.begin_bulk_change()
 	_clear_all(true)
+	if NetSession.is_client():
+		# _clear_all 刚把上一间房的敌人/子弹傀儡 queue_free 掉了, 但
+		# NetSession.puppets 里还留着它们的 net_id。不清的话这张表会一路涨,
+		# 而且主机随后发来的 despawn 会落在已经失效的引用上。
+		NetSession.purge_dead_puppets()
 	_build_map()
+	if net_bulk and NetSession.is_active():
+		net_bulk.end_bulk_change()
+		_net_verify_map()
 	_spawn_doors()
 
 	if is_combat:
 		_spawn_base_and_walls(false)
 
-	_place_players_at_entry(entry_dir)
+	# 客户端的玩家坦克是傀儡, 位置由快照给。这里再本地摆一次只会让它在
+	# 落点和权威位置之间弹一下。
+	if NetSession.is_authority():
+		_place_players_at_entry(entry_dir)
 
 	if is_night_mode_active:
 		activate_darkness_fog()
 
 	room_cleared_pending = false
 	if is_combat:
-		_begin_room_encounter()
+		if NetSession.is_authority():
+			_begin_room_encounter()
 		_announce_room(room)
 	else:
 		# 遭遇计数器必须清零。它们是 main.gd 的成员变量, 跨房间存活 ——
@@ -1315,6 +1805,15 @@ func _on_room_dialog_closed() -> void:
 	_update_hud()
 	_update_rpg_hud()
 	GameState.save_campaign()
+	# 事件的结算 (加钱、给天赋、扣血) 全落在 GameState 上, 客户端要跟上。
+	# 顺序: 先收框再推状态 —— 反过来的话客户端会先看到收益到账、事件框却
+	# 还开着, 像是还能再点一次。
+	if NetSession.is_host() and _net_event_open:
+		_net_event_open = false
+		var net_close := get_node_or_null("/root/Net")
+		if net_close:
+			net_close.broadcast_event_closed()
+	_net_push_campaign()
 
 
 func _refresh_minimap() -> void:
@@ -1329,18 +1828,52 @@ func _refresh_minimap() -> void:
 ## GameState, 那套逻辑正好和场景无关, 所以搬过来不用改内部实现, 只换个触发点:
 ## 从"点地图节点"变成"走进房间"。
 func _on_enter_non_combat_room(room: Dictionary) -> void:
-	match str(room.get("type", "")):
+	var room_type := str(room.get("type", ""))
+
+	# 客户端: 非战斗房的**结算**在主机侧, 但交互不一定。
+	#
+	# 商店是完整可玩的: 货架内容 (shop_stock) 在房间字典里随战役状态同步,
+	# 所以两端摆的是同一批货同一个价; 客户端开上货位会发一条成交请求, 由主机
+	# 执行并把结果同步回来 (ShopStand._on_body_entered / net_apply_buy)。
+	#
+	# 事件/休息/宝物房还没有对应的上行交互, 客户端只有提示。
+	if NetSession.is_client():
+		match room_type:
+			"shop":
+				_build_shop_room()
+			"event", "rest":
+				# 事件框由主机推过来 (net_show_event) —— 事件种类是主机掷的,
+				# 客户端不能自己 setup, 否则两边显示的是两个不同的事件而选项
+				# 编号却对得上, 玩家以为选的是 A、主机结算的是 B。
+				pass
+			"treasure", "secret":
+				show_toast("📦 队友正在开箱…")
+		return
+
+	match room_type:
 		"shop":
 			_build_shop_room()
+			# 货架就是在上一行刚掷出来并写进房间字典的。必须立刻推给客户端 ——
+			# 它那边不会自己掷 (见 _ensure_shop_stock 里的理由), 在收到之前
+			# 商店是空的。
+			_net_push_campaign()
 		"event", "rest":
 			if event_dialog:
 				event_dialog.setup(str(room.get("type", "event")))
 				event_dialog.visible = true
+				# 事件种类是这里 randi() 掷出来的, 客户端必须拿到同一个,
+				# 所以连着 dialog_type 一起发过去。
+				_net_event_open = true
+				var net_ev := get_node_or_null("/root/Net")
+				if net_ev:
+					net_ev.broadcast_event(str(room.get("type", "event")), str(event_dialog.current_event_id))
 		"treasure":
 			_grant_treasure_room_reward()
+			_net_push_campaign()
 		"secret":
 			show_toast("🔒 隐藏房间 —— 补给已就位")
 			_grant_treasure_room_reward()
+			_net_push_campaign()
 
 
 # ---------------------------------------------------------------- 商店房
@@ -1397,6 +1930,17 @@ func _ensure_shop_stock(reroll: bool = false) -> Array:
 	if not reroll and room.has("shop_stock") and (room["shop_stock"] is Array) and not room["shop_stock"].is_empty():
 		return room["shop_stock"]
 
+	# **联机客户端永远不自己掷货架。**
+	#
+	# 货架是主机掷的, 随房间字典同步下来。客户端在同步到之前自己掷一份的话,
+	# 两个人看到的是**不同的商品和价钱**, 而成交请求带的是槽位号 —— 客户端
+	# 点"便宜的弹药", 主机按 0 号槽结算的可能是"贵的模块"。买错东西、扣错钱,
+	# 而且两边的界面各自都自洽, 没有任何地方会报错。
+	#
+	# 拿不到就先摆空货架, 等主机把状态推下来 (net_apply_campaign 会重建货位)。
+	if NetSession.is_client():
+		return []
+
 	var upgrades: Array = []
 	var builds: Array = []
 	for it in ShopDialog.build_inventory():
@@ -1428,13 +1972,20 @@ func _build_shop_room() -> void:
 		# 它要读 item_id/cost/sold 才能摆好图标和价签。
 		stand.setup(str(entry["id"]), int(entry["cost"]), bool(entry["sold"]))
 		stand.position = Vector2((cell.x + 0.5) * TILE_SIZE, (cell.y + 0.5) * TILE_SIZE)
-		# 卖掉的状态要写回房间字典 —— 否则走出门再回来东西又回来了。
-		stand.purchased.connect(func(_id, _c): _on_shop_item_sold(i))
+		# 槽位号是客户端下单时唯一带过去的东西 —— 见 ShopStand.slot_index。
+		stand.slot_index = i
+		# 客户端的货位**照常可交互**: 它开上去会发一条成交请求, 由主机执行
+		# (ShopStand._on_body_entered 里的联机分支)。所以这里两端一样接线,
+		# 只是 purchased 信号在客户端永远不会响 —— 那边根本不会走到成交。
+		if not NetSession.is_client():
+			# 卖掉的状态要写回房间字典 —— 否则走出门再回来东西又回来了。
+			stand.purchased.connect(func(_id, _c): _on_shop_item_sold(i))
 		map_container.add_child(stand)
 
 	var roller := ShopRerolder.new()
 	roller.position = Vector2((SHOP_REROLLER_CELL.x + 0.5) * TILE_SIZE, (SHOP_REROLLER_CELL.y + 0.5) * TILE_SIZE)
-	roller.reroll_requested.connect(_on_shop_reroll)
+	if not NetSession.is_client():
+		roller.reroll_requested.connect(_on_shop_reroll)
 	map_container.add_child(roller)
 
 
@@ -1449,6 +2000,8 @@ func _on_shop_item_sold(slot_idx: int) -> void:
 	# "换场景时顺带同步"这一步 (见 CLAUDE.md "The two state layers"), 不主动
 	# 拉的话刚买的强化要等到下一层才生效。
 	_sync_after_shop_purchase()
+	# 客户端那边的货位是镜像, 得知道这格已经卖掉了。
+	_net_push_campaign()
 
 
 func _on_shop_reroll() -> void:
@@ -1468,6 +2021,7 @@ func _do_shop_reroll() -> void:
 	_ensure_shop_stock(true)
 	_build_shop_room()
 	_sync_after_shop_purchase()
+	_net_push_campaign()
 	show_toast("军火商换了一批货 (下次换货 %d G)" % GameState.shop_reroll_cost)
 
 
@@ -1835,8 +2389,13 @@ func _build_map() -> void:
 	# 只在战斗房加 —— 这段是在 _build_map() 尾部无条件跑的, 跟房间类型无关;
 	# 商店/事件/宝物/休息房也会经过 _build_map() (每间房都建图), 不加这个判定
 	# 的话高楼层的商店房会在货位旁边埋地雷, 玩家逛街进门就被炸。
+	# **只有战役模式有"房间"这个概念。** 原来的条件写的是"不是每日挑战就查
+	# 房间类型", 于是街机模式每建一次图都会拿一个空字典去调 is_combat_room(),
+	# 在 room["type"] 上抛 "Invalid access to property or key 'type'"。
+	# 它不致命 (room_is_combat 保持 true, 地雷照埋), 所以一直没人发现 ——
+	# 但控制台里每局都有一条红字, 而且联机走的正是街机模式。
 	var room_is_combat: bool = true
-	if GameState.mode != GameState.GameMode.DAILY_CHALLENGE:
+	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		room_is_combat = FloorMap.is_combat_room(GameState.current_room_data())
 	if room_is_combat and (GameState.current_floor >= 2 or GameState.battle_type in ["elite", "boss"]) and landmine_hazard_scene:
 		var mine_positions = []
@@ -2949,6 +3508,17 @@ func _process(delta: float) -> void:
 				if is_instance_valid(spr):
 					spr.texture = w_tex
 
+	# ---- 分界线: 上面是纯表现 (摄像机、抖动、树冠、水面动画), 客户端照跑;
+	# 下面全是权威逻辑 (计时器、刷怪、判负、复活), 客户端一律不跑 —— 那些
+	# 状态由主机的快照和状态包给。
+	#
+	# 这条早退是整个联机改造对 main.gd 侵入最小的地方: 主机跑的仍然是和
+	# 单机逐行相同的代码路径, 没有任何 "if 联机 then 换一套算法" 的分叉。
+	if not NetSession.is_authority() or _net_disconnected:
+		return
+
+	_net_update_fire_edges()
+
 	if is_shovel_active:
 		shovel_timer -= delta
 		if shovel_timer <= 3.0:
@@ -2987,9 +3557,11 @@ func _process(delta: float) -> void:
 				)
 
 	if _lives_shared() and not is_game_over and not is_victory and not get_tree().paused:
-		if p1_awaiting_revive and Input.is_action_just_pressed("p1_fire"):
+		# 边沿由 _net_update_fire_edges() 每帧统一算 —— 联机时 2 号玩家的
+		# 开火键在客户端手里, 直接读本地 Input 的话客户端永远复活不了自己。
+		if p1_awaiting_revive and bool(_net_fire_edge[1]):
 			_consume_shared_life_and_respawn(1)
-		if p2_awaiting_revive and Input.is_action_just_pressed("p2_fire"):
+		if p2_awaiting_revive and bool(_net_fire_edge[2]):
 			_consume_shared_life_and_respawn(2)
 
 	if is_game_over or is_victory:
@@ -3385,6 +3957,9 @@ func _on_room_cleared() -> void:
 	SoundManager.play_victory(get_tree())
 
 	_grant_room_clear_reward()
+	# 清房改了一大票状态: 房间标记为已清、门开了、掉了奖励、难度曲线的
+	# rooms_cleared 也进了一格。客户端的门要跟着开, 小地图要跟着变色。
+	_net_push_campaign()
 
 	if GameState.is_floor_complete():
 		# boss 房清空 = 这一层打通。走原来的胜利结算, 由 _on_button_action()
@@ -3619,7 +4194,15 @@ func _create_modal_stat_row(icon_path: String, text_str: String) -> HBoxContaine
 func _game_over(victory: bool) -> void:
 	if is_game_over or is_victory:
 		return
-	
+
+	# 主机把结果推给客户端。客户端自己永远不会走到这里 (判负/判胜的逻辑
+	# 都在权威侧), 它是被 _on_net_match_ended() 叫进来的, 而那条路上
+	# NetSession.is_host() 为假, 不会再回声一次。
+	if NetSession.is_host():
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.end_match(victory, score)
+
 	p1_awaiting_revive = false
 	p2_awaiting_revive = false
 
@@ -3762,6 +4345,17 @@ func _log_battle_result(victory: bool) -> void:
 
 
 func _on_button_action() -> void:
+	# 联机对局结束后一律回标题, 不走街机那条 "start_game() 原地重开"。
+	# 原地重开只发生在按按钮的那一台机器上, 另一端会留在结算界面看着一个
+	# 已经重开了的世界 —— 而且两边的随机种子从此分家。重开要联机化, 得由
+	# 主机重新广播一次 begin_match, 那是下一步的事。
+	if NetSession.is_active():
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.leave()
+		get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+		return
+
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
 		if is_victory:
 			# 战役的胜利结算只在**打通一层**时出现 (_on_room_cleared() 里
@@ -3804,7 +4398,9 @@ func _update_hud() -> void:
 		hud_lives.text = "LIVES: %d" % p1_lives
 	else:
 		hud_lives.text = "LIVES: P1:%d | P2:%d" % [p1_lives, p2_lives]
-	var remaining = total_enemies - enemies_spawned + enemies_alive
+	# 客户端不刷怪, 本地的 total_enemies/enemies_spawned 全是初始值, 算出来
+	# 恒等于满编。剩余数由主机的状态包给 (见 net_apply_state)。
+	var remaining = _net_enemies_left if NetSession.is_client() else (total_enemies - enemies_spawned + enemies_alive)
 	hud_enemies.text = "ENEMIES: %d" % remaining
 
 func _branch_tag(player_id: int) -> String:

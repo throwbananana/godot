@@ -17,6 +17,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const ShopDialogRules = preload("res://scripts/shop_dialog.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
+const NetSession = preload("res://scripts/net_session.gd")
 
 const TILE_SIZE := 48.0
 const TILE_SCALE := TILE_SIZE / 256.0
@@ -126,6 +127,22 @@ func _on_body_entered(body: Node2D) -> void:
 	if TrainFollowHelper.resolve_train_owner(body) == null:
 		return
 
+	# 联机客户端: 换货是权威行为 (扣钱、抬价、重掷货架), 只发请求。
+	# 本地不做乐观更新 —— 主机可能因为钱不够拒绝, 而"先换了再换回来"比
+	# 慢半拍难看得多。主机执行完会把战役状态推下来, 货架跟着重建。
+	if NetSession.is_client():
+		_cooldown = 1.5
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.request_reroll()
+		return
+
+	try_reroll()
+
+
+## 真正的换货。两个入口: 本地开上去, 以及主机替客户端执行
+## (main.gd::net_apply_reroll)。规则只有这一份。
+func try_reroll() -> bool:
 	var cost := GameState.shop_reroll_cost
 	if GameState.gold < cost:
 		_cooldown = 1.2
@@ -133,11 +150,12 @@ func _on_body_entered(body: Node2D) -> void:
 		var m = get_tree().current_scene
 		if m and m.has_method("show_toast"):
 			m.show_toast("金币不足以换货 (需要 %d G)" % cost)
-		return
+		return false
 
 	_cooldown = 1.5
 	GameState.gold -= cost
 	GameState.bump_shop_reroll_cost()
 	SoundManager.play_pickup(get_tree())
 	reroll_requested.emit()
+	return true
 

@@ -6,6 +6,7 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const SettingsStore = preload("res://scripts/settings_store.gd")
+const NetLobbyCls = preload("res://scripts/net_lobby.gd")
 
 @onready var bg_texture: TextureRect = $BackgroundTexture
 @onready var halo_sprite: Sprite2D = $CenterContainer/VBox/LogoContainer/HaloSprite
@@ -30,6 +31,10 @@ const SettingsStore = preload("res://scripts/settings_store.gd")
 @onready var btn_test_mode: Button = $CenterContainer/VBox/MenuPanel/MenuVBox/SecondaryGrid/TestModeButton
 @onready var encyclopedia_dialog: EncyclopediaDialog = $EncyclopediaDialog
 @onready var settings_dialog: SettingsDialog = $SettingsDialog
+
+## 联机入口。两者都在 _build_lan_entry() 里现建, 不在 title_screen.tscn 里。
+var btn_lan_coop: Button = null
+var net_lobby: NetLobbyCls = null
 
 var _sparkle_textures: Array[Texture2D] = []
 var _sparkle_timer: float = 0.0
@@ -91,11 +96,18 @@ func _ready() -> void:
 	if menu_panel:
 		UIThemeHelper.apply_clay_panel(menu_panel)
 
+	# 3.5 联机入口。在代码里建而不是加进 title_screen.tscn, 是为了让联机这块
+	# 的全部改动集中在 net_* 那几个文件加这里几行 —— 场景文件一改, 冲突面
+	# 和"哪个节点是哪来的"的追查成本都会大很多。
+	_build_lan_entry()
+
 	# 4. 配置所有按钮与高阶交互动效 (Elastic Punch & Sound)
 	_all_buttons = [
 		btn_continue, btn_1p_campaign, btn_2p_campaign, btn_2p_arcade, btn_daily_challenge,
 		btn_encyclopedia, btn_map_editor, btn_settings, btn_quit, btn_difficulty, btn_test_mode
 	]
+	if btn_lan_coop:
+		_all_buttons.append(btn_lan_coop)
 
 	UIThemeHelper.apply_icon_button(btn_continue, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(24, 24))
 	UIThemeHelper.apply_icon_button(btn_1p_campaign, "res://assets/sprites/ui/ui_icon_mode_1p.png", Vector2(24, 24))
@@ -181,7 +193,46 @@ func _is_dialog_open() -> bool:
 		return true
 	if settings_dialog and settings_dialog.visible:
 		return true
+	if net_lobby and net_lobby.visible:
+		return true
 	return false
+
+
+## 建"局域网联机"按钮和大厅面板。
+##
+## 按钮插在「2P 街机」后面: 联机这一版跑的就是双人街机 (见
+## net_lobby.gd::_on_match_begin 里为什么不是战役), 放在它旁边最不容易被
+## 误解成"联机战役"。
+func _build_lan_entry() -> void:
+	if get_node_or_null("/root/Net") == null:
+		# 自动加载没配好就干脆不显示入口, 而不是显示一个点了没反应的按钮。
+		push_warning("[NET] 未找到 /root/Net 自动加载, 联机入口已隐藏")
+		return
+
+	btn_lan_coop = Button.new()
+	btn_lan_coop.text = "LAN CO-OP (局域网联机)"
+	btn_lan_coop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	primary_vbox.add_child(btn_lan_coop)
+	primary_vbox.move_child(btn_lan_coop, btn_2p_arcade.get_index() + 1)
+	UIThemeHelper.apply_icon_button(btn_lan_coop, "res://assets/sprites/ui/ui_icon_mode_2p.png", Vector2(22, 22))
+	btn_lan_coop.pressed.connect(_on_lan_coop_pressed)
+
+	net_lobby = NetLobbyCls.new()
+	net_lobby.z_index = 100
+	add_child(net_lobby)
+	# 铺满/居中由 NetLobby 自己在 _ready() 里做 —— 在 add_child 之前设锚点
+	# 是没用的: 那时它的尺寸还是 0, 预设会把偏移量按 0 尺寸算出来。
+	net_lobby.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	net_lobby.closed.connect(func():
+		if btn_lan_coop:
+			btn_lan_coop.grab_focus()
+	)
+
+
+func _on_lan_coop_pressed() -> void:
+	SoundManager.play_shot(get_tree())
+	if net_lobby:
+		net_lobby.open_dialog()
 
 
 ## 为按钮配置高阶微交互动效 (Elastic Scale Punch, Micro-Glow)

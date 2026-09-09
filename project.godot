@@ -19,6 +19,14 @@ run/main_scene="res://scenes/title_screen.tscn"
 config/features=PackedStringArray("4.7")
 config/icon="res://icon.svg"
 
+[autoload]
+
+; 项目里唯一的自动加载。RPC 需要收发两端存在路径相同的节点, 而联机会话要跨
+; title_screen -> main 这次场景切换活下来 —— 挂在场景里的节点做不到。
+; 纯数据仍然放在 scripts/net_session.gd 的静态变量里 (项目惯例, 同 GameState)。
+; 未激活时它完全惰性: 不开端口、不注册 _process。
+Net="*res://scripts/net_manager.gd"
+
 [display]
 
 window/size/viewport_width=1024

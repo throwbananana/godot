@@ -23,13 +23,37 @@ func _ready() -> void:
 	UIThemeHelper.apply_clay_event_button(btn_2, 2)
 	UIThemeHelper.apply_clay_event_button(btn_3, 3)
 
-	btn_1.pressed.connect(func(): _on_choice(1))
-	btn_2.pressed.connect(func(): _on_choice(2))
-	btn_3.pressed.connect(func(): _on_choice(3))
+	btn_1.pressed.connect(func(): _pick(1))
+	btn_2.pressed.connect(func(): _pick(2))
+	btn_3.pressed.connect(func(): _pick(3))
 
 var current_event_id: String = ""
 
-func setup(type: String) -> void:
+## 联机: 客户端点了按钮。
+##
+## 事件的收益全部落在 GameState 上 (金币、天赋、命数、永久等级), 是**整局
+## 共享**的资源, 所以结算必须只发生一次、且在权威侧。客户端只把选择报上去,
+## 由主机执行, 结果随战役状态同步回来。
+##
+## 谁都可以答 —— 事件是共享决策, 谁先点谁算。主机那边有去重
+## (main.gd::_net_event_open), 所以两个人同时点也只会结算一次。
+func _pick(idx: int) -> void:
+	if NetSessionCls.is_client():
+		visible = false
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.request_event_choice(idx)
+		return
+	_on_choice(idx)
+
+
+const NetSessionCls = preload("res://scripts/net_session.gd")
+
+
+## forced_event_id: 联机客户端用。事件种类在主机那边掷 (randi), 客户端必须
+## 拿到同一个 id, 否则两边显示的是两个不同的事件, 而选项编号却对得上 ——
+## 玩家会以为自己选的是 A, 主机结算的是 B。
+func setup(type: String, forced_event_id: String = "") -> void:
 	dialog_type = type
 	visible = true
 	var icon_path = "res://assets/sprites/ui/diorama_rest.png"
@@ -60,7 +84,7 @@ func setup(type: String) -> void:
 	elif type == "event":
 		icon_path = "res://assets/sprites/ui/diorama_event.png"
 		var event_types = ["depot", "mechanic", "singularity", "glacier_cache", "bounty"]
-		current_event_id = event_types[randi() % event_types.size()]
+		current_event_id = forced_event_id if forced_event_id != "" else event_types[randi() % event_types.size()]
 		
 		match current_event_id:
 			"depot":

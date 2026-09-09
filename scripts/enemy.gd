@@ -10,6 +10,7 @@ const FlameJet = preload("res://scripts/flame_jet.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 const KineticPushHelper = preload("res://scripts/kinetic_push_helper.gd")
 const LaserRingCutter = preload("res://scripts/laser_ring_cutter.gd")
+const NetPuppet = preload("res://scripts/net_puppet.gd")
 
 signal enemy_destroyed(points: int, is_bonus: bool, drop_pos: Vector2)
 
@@ -815,6 +816,14 @@ func freeze(duration: float) -> void:
 	freeze_timer = duration
 
 func _physics_process(delta: float) -> void:
+	# 联机客户端上的敌人是傀儡: 整套 AI (寻路、索敌、开火、变形、瞬移) 只在
+	# 主机上跑, 这边只按快照移动。**不能只是把 AI 关掉而保留移动** ——
+	# 那样两端的敌人会各走各的, 而这个项目的敌人 AI 大量使用 randf(),
+	# 天然不可能在两端得到同一条轨迹。
+	if NetPuppet.is_puppet(self):
+		NetPuppet.update(self, delta)
+		return
+
 	if freeze_timer > 0.0:
 		freeze_timer -= delta
 		sprite.modulate = Color(0.5, 0.8, 1.2)

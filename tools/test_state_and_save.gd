@@ -134,6 +134,16 @@ func test_save_load_roundtrip() -> bool:
 	# "size" (大/超大房间标记) 是后加的字段, 靠 _load_floor_rooms() 里手抄的
 	# 白名单还原——漏抄的话这里会静默读回默认值 "normal", 而不是报错。
 	GameState.floor_rooms[probe_room]["size"] = "large"
+	# 商店货架同理, 而且这一格**真的漏抄过**: shop_stock 被 save_campaign()
+	# 原样写进文件 (floor_rooms 是整份 duplicate), 却在 _load_floor_rooms()
+	# 的白名单里没有位置, 于是读档静默丢货架。后果是 _ensure_shop_stock()
+	# 那段注释明令禁止的事: 在商店房存盘再读档 = 免费重洗一次货架, 换货机
+	# 和它的递增计费被架空。sold 也要一起验 —— 只验 id 的话"货架还在但
+	# 卖掉的又回来了"照样漏过去。
+	GameState.floor_rooms[probe_room]["shop_stock"] = [
+		{"id": "atk_up", "cost": 123, "sold": true},
+		{"id": "turret", "cost": 45, "sold": false},
+	]
 	# run_seed 决定这一局抽到哪批手搓地图 (MapTemplates._pick_from_pool)。
 	# 它必须跟着存档走: 存了不读回来的话, 同一个存档每次读进来都会换一批
 	# 地形 —— 已经打过的楼层也会跟着变脸。
@@ -196,6 +206,16 @@ func test_save_load_roundtrip() -> bool:
 			return false
 	if not bool(GameState.floor_rooms[probe_room]["cleared"]):
 		print("    Error: 房间的 cleared 标记没穿过存档")
+		return false
+	var stock = GameState.floor_rooms[probe_room].get("shop_stock", null)
+	if not (stock is Array) or stock.size() != 2:
+		print("    Error: 商店货架没穿过存档 (读回来是 %s) —— _load_floor_rooms() 的白名单漏抄了 shop_stock" % str(stock))
+		return false
+	if str(stock[0].get("id", "")) != "atk_up" or int(stock[0].get("cost", -1)) != 123 or not bool(stock[0].get("sold", false)):
+		print("    Error: 货架第 0 格还原错了 (应为 atk_up/123/已售, 实为 %s)" % str(stock[0]))
+		return false
+	if bool(stock[1].get("sold", true)):
+		print("    Error: 货架第 1 格的未售状态没还原 —— 卖掉的和没卖的分不清了")
 		return false
 	if str(GameState.floor_rooms[probe_room]["size"]) != "large":
 		print("    Error: 房间的 size 标记没穿过存档 (应为 large, 实为 %s) —— 大概率是 _load_floor_rooms() 的白名单漏抄了这个字段"

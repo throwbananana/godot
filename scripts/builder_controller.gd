@@ -5,6 +5,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const BunkerScript = preload("res://scripts/buildings/bunker.gd")
+const NetSession = preload("res://scripts/net_session.gd")
 
 enum StructureType { NONE, TURRET, FORTIFIED_WALL, ELECTRIC_WALL, STREET_LAMP, OIL_BARREL, LANDMINE, REPAIR_STATION, SHIELD_STATION, WIND_BLOWER, MISSILE_STRIKE, TIMED_BOMB, ROLLER_WALL, PIPE, BUNKER, WOODEN_WALL, DARKNESS_DEVICE }
 
@@ -194,14 +195,27 @@ func select_structure(type: StructureType, pid: int = 1) -> void:
 		return
 
 	selection_by_pid[pid] = type
+
+	# 联机客户端: 把选择同步给主机, 让主机那边 P2 的预览格和实际放置用的
+	# 选择保持一致。放置本身也由主机执行 (见 _try_place_current), 所以
+	# 主机必须知道客户端选了什么 —— selection_by_pid 是各自本地的。
+	if NetSession.is_client() and pid == NetSession.local_player_id:
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.request_select(int(type))
+
+	# 热键栏跟着**本机操作的那个玩家**走, 而不是死认 P1。离线时
+	# local_player_id 恒为 1, 行为和原来完全一致; 联机时客户端屏幕前只有
+	# 一个人, 他操作的是 2 号车, 热键栏当然该跟着他。
+	var is_local := pid == NetSession.local_player_id
 	var preview_sprite = _preview_sprite(pid)
 	if type == StructureType.NONE:
 		preview_sprite.visible = false
-		if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and pid == 1:
+		if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and is_local:
 			UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, "")
 		return
 
-	if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and pid == 1:
+	if main_scene and "hud_hotbar" in main_scene and main_scene.hud_hotbar and is_local:
 		UIThemeHelper.update_hotbar_selection(main_scene.hud_hotbar, structure_ids.get(type, ""))
 
 	preview_sprite.visible = true
@@ -228,15 +242,33 @@ func select_structure(type: StructureType, pid: int = 1) -> void:
 	if tex:
 		preview_sprite.texture = tex
 
+## 键位槽 -> 它实际操作的玩家号。
+##
+## 单机时两者相同 (p1_* 键位操作 1 号车, p2_* 操作 2 号车), 这个函数原样返回。
+##
+## 联机时它们分家了, 而且**两边都会错**:
+## - 客户端屏幕前的人用的是 p1_* 键位, 但他开的是 2 号车 —— 直接按槽位走的话,
+##   他的建造选择会记在本机 1 号车名下, 而 request_select 只同步"本机玩家"的
+##   选择, 于是主机永远收不到他选了什么, 按放置键什么都不会发生。
+## - 主机上按 p2_* 键位的话, 等于替远端那个人操作他的车。
+## 所以联机时: p1_* 槽驱动本机玩家, p2_* 槽整个忽略 (返回 0)。
+func _controlled_pid(slot: int) -> int:
+	if not NetSession.is_active():
+		return slot
+	return NetSession.local_player_id if slot == 1 else 0
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
-		# Local co-op has one shared mouse; by convention it drives P1's hotbar.
+		# Local co-op has one shared mouse; by convention it drives the local
+		# player's hotbar (P1 offline, whoever is at this screen when networked).
+		var mouse_pid := _controlled_pid(1)
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			cycle_next(1)
+			cycle_next(mouse_pid)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			cycle_prev(1)
+			cycle_prev(mouse_pid)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			select_structure(StructureType.NONE, 1)
+			select_structure(StructureType.NONE, mouse_pid)
 
 	# 建造走 input action 而不是原始 keycode —— 原来那套 event.keycode == KEY_Q
 	# 的写法把整个建造系统锁死在键盘上, 手柄玩家一个建筑都放不了 (移动和开火
@@ -245,20 +277,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	# project.godot 的 p1_build_* / p2_build_* 里, 每个 action 另外挂了手柄键。
 	# 手柄布局 (两名玩家各自的设备): LB=上一个 X=下一个 Y=放置 BACK=取消。
 	# 刻意避开 B: 它是内置 ui_cancel 的默认绑定 —— 见下面 cancel 处的注释。
-	for pid in [1, 2]:
-		if event.is_action_pressed("p%d_build_prev" % pid):
+	# slot 是键位槽 (p1_*/p2_*), pid 是它实际操作的玩家 —— 联机时两者不同,
+	# 见 _controlled_pid()。
+	for slot in [1, 2]:
+		var pid := _controlled_pid(slot)
+		if pid == 0:
+			continue
+		if event.is_action_pressed("p%d_build_prev" % slot):
 			cycle_prev(pid)
 			return
-		if event.is_action_pressed("p%d_build_next" % pid):
+		if event.is_action_pressed("p%d_build_next" % slot):
 			cycle_next(pid)
 			return
-		if event.is_action_pressed("p%d_build_place" % pid):
+		if event.is_action_pressed("p%d_build_place" % slot):
 			if selection_by_pid.get(pid, StructureType.NONE) == StructureType.NONE:
 				cycle_next(pid) # 未选中时先开热键栏
 			else:
 				_try_place_current(pid)
 			return
-		if event.is_action_pressed("p%d_build_cancel" % pid):
+		if event.is_action_pressed("p%d_build_cancel" % slot):
 			# ESC/B 刻意*不*绑在这里 —— main.gd 的 _unhandled_input 用
 			# ui_cancel/pause 开暂停菜单, 两个处理器会在同一次按键上都触发:
 			# 既取消了选择又弹出暂停菜单。键盘留 R/Backspace, 手柄留 BACK。
@@ -339,6 +376,24 @@ func _try_place_current(pid: int) -> void:
 	if selection == StructureType.NONE:
 		return
 
+	# 联机客户端: 建造是权威行为, 只发请求, 不在本地建。
+	#
+	# 在客户端本地建的话会造出一座只有他自己看得见的炮塔, 同时把本地那份
+	# GameState.structure_inventory 扣掉 —— 两台机器的库存和地形从此对不上,
+	# 而且没有任何报错。
+	#
+	# 请求里**不带坐标**, 只带"我要放"。落点由主机用它自己那辆 P2 坦克的
+	# 位置算 (_get_target_placement_pos), 理由有二: 一是全局坐标跨机器不可信
+	# (GameArea 的偏移随窗口分辨率变, 见 main.gd::_apply_layout_offset),
+	# 二是主机的位置本来就是权威, 让客户端报坐标等于给它一个把建筑放到
+	# 任意位置的口子。落点做了 48px 网格对齐, 预测带来的两三像素误差会被
+	# 吸收掉, 所以客户端的预览格和实际落点是一致的。
+	if NetSession.is_client():
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.request_build()
+		return
+
 	var place_pos = _get_target_placement_pos(pid)
 	if selection != StructureType.MISSILE_STRIKE and not _is_placement_valid(place_pos):
 		var main_scene = get_tree().current_scene
@@ -353,7 +408,7 @@ func _try_place_current(pid: int) -> void:
 			main.show_toast("库存不足！去商店购买 [%s]" % structure_names.get(selection, "UNKNOWN"))
 		return
 
-	if pid == 1 and "hud_hotbar" in main and main.hud_hotbar:
+	if pid == NetSession.local_player_id and "hud_hotbar" in main and main.hud_hotbar:
 		UIThemeHelper.update_hotbar_stock(main.hud_hotbar)
 
 	if selection == StructureType.MISSILE_STRIKE:

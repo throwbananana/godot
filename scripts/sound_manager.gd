@@ -52,9 +52,42 @@ static func play_teleport(tree: SceneTree = null) -> void:
 	# Dimensional phase warp: ascending/descending cosmic harmonic arpeggio
 	_play_arpeggio([380.0, 580.0, 880.0, 1420.0], 0.045, "sine", 0.40, tree)
 
-static func _play_arpeggio(freqs: Array, note_duration: float, wave_type: String, volume: float, tree: SceneTree = null) -> void:
+## 联机音效回声。
+##
+## 客户端不跑战斗逻辑, 所以它自己不会发出任何开炮/爆炸/拾取的声音。
+## 项目里所有音效最终都收束到 _play_arpeggio / _play_synth_sound 这两个
+## 合成器入口, 所以只要在这两处回声, 上面十四个 play_* 一个都不用改。
+##
+## 回声的是**合成参数**而不是"音效名", 于是以后新加一种声音自动就同步了,
+## 不需要再往某张映射表里补一行 —— 那种表是一定会漏的。
+static func _net_echo(kind: String, args: Array, tree: SceneTree) -> void:
+	if tree == null:
+		return
+	var net = tree.root.get_node_or_null("Net")
+	if net == null:
+		return
+	net.echo_sound(kind, args)
+
+
+## 客户端侧: 按主机传来的参数重放。**必须绕开 _net_echo** ——
+## 直接调 _play_arpeggio/_play_synth_sound 的话客户端会再回声一次,
+## 而客户端不是主机, echo_sound 会自己挡掉, 所以其实是安全的;
+## 这里仍然走独立入口, 是为了让"重放"这条路径在调用图上看得见。
+static func net_replay(kind: String, args: Array, tree: SceneTree = null) -> void:
+	match kind:
+		"arp":
+			if args.size() >= 4:
+				_play_arpeggio(args[0], args[1], args[2], args[3], tree, false)
+		"synth":
+			if args.size() >= 5:
+				_play_synth_sound(args[0], args[1], args[2], args[3], args[4], tree, false)
+
+
+static func _play_arpeggio(freqs: Array, note_duration: float, wave_type: String, volume: float, tree: SceneTree = null, echo: bool = true) -> void:
 	var root = _get_root(tree)
 	if not root: return
+	if echo:
+		_net_echo("arp", [freqs, note_duration, wave_type, volume], tree)
 
 	var sample_rate: int = 22050
 	var total_frames: int = int(note_duration * freqs.size() * sample_rate)
@@ -84,9 +117,11 @@ static func _play_arpeggio(freqs: Array, note_duration: float, wave_type: String
 	stream.data = data
 	_spawn_player(root, stream)
 
-static func _play_synth_sound(duration: float, start_freq: float, end_freq: float, wave_type: String, volume: float, tree: SceneTree = null) -> void:
+static func _play_synth_sound(duration: float, start_freq: float, end_freq: float, wave_type: String, volume: float, tree: SceneTree = null, echo: bool = true) -> void:
 	var root = _get_root(tree)
 	if not root: return
+	if echo:
+		_net_echo("synth", [duration, start_freq, end_freq, wave_type, volume], tree)
 
 	var sample_rate: int = 22050
 	var total_frames: int = int(duration * sample_rate)

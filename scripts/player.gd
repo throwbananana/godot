@@ -8,6 +8,8 @@ const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 const LaserPiercer = preload("res://scripts/laser_piercer.gd")
 const LaserRingCutter = preload("res://scripts/laser_ring_cutter.gd")
+const NetSession = preload("res://scripts/net_session.gd")
+const NetPuppet = preload("res://scripts/net_puppet.gd")
 
 signal destroyed(pid: int)
 signal fired_bullet
@@ -103,6 +105,10 @@ var train_respawn_timer: float = 0.0
 ## 也是正常状态。设一个有感知的等待 (不是即时白给), 让车厢确实是"可以再战
 ## 一场"的资源而不是一次性的。
 const TRAIN_CARRIAGE_RESPAWN_TIME := 12.0
+
+## 主机这一帧算出来的有效移动速度, 随快照下发给客户端做本地预测的速度源
+## (见 _net_predict_step)。单机时没人读它。
+var net_effective_speed: float = 0.0
 
 var base_color: Color = Color(1.0, 1.0, 1.0)
 var hit_tween: Tween
@@ -434,8 +440,107 @@ func stun(duration: float = 2.5) -> void:
 	stun_timer = duration
 	VFXAnimator.spawn_dust_puff(get_parent(), global_position)
 
+## 傀儡坦克每帧做的全部事情: 跟着快照走 (或者本地预测), 外加履带动画。
+##
+## 履带帧特意保留 —— 它由**实际位移量**驱动 (见 TREAD_PX_PER_FRAME 的注释),
+## 而傀儡的位移量就是主机的位移量, 所以客户端看到的履带节奏和主机完全一致,
+## 不需要额外同步一个动画帧号。预测的那辆同理: 位移是本地算的, 履带自然跟上。
+func _net_puppet_step(delta: float) -> void:
+	var before := position
+	if NetPuppet.is_predicted(self):
+		_net_predict_step(delta)
+	else:
+		NetPuppet.update(self, delta)
+	if tank_frames.size() > 0:
+		tread_accum_dist += position.distance_to(before)
+		var f_idx := int(tread_accum_dist / TREAD_PX_PER_FRAME) % tank_frames.size()
+		if f_idx != current_frame:
+			current_frame = f_idx
+			sprite.texture = tank_frames[current_frame]
+
+
+## 客户端**自己那辆**坦克: 按本地输入立刻走, 再往主机给的权威位置回拉。
+##
+## 这里刻意只做移动, 不做开火 —— 见 NetSession 里 prediction_enabled 那段。
+##
+## 速度取自主机 (`net_speed`, 快照的 extra 字段), 不是本地重算的。这一点是
+## 整个预测能成立的关键: 影响速度的东西有升级倍率、分支、流沙、冰面、
+## 两栖装甲、氮气、眩晕……全在 RPGManager 和一堆 Area2D 重叠计数里, 想在
+## 客户端重算一遍就等于把半个战斗系统复制过去, 而**漏掉任何一项都会让预测
+## 稳定地偏一个方向**, 表现为持续的橡皮筋。让主机直接告诉客户端"你现在多快"
+## 就没有这一类问题: 眩晕时主机报 0, 客户端自然就不动了。
+func _net_predict_step(delta: float) -> void:
+	var bits := NetSession.pack_input("p1")
+	var dir := NetSession.dir_from_bits(bits)
+	var spd: float = float(get_meta("net_speed", 0.0))
+
+	if dir != Vector2.ZERO and spd > 0.0:
+		facing_direction = dir
+		velocity = dir * spd
+		rotation = facing_direction.angle() + PI / 2.0
+	else:
+		velocity = Vector2.ZERO
+	move_and_slide()
+	# 必须在 move_and_slide 之后: 反过来的话这一帧的纠偏会被移动直接覆盖掉。
+	NetPuppet.reconcile(self, delta)
+
+	_net_predict_fire_feedback(bits)
+
+
+## 开火**反馈**的预测: 按下开火键的当帧就播后坐力和枪口火焰。
+##
+## 子弹本身完全不预测。客户端没有 rpg_mgr, 不知道伤害、分支、射速、天赋,
+## 更不知道这一枪允不允许开; 预测出一颗随后被主机否掉的子弹 (冷却中、被
+## 眩晕、已阵亡), 表现是子弹凭空出现又凭空消失 —— 比慢一个来回难看得多。
+## 而开火反馈没有这个风险: 最坏情况只是闪了一下而子弹晚到, 那正是玩家对
+## "网络有点卡"的正常预期。
+##
+## F_CAN_FIRE 是主机下发的"现在能不能开火"。有它才敢本地播 —— 否则冷却期间
+## 狂按开火键会一路闪光, 而主机一枪都没出。
+##
+## 一个冷却周期只预测一次: 播完上闩, 等主机那边 can_fire 落下 (说明这一枪
+## 被认下了) 再解闩。按住不放时节奏因此完全跟着主机的射速走, 不会自己乱闪。
+func _net_predict_fire_feedback(bits: int) -> void:
+	var flags: int = int(get_meta("net_flags", 0))
+	var host_can_fire := (flags & NetSession.F_CAN_FIRE) != 0
+	if not host_can_fire:
+		_net_fire_latched = false
+		return
+	if _net_fire_latched:
+		return
+	if not NetSession.has_bit(bits, NetSession.IN_FIRE):
+		return
+
+	_net_fire_latched = true
+	NetSession.predicted_fire_msec = Time.get_ticks_msec()
+
+	if recoil_tween and recoil_tween.is_valid():
+		recoil_tween.kill()
+	recoil_tween = create_tween()
+	recoil_tween.tween_property(sprite, "position", Vector2(0, 4.0), 0.03)
+	recoil_tween.tween_property(sprite, "position", Vector2.ZERO, 0.06)
+
+	var muzzle_pos := global_position + facing_direction * 28.0
+	NetSession.predicted_fire_pos = muzzle_pos
+	VFXAnimator.spawn_muzzle_flash(get_parent(), muzzle_pos, rotation)
+
+
+## 本地已经为这一发预测过反馈了, 等主机确认 (can_fire 落下) 再放行下一发。
+var _net_fire_latched: bool = false
+
+
 func _physics_process(delta: float) -> void:
+	# 联机客户端上的坦克 (包括自己那辆) 是傀儡: 位置完全由主机的快照决定,
+	# 下面这一整套输入/移动/开火/回血逻辑一行都不跑。履带动画例外, 它是
+	# 纯表现, 由位移量驱动, 放在 _net_puppet_step() 里。
+	if NetPuppet.is_puppet(self):
+		_net_puppet_step(delta)
+		return
+
 	if is_stunned:
+		# 眩晕期间上报 0。客户端的本地预测读的就是这个值, 于是"被电晕了动不了"
+		# 不需要单独同步一个状态位 —— 速度是 0, 按方向键也不动。
+		net_effective_speed = 0.0
 		stun_timer -= delta
 		# Dizzy vibration & yellow electric stun flash
 		sprite.rotation = sin(Time.get_ticks_msec() * 0.04) * 0.20
@@ -507,21 +612,12 @@ func _physics_process(delta: float) -> void:
 		if fire_timer <= 0.0:
 			can_fire = true
 
-	var act_up = "p1_move_up" if player_id == 1 else "p2_move_up"
-	var act_down = "p1_move_down" if player_id == 1 else "p2_move_down"
-	var act_left = "p1_move_left" if player_id == 1 else "p2_move_left"
-	var act_right = "p1_move_right" if player_id == 1 else "p2_move_right"
-	var act_fire = "p1_fire" if player_id == 1 else "p2_fire"
-
-	var input_vec = Vector2.ZERO
-	if Input.is_action_pressed(act_up):
-		input_vec = Vector2.UP
-	elif Input.is_action_pressed(act_down):
-		input_vec = Vector2.DOWN
-	elif Input.is_action_pressed(act_left):
-		input_vec = Vector2.LEFT
-	elif Input.is_action_pressed(act_right):
-		input_vec = Vector2.RIGHT
+	# 输入的唯一来源。离线时 input_for() 就是原来那串
+	# Input.is_action_pressed("p{id}_move_*"), 逐位等价; 联机主机上 2 号玩家
+	# 的位来自客户端的 RPC。方向的优先级 (上>下>左>右) 由 dir_from_bits()
+	# 保证和原来一致 —— 见那个函数的注释。
+	var in_bits := NetSession.input_for(player_id)
+	var input_vec := NetSession.dir_from_bits(in_bits)
 
 	# Signal Jammer Tower map hazard: inverting input_vec here reverses both
 	# movement AND firing in one place, since facing_direction (which drives
@@ -553,6 +649,10 @@ func _physics_process(delta: float) -> void:
 		speed_mult *= 0.50
 
 	var current_speed = base_speed * speed_mult
+	# 联机: 主机把这个值放进快照, 客户端的本地预测直接拿它当速度 ——
+	# 所有速度修正 (等级/分支/流沙/冰面/两栖装甲/氮气) 因此自动生效,
+	# 不需要在客户端重算一遍。见 _net_predict_step()。
+	net_effective_speed = current_speed
 
 	var has_frost_cleats = (main and main.rpg_mgr and main.rpg_mgr.has_perk("frost_cleats", player_id))
 
@@ -612,7 +712,12 @@ func _physics_process(delta: float) -> void:
 	if is_on_ice and get_slide_collision_count() > 0:
 		slide_direction = Vector2.ZERO
 
-	var wants_fire = Input.is_action_pressed(act_fire) or (player_id == 1 and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
+	# 鼠标右键开火只对"本机操作的那辆坦克"成立。离线时 local_player_id 恒为 1,
+	# 于是这个条件和原来的 `player_id == 1` 完全一样; 联机时它跟着走到客户端
+	# 那辆 2 号坦克上, 而不是让客户端的鼠标去开主机的炮。
+	var wants_fire = NetSession.has_bit(in_bits, NetSession.IN_FIRE) \
+		or (player_id == NetSession.local_player_id and not NetSession.is_client() \
+			and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
 	if wants_fire and can_fire:
 		_shoot()
 

@@ -49,7 +49,29 @@ static func create_anim(tree_parent: Node, pos: Vector2, paths: Array[String], s
 			node.frame_textures.append(tex)
 	tree_parent.add_child(node)
 	node.global_position = pos
+	_net_echo(tree_parent, pos, paths, scale_factor, fps_val, rot)
 	return node
+
+
+## 联机: 把这一次特效回声给客户端。
+##
+## 全项目的特效都从 create_anim() 走, 所以这里是**唯一**需要挂钩子的地方 ——
+## 二十多个 spawn_* 一个都不用改。客户端不跑战斗逻辑, 自己不会产生任何特效,
+## 全靠这条回声。
+##
+## 坐标转成 tree_parent 的局部坐标再发: GameArea 的位置会随窗口分辨率变化
+## (见 main.gd::_apply_layout_offset), 两端分辨率不同时全局坐标对不上,
+## 特效会整体偏出画面。
+static func _net_echo(tree_parent: Node, pos: Vector2, paths: Array[String], scale_factor: float, fps_val: float, rot: float) -> void:
+	if tree_parent == null or not tree_parent.is_inside_tree():
+		return
+	var net = tree_parent.get_node_or_null("/root/Net")
+	if net == null:
+		return
+	var local_pos: Vector2 = pos
+	if tree_parent is Node2D:
+		local_pos = (tree_parent as Node2D).to_local(pos)
+	net.echo_vfx(paths, local_pos, scale_factor, fps_val, rot)
 
 static func _notify_darkness_flash(parent: Node, pos: Vector2, radius: float = 140.0, duration: float = 0.25) -> void:
 	if not parent or not is_instance_valid(parent): return

@@ -5,6 +5,7 @@ const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const KineticPushHelper = preload("res://scripts/kinetic_push_helper.gd")
+const NetPuppet = preload("res://scripts/net_puppet.gd")
 
 signal hit_target(target: Node2D)
 
@@ -107,6 +108,13 @@ func _try_ricochet() -> bool:
 	return true
 
 func _physics_process(delta: float) -> void:
+	# 傀儡子弹靠自己推算 —— 匀速直线运动在两端算出来是同一条轨迹, 所以
+	# 快照只用来纠正残差 (见 NetPuppet.CONVERGE_BULLET)。反过来"只靠快照
+	# 拖着走"的话, 720px/s 的针弹在 30Hz 下每帧要跳 24px, 拖影非常明显。
+	if NetPuppet.is_puppet(self):
+		NetPuppet.update(self, delta)
+		return
+
 	if is_homing and target and is_instance_valid(target):
 		# Re-lock onto whichever cardinal axis currently dominates toward the
 		# target on a timer, not every single frame. Re-evaluating every

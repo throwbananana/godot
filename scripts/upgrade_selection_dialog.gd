@@ -6,6 +6,8 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 
 signal option_selected(option_data: Dictionary, player_id: int)
+## 联机客户端选完卡: 只带索引, 效果由主机应用 (见 show_remote_options)。
+signal remote_option_picked(index: int, player_id: int)
 
 @onready var panel: Panel = $Panel
 @onready var title_label: Label = $Panel/TitleLabel
@@ -22,6 +24,23 @@ func _ready() -> void:
 		UIThemeHelper.apply_clay_panel(panel)
 
 func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
+	_show_cards(_generate_choices(rpg_mgr, player_id), player_id, rpg_mgr)
+
+
+## 联机客户端用: 卡面由**主机**生成并下发, 这边只负责显示, 以及回报"选了
+## 第几张"。
+##
+## 效果的应用留在主机 (rpg_mgr 在那边, 客户端根本不跑自己那份), 所以回报的
+## 是索引而不是选项内容 —— 客户端能改的只有"第几张", 改不了那张卡是什么。
+func show_remote_options(options: Array, player_id: int) -> void:
+	var typed: Array[Dictionary] = []
+	for o in options:
+		typed.append(o as Dictionary)
+	_show_cards(typed, player_id, null)
+
+
+## rpg_mgr 为 null = 这是客户端的远端选卡界面, 点下去只回报索引。
+func _show_cards(choices: Array[Dictionary], player_id: int, rpg_mgr: RPGManager) -> void:
 	current_player_id = player_id
 	get_tree().paused = true
 	visible = true
@@ -31,11 +50,13 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 	for child in card_container.get_children():
 		child.queue_free()
 
-	cards_data = _generate_choices(rpg_mgr, player_id)
+	cards_data = choices
 	if player_id == 2:
 		title_label.text = "[P2] " + title_label.text
 
+	var card_index := -1
 	for opt in cards_data:
+		card_index += 1
 		var card_btn = Button.new()
 		var card_w = 175 if cards_data.size() >= 4 else 210
 		card_btn.custom_minimum_size = Vector2(card_w, 240)
@@ -97,7 +118,10 @@ func show_upgrade_options(rpg_mgr: RPGManager, player_id: int = 1) -> void:
 		desc_lbl.custom_minimum_size = Vector2(180, 60)
 		vbox.add_child(desc_lbl)
 
-		card_btn.pressed.connect(_on_card_picked.bind(opt, rpg_mgr))
+		if rpg_mgr == null:
+			card_btn.pressed.connect(_on_remote_card_picked.bind(card_index, player_id))
+		else:
+			card_btn.pressed.connect(_on_card_picked.bind(opt, rpg_mgr))
 		card_container.add_child(card_btn)
 
 	# 让手柄/键盘一进来就有焦点; 没有这一句菜单只能用鼠标。
@@ -361,3 +385,12 @@ func _on_card_picked(opt: Dictionary, rpg_mgr: RPGManager) -> void:
 
 	visible = false
 	option_selected.emit(opt, current_player_id)
+
+
+## 客户端点了一张卡。这边不应用任何效果 —— 只把索引报给主机, 由主机在
+## 自己的 rpg_mgr 上执行 _on_card_picked, 再随战役状态同步回来。
+func _on_remote_card_picked(index: int, player_id: int) -> void:
+	SoundManager.play_button_click(get_tree())
+	visible = false
+	get_tree().paused = false
+	remote_option_picked.emit(index, player_id)

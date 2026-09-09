@@ -20,6 +20,7 @@ const ShopDialogRules = preload("res://scripts/shop_dialog.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
+const NetSession = preload("res://scripts/net_session.gd")
 
 const TILE_SIZE := 48.0
 const TILE_SCALE := TILE_SIZE / 256.0
@@ -38,6 +39,15 @@ signal purchased(item_id: String, cost: int)
 var item_id: String = ""
 var cost: int = 0
 var sold: bool = false
+
+## 这是第几号货位。联机时客户端就是靠它告诉主机"我要买哪一格" ——
+## 位置和节点名跨机器都不可靠, 槽位号可靠 (两端的货架来自同一份
+## room["shop_stock"], 顺序一致)。
+var slot_index: int = -1
+
+## 客户端发出成交请求后的防抖窗口。真正的去重在主机 (sold 一置上后续请求
+## 全被拒), 这里只是免得开出去再开回来时连发。
+var _net_request_cooldown: float = 0.0
 
 var _icon: Sprite2D
 var _pad: Sprite2D
@@ -141,6 +151,8 @@ func _refresh_visuals() -> void:
 func _process(delta: float) -> void:
 	if _deny_cooldown > 0.0:
 		_deny_cooldown -= delta
+	if _net_request_cooldown > 0.0:
+		_net_request_cooldown -= delta
 
 	if not sold:
 		# 图标轻微上下浮动, 和地面上的其它东西区分开 —— 静止的图标看着像地贴。
@@ -188,16 +200,42 @@ func _on_body_entered(body: Node2D) -> void:
 	if owner_tank == null:
 		return
 
+	# 联机客户端: 成交是权威行为 (扣金币、发效果、改房间字典), 只发请求。
+	#
+	# 本地不做任何乐观更新 —— 不把 sold 先置上, 也不先扣钱。主机完全可能
+	# 拒绝 (钱不够、已达上限、队友刚买走), 而一个"先显示买到了再退回去"的
+	# 货位比慢半拍的货位难受得多。主机执行完会把整份战役状态推下来,
+	# 货位跟着重建 (见 main.gd::net_apply_campaign)。
+	if NetSession.is_client():
+		if _net_request_cooldown > 0.0:
+			return
+		# 停在货位上不会重复触发 body_entered, 但开出去再开回来会。这个冷却
+		# 只是防抖, 真正的去重在主机那边 (sold 一置上后续请求全被拒)。
+		_net_request_cooldown = 1.2
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.request_buy(slot_index)
+		return
+
+	try_purchase()
+
+
+## 真正的成交。拆出来是因为它现在有两个入口: 本地开上去 (_on_body_entered),
+## 以及主机替客户端执行 (main.gd::net_apply_buy)。规则只有这一份。
+func try_purchase() -> bool:
+	if sold:
+		return false
+
 	if GameState.gold < cost:
 		_deny("金币不足：%s 需要 %d G" % [_short_name(), cost])
-		return
+		return false
 	# 上限判断必须在扣钱之前。star_tier 在 tier 3 封顶、perk 到 PERK_MAX_STACKS
 	# 封顶、射速撞到冷却地板之后都是**买了等于没买**, 而 grant_perk_stack()
 	# 到顶时只是静默返回 false —— 少了这一句就是"扣了全款、什么都没给、还播
 	# 了成交音效"。原来的对话框里也踩过同一个坑, 所以那边的注释写得很长。
 	if not ShopDialogRules.can_buy_item(item_id):
 		_deny("%s 已达上限" % _short_name())
-		return
+		return false
 
 	GameState.gold -= cost
 	var msg := ShopDialogRules.apply_item_purchase(item_id)
@@ -211,6 +249,7 @@ func _on_body_entered(body: Node2D) -> void:
 	var main = get_tree().current_scene
 	if main and main.has_method("show_toast"):
 		main.show_toast(msg if msg != "" else "已购入 %s" % _short_name())
+	return true
 
 
 ## 商品名去掉括号里的英文, 战场上的 toast 只有一行, 中英双语会被截断。

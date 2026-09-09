@@ -27,9 +27,25 @@ func _init() -> void:
 	call_deferred("_run")
 
 
+## 找一间战斗房。**必须是 normal (13x13) 的那种。**
+##
+## FloorMap._assign_room_sizes() 每层会随机把一间房升成 26x26 / 52x52
+## (HUGE_ROOM_CHANCE + LARGE_ROOM_CHANCE), 挑的是最深的死胡同。原来这里
+## 只取"第一间战斗房", 于是**它偶尔正好就是被升级的那一间** —— 而下面几处
+## 调用点断言的是经典 13x13 的几何 (鹰巢在 (312,600)、门位、出生点),
+## 在 26x26 房里全部对不上。
+##
+## 症状极具误导性: 单独跑二三十次都是绿的, 只在某次批量运行里红一下,
+## 看起来就是"机器忙"。而 CLAUDE.md 里已经写过同一类教训 —— 随机化的前置
+## 条件会变成潜伏的失败, 且失败信息离原因很远 (这次报的是"鹰巢位置不对",
+## 真正的原因是"这间房不是 13x13")。
+##
+## 大/超大房间的几何有它们自己的专门段落 (用 _force_room 强制指定尺寸),
+## 所以这里把前置条件写死成 normal 不会漏掉任何覆盖。
 func _first_combat_room() -> String:
 	for k in GameState.floor_rooms.keys():
-		if FloorMap.is_combat_room(GameState.floor_rooms[k]):
+		var room: Dictionary = GameState.floor_rooms[k]
+		if FloorMap.is_combat_room(room) and str(room.get("size", "normal")) == "normal":
 			return str(k)
 	return ""
 
