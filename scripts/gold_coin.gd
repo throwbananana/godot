@@ -4,6 +4,7 @@ extends Area2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 
 @export var value: int = 25
 @onready var sprite: Sprite2D = $Sprite2D
@@ -20,11 +21,17 @@ func _ready() -> void:
 	add_to_group("collectibles")
 	var tex = TextureHelper.get_tex("res://assets/sprites/powerups/gold_coin.png")
 	if tex: sprite.texture = tex
+	# 倾角自转的待机循环 (tools/build_pickup_idle_anims.py::build_gold_coin_idle)。
+	# 取代下面 _physics_process 里原来那句 `sprite.rotation += delta * 4.0` ——
+	# 一枚正对镜头的圆盘绕画面法线转, 轮廓完全不变, 读起来是"转的盘子"而不是
+	# 一枚有厚度的硬币。厚度和边圈只能在 3D 里渲出来。
+	SpriteIdleAnim.attach(self, sprite,
+		"res://assets/sprites/powerups/gold_coin.png",
+		func() -> bool: return is_inside_tree())
 	body_entered.connect(_on_body_entered)
 
 func _physics_process(delta: float) -> void:
 	lifetime -= delta
-	sprite.rotation += delta * 4.0
 	
 	# 磁吸追踪玩家 (结合 magnetic_salvage 战术芯片)
 	var main = get_tree().current_scene

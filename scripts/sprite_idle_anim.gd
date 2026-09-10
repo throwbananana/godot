@@ -1,9 +1,11 @@
-class_name BuildingIdleAnim
+class_name SpriteIdleAnim
 extends RefCounted
 
-## 有源建筑的待机循环播放器 (雷达站 / EMP 塔 / 工厂)。
+## 精灵待机循环播放器 —— 有源建筑 (雷达站 / EMP 塔 / 工厂) 与战场拾取物
+## (☆/炸弹/时钟/头盔/铲子/心/金币) 共用。
 ##
-## 帧由 tools/build_building_idle_anims.py 渲出, 命名 `<资源名>_f0..f5.png`。
+## 帧由 tools/build_building_idle_anims.py 与 tools/build_pickup_idle_anims.py
+## 渲出, 命名一律 `<资源名>_f0..f5.png`。
 ##
 ## === 为什么单独抽一个 helper, 而不是在三个脚本里各写一遍 ===
 ##

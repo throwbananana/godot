@@ -8,7 +8,7 @@
 
 有 [FAIL] 就以非零码退出, 和 tools/test_*.gd 的约定一致。
 
-七项检查, 每一项都对应一个真出过的事故:
+九项检查, 每一项都对应一个真出过的事故:
 
   blank    整张图方差极低 / alpha 覆盖率异常高。
            build_ui_character_art_replacements.py 漏调 clear_scene(), Blender
@@ -32,8 +32,13 @@
   srgb     **这一项查的是源码, 不是图。** create_clay_mat 内部已经做 sRGB->linear,
            调用方再包一层就转了两次, 整份调色板被压暗四成 (emp_tower 亮度
            52.9 vs 本意的 86.5)。之所以不能靠看图: 一张统一压暗的图和一次正常
-           的深色美术选择, 在任何像素级指标上都长得一样。57 个脚本里曾有 3 个
+           的深色美术选择, 在任何像素级指标上都长得一样。64 个脚本里曾有 10 个
            这么写。
+
+  normalmap 法线贴图按**文件名**配对 (foo.png <-> foo_n.png), 所以一张图一旦有了
+           动画帧, 法线也必须逐帧配, 否则播动画的瞬间就静默掉线。鹰巢就是这么
+           丢的: 只有 base_eagle_n.png, 而 _ready() 一进来就切到了 f0, 那张法线
+           从此只在退化路径上有效 —— 而它身上正挂着一盏 PointLight2D。
 
   --vs     与某个 git 版本逐张比对, 把"渲染参数变了"和"美术被回退了"分开。
            这是查陈旧 build 脚本的主力手段 —— tools/ 里有几个脚本已经无法复现
@@ -145,6 +150,31 @@ def check_seam():
             n += 1
         elif leak > 100:
             warn(f"{rel_of(p)}: 铺开后 {leak} 个像素半透 (最大强度 {worst:.0f}/255)")
+
+        # 直接量边框 alpha —— 比上面的拼图法锋利得多。
+        #
+        # 上面那段是把瓦片铺成 3x3 再看内部有没有半透, 抓的是"漏没漏"; 但它的
+        # FAIL 条件要求单点强度 > 120, 于是 tile_electric_wall 那种"整圈边框
+        # 均匀地掉到 210~246"只报了 WARN —— 漏光强度不高, 但是**整整一圈都在漏**,
+        # 铺开后每条接缝都是一道浅色细线。
+        #
+        # 满幅瓦片的底板本来就该一路不透明地铺到画幅外, 所以边框 alpha 的正确
+        # 值是 255, 没有第二种可能。全项目实测: 除电墙外每一张都是 255.0/255/0。
+        #
+        # 这条检查固化的缺陷: build_lamp_electric_barrel_assets.py 把
+        # TILE_PLATE_BLEED (3.64) 同时传给了底板尺寸和相机画幅, overhang 归零,
+        # 底板 0.04 的倒角压在画幅边界上。附带后果是整块瓦片比别的瓦片小 9.3%,
+        # 而"画幅传错 -> 精灵悄悄缩放"正是 ORTHO_SCALE_PROP 那次事故的形状。
+        soft = int((border < 250).sum())
+        if soft > 24:
+            fail(f"{rel_of(p)}: 边框有 {soft} 个像素 alpha<250 (整圈均值 {border.mean():.1f}, "
+                 f"最低 {border.min():.0f}) —— 满幅瓦片的底板应当不透明地铺到画幅外, "
+                 f"正确值是 255。多半是相机画幅被撑到和底板一样大 (overhang 归零, "
+                 f"倒角圈留在了画幅内), 检查 create_sokpop_lighting 的 ortho_scale "
+                 f"是不是误传了 TILE_PLATE_BLEED —— 那是底板尺寸, 不是相机画幅")
+            n += 1
+        elif soft > 0:
+            warn(f"{rel_of(p)}: 边框有 {soft} 个像素 alpha<250 (最低 {border.min():.0f})")
     print(f"    检查 {checked} 张满幅瓦片, {n} 张漏光")
 
 
@@ -175,11 +205,22 @@ TILESEAM_EXEMPT = {
     "tile_conveyor_f3.png": "动画帧3, 箭头几何跨边缘属正常动效",
     "tile_conveyor_f4.png": "动画帧4, 箭头几何跨边缘属正常动效",
     "tile_conveyor_f5.png": "动画帧5, 箭头几何跨边缘属正常动效",
-    # 电墙发光动画瓦片: 等离子弧球体跨越瓦片边缘是动效内容。
-    # 底板已换 TILE_PLATE_BLEED + seamless=True 修掉了基础网格线;
-    # 剩余梯度来自闪光球几何体偶发落在边缘 —— 属于可接受的动画噪声。
-    # (f1/f2 经验证梯度已在阈值内, 无需豁免)
-    "tile_electric_wall_f3.png": "发光动画瓦片, 等离子弧偶发落在边缘属正常动效",
+    # tile_electric_wall_f3 曾豁免在这里, 理由写的是"等离子弧偶发落在边缘属正常
+    # 动效", 左右拼接梯度 25.1。**这个诊断也是错的**, 和上面 tile_ice 那条一模一样。
+    #
+    # 真正的原因是 build_lamp_electric_barrel_assets.py::main() 把 TILE_PLATE_BLEED
+    # (3.64) 同时当成了底板尺寸**和相机画幅**。底板半宽 1.82、相机半宽也 1.82,
+    # overhang 归零, 底板那圈 0.04 的倒角正好压在画幅边界上 —— 边框 alpha 均值
+    # 只有 209~246 (其它满幅瓦片一律 255.0), 铺开后漏背景。顺带整块瓦片还比
+    # 别的瓦片小了 9.3% (3.3/3.64)。
+    #
+    # 相机改回 ORTHO_SCALE_DEFAULT 之后: 边框 alpha 255.0/255/0, 左右接缝警告
+    # 全部消失, 上下从 9.5~12.8 掉到 8.3~8.9 (内部 p95 6.1~7.2), seam 检查的
+    # "200~396 个像素半透"也一并没了。
+    #
+    # 所以这份名单在很短的时间里第二次证明了自己头上那条教训: **豁免记录的诊断
+    # 本身也会错, 而且错的方式很像 —— 都把一个渲染配置错误说成了"美术如此"。**
+    # 往这里加东西之前, 先把诊断做实。
 }
 
 
@@ -540,6 +581,70 @@ def check_srgb():
     print(f"    扫描 {scanned} 个 build 脚本, {n_bad} 处双重 sRGB 转换")
 
 
+# ---------------------------------------------------------------- normalmap
+
+def check_normalmap():
+    """法线贴图必须和动画帧配套, 不能只配静态图。
+
+    TextureHelper.get_tex() 是按**文件名**找法线的: 加载 foo.png 之后找同目录的
+    foo_n.png, 找到才包成 CanvasTexture 交给 PointLight2D/DirectionalLight2D。
+    所以一旦某张图有了动画帧, 法线也必须逐帧配 `<名字>_f<N>_n.png`, 否则播动画
+    的那一刻法线就静默掉线。
+
+    真出过: 鹰巢只有一张 base_eagle_n.png, 而 base_eagle.gd 加了待机动画之后,
+    _ready() 第一行就是 `sprite.texture = idle_frames[0]` —— base_eagle_f0.png
+    没有 _n 兄弟, 拿到的是裸 Texture2D。那张 base_eagle_n.png 从此**只在
+    "取不到动画帧"的退化路径上还有效**, 而动画帧一直都在, 于是它再也没被用过。
+    鹰巢身上恰好挂着一盏 PointLight2D 光环, 本该照出黏土起伏, 实际照在平贴图上。
+    坦克一直是对的 (enemy_basic_f0_n.png ~ f5_n.png), 所以这不是"项目不做法线",
+    而是漏了一组。
+
+    查两件事:
+      1. 有 `S.png` + `S_n.png`, 又有 `S_f0.png` 这样的动画帧 -> 每一帧都得有法线;
+      2. 一组动画帧里, 法线要么全有要么全没有 —— 只配了一半比一张不配更糟,
+         播放时光照会一帧一帧地跳。
+
+    和 srgb 那条一样, 这是**产物里看不出来的**缺陷: 法线丢了只是光照变平,
+    而"变平"跟"这个资源本来就没做法线"长得一模一样。
+    """
+    print("\n--- normalmap: 法线贴图与动画帧是否配套 ---")
+    import re
+    n = 0
+    by_dir = {}
+    for p in all_sprites():
+        d = os.path.dirname(p)
+        by_dir.setdefault(d, set()).add(os.path.basename(p)[:-4])
+
+    checked = 0
+    for d, names in sorted(by_dir.items()):
+        # 找出所有动画帧组: <stem>_f<N>
+        groups = {}
+        for nm in names:
+            m = re.match(r"^(.*)_f(\d+)$", nm)
+            if m and not nm.endswith("_n"):
+                groups.setdefault(m.group(1), set()).add(int(m.group(2)))
+        for stem, idxs in sorted(groups.items()):
+            has_n = {i for i in idxs if "%s_f%d_n" % (stem, i) in names}
+            if not has_n and ("%s_n" % stem) not in names:
+                continue          # 这组本来就不做法线, 正常
+            checked += 1
+            missing = sorted(idxs - has_n)
+            if not missing:
+                continue
+            rel = os.path.relpath(d, SPRITES).replace(os.sep, "/")
+            if has_n:
+                fail(f"{rel}/{stem}: 动画帧法线只配了一半 —— 缺 "
+                     f"{', '.join('f%d' % i for i in missing[:8])} "
+                     f"(已有 {len(has_n)}/{len(idxs)} 帧)。播放时光照会逐帧跳变")
+            else:
+                fail(f"{rel}/{stem}: 有 {stem}_n.png 但动画帧一张法线都没有 —— "
+                     f"TextureHelper 按文件名找 <帧>_n.png, 所以 {stem}_n.png "
+                     f"只在'取不到动画帧'的退化路径上有效, 实际再也用不到, "
+                     f"法线静默失效 (缺 {len(missing)} 帧)")
+            n += 1
+    print(f"    检查 {checked} 组带法线的动画帧, {n} 组不配套")
+
+
 CHECKS = {
     "blank": check_blank,
     "seam": check_seam,
@@ -548,6 +653,7 @@ CHECKS = {
     "clip": check_clip,
     "palette": check_palette,
     "srgb": check_srgb,
+    "normalmap": check_normalmap,
 }
 
 

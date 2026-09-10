@@ -2,7 +2,7 @@ class_name RadarStation
 extends StaticBody2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
-const BuildingIdleAnim = preload("res://scripts/building_idle_anim.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
@@ -37,7 +37,7 @@ func _ready() -> void:
 	# 没转过 —— 它只有被打中时闪一下红这种事件动效。帧见
 	# tools/build_building_idle_anims.py::build_radar_station_idle。
 	# 取不到帧会返回 null 并保留上面那张静态图, 所以这行不是必需依赖。
-	BuildingIdleAnim.attach(self, sprite,
+	SpriteIdleAnim.attach(self, sprite,
 		"res://assets/sprites/buildings/radar_station.png",
 		func() -> bool: return not is_destroyed)
 

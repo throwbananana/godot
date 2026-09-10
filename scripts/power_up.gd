@@ -4,6 +4,7 @@ extends Area2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 
 enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE, MISSILE, TIMED_BOMB, PISTON, IFF_FLAG }
 
@@ -13,6 +14,7 @@ enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE, MISSILE, TIMED_BOMB, PISTON
 
 var lifetime: float = 20.0
 var flash_timer: float = 0.0
+var idle_tween: Tween = null
 
 func _ready() -> void:
 	add_to_group("powerups")
@@ -45,6 +47,20 @@ func _update_texture() -> void:
 		tex = TextureHelper.get_tex("res://assets/sprites/powerups/%s.svg" % tex_name)
 	if tex:
 		sprite.texture = tex
+
+	# 待机循环 (tools/build_pickup_idle_anims.py)。
+	#
+	# 十种道具以前都是钉在地上的单帧静图, 只有下面 _process 里那一句幅度极小的
+	# 上下浮动 —— 而这是玩家整场都在追的东西。目前渲了 ☆/炸弹/时钟/头盔/铲子/心
+	# 六种; 其余四种取不到帧, attach() 返回 null, 保持原来的静态图。
+	#
+	# **必须先杀掉上一条**: setup() 可以在运行中改道具类型 (掉落时才定), 不杀的话
+	# 旧类型的 Tween 会继续往同一个 sprite 上写它自己那套帧, 两条循环互相覆盖,
+	# 表现为道具在两种外观之间乱跳。
+	if is_instance_valid(idle_tween):
+		idle_tween.kill()
+	idle_tween = SpriteIdleAnim.attach(
+		self, sprite, path, func() -> bool: return is_inside_tree())
 
 func _process(delta: float) -> void:
 	lifetime -= delta

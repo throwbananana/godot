@@ -304,17 +304,36 @@ def main():
     render_and_clean(objs, os.path.join(SPRITES_BUILDINGS, "street_lamp_lit.png"))
 
     # 2. Electric Wall (4 Animation Frames)
-    # P0 FIX: switched from TILE_FULL_BLEED point-light rig to TILE_PLATE_BLEED + seamless=True.
-    # Point lights cause a position-gradient across the tile: the +Y edge is brighter than -Y
-    # (RimLight at Y=+5), so every tile seam shows a sudden brightness step. seamless=True
-    # removes both point lights; TILE_PLATE_BLEED (3.64) pushes the base-plate bevel rim
-    # outside the 256px frame so it doesn't produce a quilt border.
+    #
+    # seamless=True 的理由不变: 点光源会在瓦片内造出位置梯度 (RimLight 在 Y=+5,
+    # 于是 +Y 边比 -Y 边亮), 铺开后每条接缝都是一个亮度台阶。
+    #
+    # === 但相机画幅不能跟着底板一起放大 (已修) ===
+    #
+    # 这里原来写的是 create_sokpop_lighting(ortho_scale=TILE_PLATE_BLEED)。
+    # TILE_PLATE_BLEED (3.64) 是**底板几何该做多大**, 不是相机该看多宽 ——
+    # build_electric_wall() 里 `tw = th = TILE_PLATE_BLEED` 已经在用它撑底板了。
+    # 把同一个常量又传给相机, 等于把画幅也撑到 3.64, 于是:
+    #
+    #   1. **overhang 归零。** 底板半宽 1.82, 相机半宽也 1.82 —— 底板那圈 0.04 的
+    #      倒角正好压在画幅边界上, 边缘像素半透。实测边框 alpha 均值只有
+    #      209~246 (最小 0), 而全项目其它满幅瓦片一律是 255.0/255/0。铺开后
+    #      接缝处漏背景, qa_style_consistency 的 seam 检查一直在报
+    #      "200~396 个像素半透"。TILE_PLATE_BLEED 3.64 这个数字本来就是按
+    #      "half >= 1.65 + 倒角" 算出来的, 前提是相机停在 3.30。
+    #   2. **整块瓦片缩小了 9.3%。** 画幅 3.64 对别的瓦片的 3.3, 内容比例
+    #      3.3/3.64 = 0.907。电墙因此比砖墙钢墙小一圈, 而这种错误"渲染完全不报错,
+    #      只是变小了" —— 和当年八张道具精灵被 ORTHO_SCALE_DEFAULT 渲成 0.82 倍
+    #      是同一类事故。
+    #
+    # 正确的分工: 底板用 TILE_PLATE_BLEED 撑到画幅外, 相机一律 ORTHO_SCALE_DEFAULT
+    # —— rerender_tiles.py 和 unified 的瓦片批次都是这么写的。
     for f in range(4):
         out_name = "tile_electric_wall_f%d.png" % f
         print("Rendering: %s..." % out_name)
         clear_scene()
         setup_render_settings(rx=256, ry=256)
-        create_sokpop_lighting(ortho_scale=TILE_PLATE_BLEED, seamless=True)
+        create_sokpop_lighting(ortho_scale=ORTHO_SCALE_DEFAULT, seamless=True)
         objs = build_electric_wall(frame_idx=f)
         render_and_clean(objs, os.path.join(SPRITES_TILES, out_name))
 

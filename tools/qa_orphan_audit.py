@@ -143,6 +143,49 @@ CANDIDATES = [
      [("point/3.3", False, ORTHO_SCALE_DEFAULT),
       ("point/PROP", False, ORTHO_SCALE_PROP)]),
 
+    # 六个核心道具 + 金币。这七张图**有两个脚本都声称能渲**, 而且结论和
+    # CLAUDE.md 上原来记的相反, 所以钉在这里:
+    #
+    #   build_all_sokpop_assets_unified.py::build_sokpop_powerup(类型)
+    #       -> d_rgb 0.22 ~ 1.14, d_cov ~0    **这个才是属主**
+    #   refine_all_assets.py::build_star / build_bomb / ...
+    #       -> d_rgb 8.58 ~ 26.51, d_cov 0.011 ~ 0.084 (连剪影都不一样)
+    #
+    # CLAUDE.md 曾写着 refine_*.py 的画幅 bug"修好后与已提交版本逐像素一致",
+    # 那句话对现在的仓库已经不成立了 —— 谁最后跑谁赢, 而赢的是 unified。
+    # **跑 refine_all_assets.py 会静默改掉这六张道具图。**
+    #
+    # 做待机动画的包装器之前必须先把这件事钉死: 包装器调错属主, 渲出来的 6 帧
+    # 就会连带把这张图悄悄改样, 而动画是新加的, 没有旧版可比, 改样不会报错。
+    ("powerups/star.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_powerup", "star"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+    ("powerups/bomb.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_powerup", "bomb"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+    ("powerups/clock.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_powerup", "clock"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+    ("powerups/helmet.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_powerup", "helmet"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+    ("powerups/shovel.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_powerup", "shovel"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+    ("powerups/life.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_powerup", "life"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+    ("powerups/gold_coin.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_powerup", "gold_coin"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+
     ("powerups/treasure_chest.png",
      _lazy("build_treasure_and_challenge_assets", "build_treasure_chest"),
      [("point/PROP", False, ORTHO_SCALE_PROP),
@@ -242,8 +285,23 @@ def audit_one(rel_path, builder, combos):
     return best
 
 
+# --sweep 用的画幅网格。
+#
+# 平时每条 CANDIDATES 只试 2~3 个组合, 是因为那几个是**有理由怀疑**的历史配置。
+# 但"判定为真孤儿"这个结论本身依赖于候选集够不够全 —— 候选里没有正确答案时,
+# 工具只会说"最优匹配也差得远", 和"脚本真的丢了"长得一模一样。tile_ice 当年
+# 就是这么被冤枉的 (d_rgb 24.08 -> 换对布光后 0.20)。
+#
+# 所以给真孤儿留一个穷举档: 把项目里出现过的画幅全试一遍 x 两种布光。慢, 但
+# 只在需要重新审判某张图的时候跑。
+SWEEP_ORTHO = [2.0, 2.05, 2.1, 2.3, 2.4, 2.6, 2.7, 3.05, 3.2, 3.3, 3.34,
+               3.6, 3.64, 3.85, 4.2, 4.6, 5.0, 5.2]
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    sweep = "--sweep" in argv
+    argv = [a for a in argv if not a.startswith("-")]
     os.makedirs(TMP, exist_ok=True)
 
     targets = CANDIDATES
@@ -256,8 +314,17 @@ def main():
                 print("   ", c[0])
             raise SystemExit(1)
 
+    if sweep:
+        targets = [(rel, builder,
+                    [("%s/%.2f" % ("seamless" if sl else "point", o), sl, o)
+                     for o in SWEEP_ORTHO for sl in (False, True)])
+                   for (rel, builder, _combos) in targets]
+
     print("=" * 74)
     print(">>> 孤儿资源复核 —— 逐个 (布光 x 画幅) 组合试渲, 取最优匹配 <<<")
+    if sweep:
+        print(">>> --sweep: 每张图穷举 %d 个画幅 x 2 种布光 = %d 次试渲"
+              % (len(SWEEP_ORTHO), len(SWEEP_ORTHO) * 2))
     print("=" * 74)
 
     rows = []

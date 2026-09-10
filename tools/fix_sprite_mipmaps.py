@@ -83,7 +83,12 @@ def main() -> int:
     total = len(changed) + len(missing_key)
     print("扫描 %d 个 .import" % scanned)
     if not total:
-        print("✓ 全部已经是 mipmaps/generate=true, 无需改动")
+        # 标记只用 ASCII: Windows 控制台默认 GBK, 打 U+2713 这类符号会抛
+        # UnicodeEncodeError 把整个脚本带崩。而这一行在**成功路径**上 ——
+        # 也就是说这个工具恰好在"没事可做"的时候才会挂, 平时改文件的那条路径
+        # 反而是好的, 所以它藏了很久。qa_style_consistency.py 末尾那段收尾
+        # 打印早就为同一个理由写死了纯 ASCII。
+        print("[OK] 全部已经是 mipmaps/generate=true, 无需改动")
         return 0
 
     verb = "需要改写" if dry_run else "已改写"

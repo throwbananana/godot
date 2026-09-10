@@ -2,7 +2,7 @@ class_name Factory
 extends StaticBody2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
-const BuildingIdleAnim = preload("res://scripts/building_idle_anim.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
@@ -28,7 +28,7 @@ func _ready() -> void:
 		# 烟囱吐烟 + 天窗辉光的待机循环。工厂是护送目标, 玩家整场都在盯着它,
 		# 而它有两根烟囱却一缕烟都不冒。帧见
 		# tools/build_building_idle_anims.py::build_factory_idle。
-		BuildingIdleAnim.attach(self, sprite,
+		SpriteIdleAnim.attach(self, sprite,
 			"res://assets/sprites/buildings/factory.png",
 			func() -> bool: return not is_destroyed_flag)
 
