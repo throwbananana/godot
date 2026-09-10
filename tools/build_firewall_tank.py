@@ -46,19 +46,19 @@ def build_firewall_tank(frame: int = 0, is_enemy: bool = True):
 
     # 1. 材质定义
     if is_enemy:
-        col_hull    = srgb_to_linear((0.26, 0.12, 0.10, 1.0)) # 敌方黑曜焦黑底盘
-        col_armor   = srgb_to_linear((0.85, 0.28, 0.08, 1.0)) # 熔岩高热烈火橙红
-        col_accent  = srgb_to_linear((1.00, 0.65, 0.10, 1.0)) # 亮金黄高热防热护板
-        col_core    = srgb_to_linear((1.00, 0.40, 0.05, 1.0)) # 熔岩核心发光
+        col_hull    = (0.26, 0.12, 0.10, 1.0) # 敌方黑曜焦黑底盘
+        col_armor   = (0.85, 0.28, 0.08, 1.0) # 熔岩高热烈火橙红
+        col_accent  = (1.00, 0.65, 0.10, 1.0) # 亮金黄高热防热护板
+        col_core    = (1.00, 0.40, 0.05, 1.0) # 熔岩核心发光
     else:
-        col_hull    = srgb_to_linear((0.18, 0.20, 0.24, 1.0)) # 友方深钢青黑
-        col_armor   = srgb_to_linear((0.15, 0.65, 0.85, 1.0)) # 友方苍蓝等离子焰
-        col_accent  = srgb_to_linear((0.40, 0.85, 1.00, 1.0)) # 苍蓝防热板
-        col_core    = srgb_to_linear((0.20, 0.80, 1.00, 1.0)) # 苍蓝能量核心
+        col_hull    = (0.18, 0.20, 0.24, 1.0) # 友方深钢青黑
+        col_armor   = (0.15, 0.65, 0.85, 1.0) # 友方苍蓝等离子焰
+        col_accent  = (0.40, 0.85, 1.00, 1.0) # 苍蓝防热板
+        col_core    = (0.20, 0.80, 1.00, 1.0) # 苍蓝能量核心
 
-    col_track   = srgb_to_linear((0.18, 0.18, 0.20, 1.0)) # 重履带深铁
-    col_steel   = srgb_to_linear((0.45, 0.48, 0.52, 1.0)) # 管道与排气金属
-    col_igniter = srgb_to_linear((0.95, 0.35, 0.05, 1.0)) # 点火嘴高热发光
+    col_track   = (0.18, 0.18, 0.20, 1.0) # 重履带深铁
+    col_steel   = (0.45, 0.48, 0.52, 1.0) # 管道与排气金属
+    col_igniter = (0.95, 0.35, 0.05, 1.0) # 点火嘴高热发光
 
     mat_hull   = create_clay_mat("m_fw_hl", col_hull, roughness=0.60)
     mat_armor  = create_clay_mat("m_fw_ar", col_armor, roughness=0.45)
@@ -178,9 +178,9 @@ def build_firewall_flame_tile(frame: int = 0):
     """构建单格火墙烈焰 (Firewall Flame Tile) 3D 模型与动画"""
     objs = []
 
-    col_flame_outer = srgb_to_linear((0.95, 0.25, 0.05, 1.0)) # 浓烈外焰赤红
-    col_flame_core  = srgb_to_linear((1.00, 0.85, 0.15, 1.0)) # 白热内焰金黄
-    col_ember       = srgb_to_linear((0.30, 0.12, 0.08, 1.0)) # 焦黑灰烬底座
+    col_flame_outer = (0.95, 0.25, 0.05, 1.0) # 浓烈外焰赤红
+    col_flame_core  = (1.00, 0.85, 0.15, 1.0) # 白热内焰金黄
+    col_ember       = (0.30, 0.12, 0.08, 1.0) # 焦黑灰烬底座
 
     phase = frame * (2.0 * math.pi / 4.0)
     glow_str = 6.0 + 3.0 * math.sin(phase)

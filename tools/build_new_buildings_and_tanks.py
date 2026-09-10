@@ -13,6 +13,30 @@
     2. tank_flame_{f0-f5}.png    — 喷火坦克 (宽口喷火管 + 火焰瓶)
     3. tank_stealth_{f0-f5}.png  — 隐形坦克 (低矮扁平 + 菱形切面 + 哑光黑)
     4. tank_artillery_{f0-f5}.png — 自行火炮 (大仰角炮管 + 宽底盘)
+
+=== 这里曾经把每个颜色转了两次 sRGB->linear (已修) ===
+
+本文件 52 处 create_clay_mat 调用里有 46 处写成
+`create_clay_mat(名字, srgb_to_linear((r,g,b,a)))`, 而 create_clay_mat 内部
+**本来就会**做这次转换 (sokpop_common.py:355 `lin_col = srgb_to_linear(col)`)。
+外面再包一层等于转了两次, 于是整份调色板被系统性压暗。
+
+实测 (把外层拆掉重渲, 与已提交 PNG 逐像素比):
+
+    emp_tower     亮度 52.9 -> 86.5   d_rgb 32.4
+    command_post  亮度 45.3 -> 76.8   d_rgb 28.9
+    radar_station 亮度 62.3 -> 88.0   d_rgb 24.8
+
+也就是说这五栋建筑一直只渲出了作者写下的亮度的六成左右。d_rgb 24~32 这个量级
+比 CLAUDE.md 里"真孤儿"的判定线 (8.0) 还高一大截 —— 但它**不是**孤儿: 属主
+脚本能一比一复现已提交的图 (d_rgb 1.1~1.9), 已提交的图只是这个 bug 的产物。
+作者的本意就写在上面那些元组里。
+
+CLAUDE.md 记的是反方向的同一个坑 ("把 sRGB 直接喂给 Base Color 会整体变亮
+发灰"), 所以这一条是它的镜像: **颜色一律以 sRGB 传入, 转换交给
+create_clay_mat, 两边都不要自己动手。** 全项目 57 个 build 脚本里只有 3 个
+犯了这个错 (本文件 / build_pipe_conduit_assets.py / build_engineer_tank.py),
+现已统一。qa_style_consistency.py 的 `srgb` 检查会挡住它重新长回来。
 """
 
 import bpy
@@ -25,7 +49,8 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from sokpop_common import (
-    srgb_to_linear,
+    # 这里**不要**再导入 srgb_to_linear。颜色以 sRGB 传给 create_clay_mat 即可,
+    # 它自己会转; 见文件头"转了两次"那一节。
     clear_scene,
     setup_render_settings,
     create_sokpop_lighting,
@@ -51,14 +76,14 @@ for d in [SPRITES_BUILDINGS, SPRITES_TANKS]:
 def build_radar_station():
     """雷达站：六边形重型底座 + 旋转天线碟 + 警示灯"""
     objs = []
-    mat_base   = create_clay_mat("m_rd_base", srgb_to_linear((0.22, 0.30, 0.24, 1.0)), roughness=0.65)
-    mat_tower  = create_clay_mat("m_rd_tower", srgb_to_linear((0.55, 0.60, 0.58, 1.0)), roughness=0.50)
-    mat_dish   = create_clay_mat("m_rd_dish", srgb_to_linear((0.85, 0.88, 0.82, 1.0)), roughness=0.35)
-    mat_warn   = create_clay_mat("m_rd_warn", srgb_to_linear((0.95, 0.22, 0.15, 1.0)),
-                                 emission=srgb_to_linear((1.0, 0.25, 0.10, 1.0)), emission_str=4.5)
-    mat_green  = create_clay_mat("m_rd_green", srgb_to_linear((0.15, 0.95, 0.40, 1.0)),
-                                 emission=srgb_to_linear((0.15, 0.95, 0.40, 1.0)), emission_str=3.0)
-    mat_strut  = create_clay_mat("m_rd_strut", srgb_to_linear((0.38, 0.42, 0.40, 1.0)), roughness=0.55)
+    mat_base   = create_clay_mat("m_rd_base", (0.22, 0.30, 0.24, 1.0), roughness=0.65)
+    mat_tower  = create_clay_mat("m_rd_tower", (0.55, 0.60, 0.58, 1.0), roughness=0.50)
+    mat_dish   = create_clay_mat("m_rd_dish", (0.85, 0.88, 0.82, 1.0), roughness=0.35)
+    mat_warn   = create_clay_mat("m_rd_warn", (0.95, 0.22, 0.15, 1.0),
+                                 emission=(1.0, 0.25, 0.10, 1.0), emission_str=4.5)
+    mat_green  = create_clay_mat("m_rd_green", (0.15, 0.95, 0.40, 1.0),
+                                 emission=(0.15, 0.95, 0.40, 1.0), emission_str=3.0)
+    mat_strut  = create_clay_mat("m_rd_strut", (0.38, 0.42, 0.40, 1.0), roughness=0.55)
 
     # 1. 六边形重型底座
     bpy.ops.mesh.primitive_cylinder_add(radius=0.88, depth=0.28, vertices=6, location=(0, 0, -0.10))
@@ -131,13 +156,13 @@ def build_radar_station():
 def build_ammo_depot():
     """弹药仓库：厚重方形弹药箱堆叠 + 危险条纹 + 防爆板"""
     objs = []
-    mat_crate  = create_clay_mat("m_am_crate", srgb_to_linear((0.56, 0.50, 0.22, 1.0)), roughness=0.72)
-    mat_stripe = create_clay_mat("m_am_stripe", srgb_to_linear((0.92, 0.20, 0.12, 1.0)), roughness=0.50)
-    mat_band   = create_clay_mat("m_am_band", srgb_to_linear((0.12, 0.12, 0.14, 1.0)), roughness=0.65)
-    mat_lid    = create_clay_mat("m_am_lid", srgb_to_linear((0.45, 0.40, 0.18, 1.0)), roughness=0.60)
-    mat_latch  = create_clay_mat("m_am_latch", srgb_to_linear((0.75, 0.72, 0.68, 1.0)), roughness=0.30)
-    mat_warn   = create_clay_mat("m_am_warn", srgb_to_linear((0.98, 0.82, 0.10, 1.0)),
-                                 emission=srgb_to_linear((1.0, 0.85, 0.10, 1.0)), emission_str=2.0)
+    mat_crate  = create_clay_mat("m_am_crate", (0.56, 0.50, 0.22, 1.0), roughness=0.72)
+    mat_stripe = create_clay_mat("m_am_stripe", (0.92, 0.20, 0.12, 1.0), roughness=0.50)
+    mat_band   = create_clay_mat("m_am_band", (0.12, 0.12, 0.14, 1.0), roughness=0.65)
+    mat_lid    = create_clay_mat("m_am_lid", (0.45, 0.40, 0.18, 1.0), roughness=0.60)
+    mat_latch  = create_clay_mat("m_am_latch", (0.75, 0.72, 0.68, 1.0), roughness=0.30)
+    mat_warn   = create_clay_mat("m_am_warn", (0.98, 0.82, 0.10, 1.0),
+                                 emission=(1.0, 0.85, 0.10, 1.0), emission_str=2.0)
 
     # 底层大弹药箱 (3 个并排)
     for i, bx in enumerate([-0.52, 0, 0.52]):
@@ -203,15 +228,15 @@ def build_ammo_depot():
 def build_command_post():
     """指挥部：多角形主楼 + 旗杆 + 通信天线 + 加固裙边"""
     objs = []
-    mat_wall   = create_clay_mat("m_cp_wall", srgb_to_linear((0.78, 0.74, 0.62, 1.0)), roughness=0.68)
-    mat_roof   = create_clay_mat("m_cp_roof", srgb_to_linear((0.24, 0.34, 0.26, 1.0)), roughness=0.60)
-    mat_flag   = create_clay_mat("m_cp_flag", srgb_to_linear((0.90, 0.18, 0.18, 1.0)),
-                                 emission=srgb_to_linear((0.90, 0.18, 0.18, 1.0)), emission_str=1.5)
-    mat_pole   = create_clay_mat("m_cp_pole", srgb_to_linear((0.82, 0.80, 0.76, 1.0)), roughness=0.30)
-    mat_base   = create_clay_mat("m_cp_base", srgb_to_linear((0.42, 0.40, 0.35, 1.0)), roughness=0.75)
-    mat_window = create_clay_mat("m_cp_win", srgb_to_linear((0.30, 0.62, 0.90, 1.0)),
-                                 emission=srgb_to_linear((0.30, 0.62, 0.90, 1.0)), emission_str=1.8)
-    mat_antenna= create_clay_mat("m_cp_ant", srgb_to_linear((0.62, 0.60, 0.56, 1.0)), roughness=0.40)
+    mat_wall   = create_clay_mat("m_cp_wall", (0.78, 0.74, 0.62, 1.0), roughness=0.68)
+    mat_roof   = create_clay_mat("m_cp_roof", (0.24, 0.34, 0.26, 1.0), roughness=0.60)
+    mat_flag   = create_clay_mat("m_cp_flag", (0.90, 0.18, 0.18, 1.0),
+                                 emission=(0.90, 0.18, 0.18, 1.0), emission_str=1.5)
+    mat_pole   = create_clay_mat("m_cp_pole", (0.82, 0.80, 0.76, 1.0), roughness=0.30)
+    mat_base   = create_clay_mat("m_cp_base", (0.42, 0.40, 0.35, 1.0), roughness=0.75)
+    mat_window = create_clay_mat("m_cp_win", (0.30, 0.62, 0.90, 1.0),
+                                 emission=(0.30, 0.62, 0.90, 1.0), emission_str=1.8)
+    mat_antenna= create_clay_mat("m_cp_ant", (0.62, 0.60, 0.56, 1.0), roughness=0.40)
 
     # 1. 加固裙边地基 (八边形)
     bpy.ops.mesh.primitive_cylinder_add(radius=0.92, depth=0.20, vertices=8, location=(0, 0, -0.28))
@@ -278,12 +303,12 @@ def build_command_post():
 def build_sniper_nest():
     """狙击碉堡：低矮掩体弧形 + 瞭望孔 + 沙袋加固"""
     objs = []
-    mat_concrete = create_clay_mat("m_sn_con", srgb_to_linear((0.58, 0.55, 0.48, 1.0)), roughness=0.80)
-    mat_sand     = create_clay_mat("m_sn_sand", srgb_to_linear((0.82, 0.74, 0.52, 1.0)), roughness=0.78)
-    mat_dark     = create_clay_mat("m_sn_dark", srgb_to_linear((0.10, 0.10, 0.12, 1.0)), roughness=0.90)
-    mat_metal    = create_clay_mat("m_sn_metal", srgb_to_linear((0.42, 0.44, 0.48, 1.0)), roughness=0.45)
-    mat_glass    = create_clay_mat("m_sn_glass", srgb_to_linear((0.28, 0.55, 0.80, 1.0)),
-                                   emission=srgb_to_linear((0.28, 0.55, 0.80, 1.0)), emission_str=1.5)
+    mat_concrete = create_clay_mat("m_sn_con", (0.58, 0.55, 0.48, 1.0), roughness=0.80)
+    mat_sand     = create_clay_mat("m_sn_sand", (0.82, 0.74, 0.52, 1.0), roughness=0.78)
+    mat_dark     = create_clay_mat("m_sn_dark", (0.10, 0.10, 0.12, 1.0), roughness=0.90)
+    mat_metal    = create_clay_mat("m_sn_metal", (0.42, 0.44, 0.48, 1.0), roughness=0.45)
+    mat_glass    = create_clay_mat("m_sn_glass", (0.28, 0.55, 0.80, 1.0),
+                                   emission=(0.28, 0.55, 0.80, 1.0), emission_str=1.5)
 
     # 1. 半圆形主掩体 (正面弧)
     bpy.ops.mesh.primitive_cylinder_add(radius=0.88, depth=0.68, vertices=24, location=(0, 0, -0.05))
@@ -339,12 +364,12 @@ def build_sniper_nest():
 def build_emp_tower():
     """EMP电磁脉冲塔：三角形基座 + 旋转放电线圈 + 蓝色电弧发射器"""
     objs = []
-    mat_frame  = create_clay_mat("m_em_frame", srgb_to_linear((0.22, 0.24, 0.32, 1.0)), roughness=0.55)
-    mat_coil   = create_clay_mat("m_em_coil", srgb_to_linear((0.48, 0.50, 0.58, 1.0)), roughness=0.40)
-    mat_arc    = create_clay_mat("m_em_arc", srgb_to_linear((0.18, 0.55, 1.00, 1.0)),
-                                 emission=srgb_to_linear((0.18, 0.55, 1.00, 1.0)), emission_str=5.5)
-    mat_base   = create_clay_mat("m_em_base", srgb_to_linear((0.18, 0.20, 0.26, 1.0)), roughness=0.70)
-    mat_insul  = create_clay_mat("m_em_ins", srgb_to_linear((0.95, 0.88, 0.22, 1.0)), roughness=0.40)
+    mat_frame  = create_clay_mat("m_em_frame", (0.22, 0.24, 0.32, 1.0), roughness=0.55)
+    mat_coil   = create_clay_mat("m_em_coil", (0.48, 0.50, 0.58, 1.0), roughness=0.40)
+    mat_arc    = create_clay_mat("m_em_arc", (0.18, 0.55, 1.00, 1.0),
+                                 emission=(0.18, 0.55, 1.00, 1.0), emission_str=5.5)
+    mat_base   = create_clay_mat("m_em_base", (0.18, 0.20, 0.26, 1.0), roughness=0.70)
+    mat_insul  = create_clay_mat("m_em_ins", (0.95, 0.88, 0.22, 1.0), roughness=0.40)
 
     # 1. 三角形重型基座 (3边棱柱)
     bpy.ops.mesh.primitive_cylinder_add(radius=0.84, depth=0.30, vertices=3, location=(0, 0, -0.18))
@@ -417,16 +442,16 @@ def build_emp_tower():
 def build_sniper_tank(frame=0):
     """超长炮管狙击坦克：纤细车体 + 超长单管 + 消焰器 + 双联瞄准镜"""
     objs = []
-    col_body   = srgb_to_linear((0.18, 0.28, 0.20, 1.0))
-    col_turret = srgb_to_linear((0.14, 0.24, 0.16, 1.0))
-    col_trim   = srgb_to_linear((0.32, 0.30, 0.26, 1.0))
+    col_body   = (0.18, 0.28, 0.20, 1.0)
+    col_turret = (0.14, 0.24, 0.16, 1.0)
+    col_trim   = (0.32, 0.30, 0.26, 1.0)
     mat_body   = create_clay_mat("m_snt_b", col_body)
     mat_turret = create_clay_mat("m_snt_t", col_turret)
-    mat_track  = create_clay_mat("m_snt_tr", srgb_to_linear((0.28, 0.26, 0.30, 1.0)), roughness=0.88)
+    mat_track  = create_clay_mat("m_snt_tr", (0.28, 0.26, 0.30, 1.0), roughness=0.88)
     mat_trim   = create_clay_mat("m_snt_tm", col_trim)
-    mat_scope  = create_clay_mat("m_snt_sc", srgb_to_linear((0.10, 0.10, 0.12, 1.0)), roughness=0.20)
-    mat_lens   = create_clay_mat("m_snt_lens", srgb_to_linear((0.18, 0.72, 1.0, 1.0)),
-                                  emission=srgb_to_linear((0.18, 0.72, 1.0, 1.0)), emission_str=2.5)
+    mat_scope  = create_clay_mat("m_snt_sc", (0.10, 0.10, 0.12, 1.0), roughness=0.20)
+    mat_lens   = create_clay_mat("m_snt_lens", (0.18, 0.72, 1.0, 1.0),
+                                  emission=(0.18, 0.72, 1.0, 1.0), emission_str=2.5)
 
     bob_z = math.sin(frame * (2.0 * math.pi / 6.0)) * 0.010
     w, l = 1.20, 1.48
@@ -539,16 +564,16 @@ def build_sniper_tank(frame=0):
 def build_flame_tank(frame=0):
     """喷火坦克：宽粗喷火管 + 背部油罐 + 橙红涂装"""
     objs = []
-    col_body   = srgb_to_linear((0.60, 0.22, 0.08, 1.0))
-    col_turret = srgb_to_linear((0.50, 0.16, 0.05, 1.0))
-    col_trim   = srgb_to_linear((0.82, 0.42, 0.08, 1.0))
+    col_body   = (0.60, 0.22, 0.08, 1.0)
+    col_turret = (0.50, 0.16, 0.05, 1.0)
+    col_trim   = (0.82, 0.42, 0.08, 1.0)
     mat_body   = create_clay_mat("m_ft_b", col_body)
     mat_turret = create_clay_mat("m_ft_t", col_turret)
-    mat_track  = create_clay_mat("m_ft_tr", srgb_to_linear((0.28, 0.24, 0.28, 1.0)), roughness=0.88)
+    mat_track  = create_clay_mat("m_ft_tr", (0.28, 0.24, 0.28, 1.0), roughness=0.88)
     mat_trim   = create_clay_mat("m_ft_tm", col_trim)
-    mat_tank   = create_clay_mat("m_ft_tank", srgb_to_linear((0.38, 0.36, 0.32, 1.0)), roughness=0.60)
-    mat_flame  = create_clay_mat("m_ft_fire", srgb_to_linear((1.0, 0.55, 0.05, 1.0)),
-                                  emission=srgb_to_linear((1.0, 0.55, 0.05, 1.0)), emission_str=6.0)
+    mat_tank   = create_clay_mat("m_ft_tank", (0.38, 0.36, 0.32, 1.0), roughness=0.60)
+    mat_flame  = create_clay_mat("m_ft_fire", (1.0, 0.55, 0.05, 1.0),
+                                  emission=(1.0, 0.55, 0.05, 1.0), emission_str=6.0)
 
     bob_z = math.sin(frame * (2.0 * math.pi / 6.0)) * 0.012
     w, l = 1.40, 1.50
@@ -650,12 +675,12 @@ def build_flame_tank(frame=0):
 def build_stealth_tank(frame=0):
     """隐形坦克：极低矮扁平 + 菱形棱角切面 + 哑光黑涂装"""
     objs = []
-    mat_body   = create_clay_mat("m_st_b", srgb_to_linear((0.08, 0.08, 0.10, 1.0)), roughness=0.92)
-    mat_turret = create_clay_mat("m_st_t", srgb_to_linear((0.10, 0.10, 0.13, 1.0)), roughness=0.90)
-    mat_track  = create_clay_mat("m_st_tr", srgb_to_linear((0.20, 0.20, 0.22, 1.0)), roughness=0.95)
-    mat_trim   = create_clay_mat("m_st_tm", srgb_to_linear((0.22, 0.22, 0.26, 1.0)), roughness=0.85)
-    mat_sensor = create_clay_mat("m_st_sens", srgb_to_linear((0.15, 0.80, 0.55, 1.0)),
-                                  emission=srgb_to_linear((0.15, 0.80, 0.55, 1.0)), emission_str=3.5)
+    mat_body   = create_clay_mat("m_st_b", (0.08, 0.08, 0.10, 1.0), roughness=0.92)
+    mat_turret = create_clay_mat("m_st_t", (0.10, 0.10, 0.13, 1.0), roughness=0.90)
+    mat_track  = create_clay_mat("m_st_tr", (0.20, 0.20, 0.22, 1.0), roughness=0.95)
+    mat_trim   = create_clay_mat("m_st_tm", (0.22, 0.22, 0.26, 1.0), roughness=0.85)
+    mat_sensor = create_clay_mat("m_st_sens", (0.15, 0.80, 0.55, 1.0),
+                                  emission=(0.15, 0.80, 0.55, 1.0), emission_str=3.5)
 
     bob_z = math.sin(frame * (2.0 * math.pi / 6.0)) * 0.008
     w, l = 1.35, 1.50
@@ -761,12 +786,12 @@ def build_stealth_tank(frame=0):
 def build_artillery_tank(frame=0):
     """自行火炮：宽大底盘 + 大仰角炮管 + 后置推进装置 + 防盾"""
     objs = []
-    mat_body   = create_clay_mat("m_art_b", srgb_to_linear((0.48, 0.44, 0.28, 1.0)))
-    mat_turret = create_clay_mat("m_art_t", srgb_to_linear((0.40, 0.38, 0.22, 1.0)))
-    mat_track  = create_clay_mat("m_art_tr", srgb_to_linear((0.30, 0.28, 0.30, 1.0)), roughness=0.88)
-    mat_trim   = create_clay_mat("m_art_tm", srgb_to_linear((0.58, 0.52, 0.30, 1.0)))
-    mat_exhaust= create_clay_mat("m_art_ex", srgb_to_linear((0.18, 0.16, 0.16, 1.0)), roughness=0.80)
-    mat_scope  = create_clay_mat("m_art_sc", srgb_to_linear((0.10, 0.10, 0.12, 1.0)), roughness=0.25)
+    mat_body   = create_clay_mat("m_art_b", (0.48, 0.44, 0.28, 1.0))
+    mat_turret = create_clay_mat("m_art_t", (0.40, 0.38, 0.22, 1.0))
+    mat_track  = create_clay_mat("m_art_tr", (0.30, 0.28, 0.30, 1.0), roughness=0.88)
+    mat_trim   = create_clay_mat("m_art_tm", (0.58, 0.52, 0.30, 1.0))
+    mat_exhaust= create_clay_mat("m_art_ex", (0.18, 0.16, 0.16, 1.0), roughness=0.80)
+    mat_scope  = create_clay_mat("m_art_sc", (0.10, 0.10, 0.12, 1.0), roughness=0.25)
 
     bob_z = math.sin(frame * (2.0 * math.pi / 6.0)) * 0.010
     w, l = 1.50, 1.62

@@ -43,19 +43,19 @@ def build_spider_tank(frame: int = 0, is_enemy: bool = False):
 
     # 1. 材质定义
     if not is_enemy:
-        col_body   = srgb_to_linear((0.35, 0.18, 0.48, 1.0)) # 幽能暗紫
-        col_carapace = srgb_to_linear((0.20, 0.10, 0.30, 1.0)) # 几丁质深黑紫
-        col_trim   = srgb_to_linear((0.75, 0.35, 0.95, 1.0)) # 荧光紫边缘
-        col_eye    = srgb_to_linear((0.15, 0.95, 0.85, 1.0)) # 青色明眸复眼
+        col_body   = (0.35, 0.18, 0.48, 1.0) # 幽能暗紫
+        col_carapace = (0.20, 0.10, 0.30, 1.0) # 几丁质深黑紫
+        col_trim   = (0.75, 0.35, 0.95, 1.0) # 荧光紫边缘
+        col_eye    = (0.15, 0.95, 0.85, 1.0) # 青色明眸复眼
     else:
-        col_body   = srgb_to_linear((0.42, 0.12, 0.18, 1.0)) # 敌方暗血紫红
-        col_carapace = srgb_to_linear((0.22, 0.08, 0.10, 1.0)) # 敌方暗骨黑
-        col_trim   = srgb_to_linear((0.95, 0.25, 0.30, 1.0)) # 猩红反光边
-        col_eye    = srgb_to_linear((1.00, 0.18, 0.10, 1.0)) # 凶煞猩红发光眼
+        col_body   = (0.42, 0.12, 0.18, 1.0) # 敌方暗血紫红
+        col_carapace = (0.22, 0.08, 0.10, 1.0) # 敌方暗骨黑
+        col_trim   = (0.95, 0.25, 0.30, 1.0) # 猩红反光边
+        col_eye    = (1.00, 0.18, 0.10, 1.0) # 凶煞猩红发光眼
 
-    col_joint  = srgb_to_linear((0.28, 0.28, 0.32, 1.0)) # 液压球铰链金属
-    col_steel  = srgb_to_linear((0.55, 0.58, 0.62, 1.0)) # 腿节液压杆
-    col_booster= srgb_to_linear((0.85, 0.50, 0.10, 1.0)) # 跳跃推进喷口
+    col_joint  = (0.28, 0.28, 0.32, 1.0) # 液压球铰链金属
+    col_steel  = (0.55, 0.58, 0.62, 1.0) # 腿节液压杆
+    col_booster= (0.85, 0.50, 0.10, 1.0) # 跳跃推进喷口
 
     mat_body     = create_clay_mat("m_spd_b", col_body, roughness=0.55)
     mat_carapace = create_clay_mat("m_spd_cp", col_carapace, roughness=0.45)

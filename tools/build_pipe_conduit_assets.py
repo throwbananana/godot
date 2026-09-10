@@ -3,6 +3,10 @@
 为游戏生成管道建筑的美术资产:
   1. pipe_conduit.png       — 基础图标 / 商店 / 热键栏预览
   2. pipe_conduit_f0~f3.png — 带有流动导流指示光效的 4 帧贴图 (或转角形态)
+
+注: 本文件曾把颜色转了两次 sRGB->linear (外面包一层 srgb_to_linear, 而
+create_clay_mat 内部本来就会转), 整体压暗。已统一为"以 sRGB 传入, 转换交给
+create_clay_mat"。来龙去脉见 build_new_buildings_and_tanks.py 文件头。
 """
 
 import bpy
@@ -15,7 +19,6 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from sokpop_common import (
-    srgb_to_linear,
     clear_scene,
     setup_render_settings,
     create_sokpop_lighting,
@@ -40,16 +43,16 @@ def build_pipe_conduit(frame: int = 0):
     objs = []
     
     # 黏土材质
-    mat_base   = create_clay_mat("m_pipe_base", srgb_to_linear((0.35, 0.38, 0.42, 1.0)), roughness=0.65)
-    mat_pipe   = create_clay_mat("m_pipe_body", srgb_to_linear((0.28, 0.58, 0.72, 1.0)), roughness=0.50)
-    mat_flange = create_clay_mat("m_pipe_flange", srgb_to_linear((0.85, 0.72, 0.22, 1.0)), roughness=0.45)
-    mat_cavity = create_clay_mat("m_pipe_cavity", srgb_to_linear((0.08, 0.09, 0.12, 1.0)), roughness=0.90)
-    mat_bolt   = create_clay_mat("m_pipe_bolt", srgb_to_linear((0.75, 0.78, 0.82, 1.0)), roughness=0.30)
+    mat_base   = create_clay_mat("m_pipe_base", (0.35, 0.38, 0.42, 1.0), roughness=0.65)
+    mat_pipe   = create_clay_mat("m_pipe_body", (0.28, 0.58, 0.72, 1.0), roughness=0.50)
+    mat_flange = create_clay_mat("m_pipe_flange", (0.85, 0.72, 0.22, 1.0), roughness=0.45)
+    mat_cavity = create_clay_mat("m_pipe_cavity", (0.08, 0.09, 0.12, 1.0), roughness=0.90)
+    mat_bolt   = create_clay_mat("m_pipe_bolt", (0.75, 0.78, 0.82, 1.0), roughness=0.30)
     
     # 动态导向发光条纹
     pulse = 2.5 + 1.5 * math.sin(frame * (2.0 * math.pi / 4.0))
-    mat_glow   = create_clay_mat(f"m_pipe_glow_{frame}", srgb_to_linear((0.20, 0.95, 1.0, 1.0)),
-                                 emission=srgb_to_linear((0.20, 0.95, 1.0, 1.0)), emission_str=pulse)
+    mat_glow   = create_clay_mat(f"m_pipe_glow_{frame}", (0.20, 0.95, 1.0, 1.0),
+                                 emission=(0.20, 0.95, 1.0, 1.0), emission_str=pulse)
 
     # 1. 重型地基底板 (防滑动加固板)
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-0.05, 0.05, -0.22))

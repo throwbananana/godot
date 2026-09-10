@@ -43,18 +43,18 @@ def build_hunter_tank(frame: int = 0, is_enemy: bool = True):
 
     # 1. 材质定义
     if is_enemy:
-        col_hull    = srgb_to_linear((0.16, 0.28, 0.16, 1.0)) # 敌方丛林迷彩暗绿
-        col_camo    = srgb_to_linear((0.32, 0.22, 0.14, 1.0)) # 泥沼迷彩暗褐斑
-        col_net     = srgb_to_linear((0.24, 0.38, 0.18, 1.0)) # 仿生草叶伪装
-        col_sensor  = srgb_to_linear((0.95, 0.15, 0.15, 1.0)) # 红外热成像瞄准眼 (赤红)
+        col_hull    = (0.16, 0.28, 0.16, 1.0) # 敌方丛林迷彩暗绿
+        col_camo    = (0.32, 0.22, 0.14, 1.0) # 泥沼迷彩暗褐斑
+        col_net     = (0.24, 0.38, 0.18, 1.0) # 仿生草叶伪装
+        col_sensor  = (0.95, 0.15, 0.15, 1.0) # 红外热成像瞄准眼 (赤红)
     else:
-        col_hull    = srgb_to_linear((0.14, 0.24, 0.32, 1.0)) # 友方战术苍青
-        col_camo    = srgb_to_linear((0.20, 0.40, 0.50, 1.0)) # 友方暗蓝迷彩
-        col_net     = srgb_to_linear((0.25, 0.55, 0.65, 1.0)) # 友方战术伪装
-        col_sensor  = srgb_to_linear((0.20, 0.85, 1.00, 1.0)) # 友方蓝光传感器
+        col_hull    = (0.14, 0.24, 0.32, 1.0) # 友方战术苍青
+        col_camo    = (0.20, 0.40, 0.50, 1.0) # 友方暗蓝迷彩
+        col_net     = (0.25, 0.55, 0.65, 1.0) # 友方战术伪装
+        col_sensor  = (0.20, 0.85, 1.00, 1.0) # 友方蓝光传感器
 
-    col_track = srgb_to_linear((0.18, 0.18, 0.20, 1.0)) # 潜行履带深铁灰
-    col_steel = srgb_to_linear((0.40, 0.44, 0.46, 1.0)) # 消音管金属
+    col_track = (0.18, 0.18, 0.20, 1.0) # 潜行履带深铁灰
+    col_steel = (0.40, 0.44, 0.46, 1.0) # 消音管金属
 
     mat_hull   = create_clay_mat("m_ht_hl", col_hull, roughness=0.65)
     mat_camo   = create_clay_mat("m_ht_cm", col_camo, roughness=0.70)

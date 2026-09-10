@@ -54,20 +54,20 @@ def build_cannon_tank(frame: int = 0, is_enemy: bool = True, is_deployed: bool =
 
     # 1. 材质定义 (Sokpop 黏土重型铸造装甲与合金着色)
     if is_enemy:
-        col_hull    = srgb_to_linear((0.32, 0.16, 0.18, 1.0)) # 敌方深铁锈血红
-        col_shield  = srgb_to_linear((0.24, 0.10, 0.12, 1.0)) # 敌方重型暗黑钢盾
-        col_trim    = srgb_to_linear((0.85, 0.35, 0.15, 1.0)) # 炽红预警标线
-        col_energy  = srgb_to_linear((1.00, 0.45, 0.10, 1.0)) # 巨炮充能高能烈焰金橙
+        col_hull    = (0.32, 0.16, 0.18, 1.0) # 敌方深铁锈血红
+        col_shield  = (0.24, 0.10, 0.12, 1.0) # 敌方重型暗黑钢盾
+        col_trim    = (0.85, 0.35, 0.15, 1.0) # 炽红预警标线
+        col_energy  = (1.00, 0.45, 0.10, 1.0) # 巨炮充能高能烈焰金橙
     else:
-        col_hull    = srgb_to_linear((0.18, 0.28, 0.42, 1.0)) # 友方战术苍蓝
-        col_shield  = srgb_to_linear((0.12, 0.18, 0.28, 1.0)) # 友方深钢防盾
-        col_trim    = srgb_to_linear((0.25, 0.85, 0.95, 1.0)) # 青蓝亮标
-        col_energy  = srgb_to_linear((0.20, 0.90, 1.00, 1.0)) # 等离子能量脉冲蓝
+        col_hull    = (0.18, 0.28, 0.42, 1.0) # 友方战术苍蓝
+        col_shield  = (0.12, 0.18, 0.28, 1.0) # 友方深钢防盾
+        col_trim    = (0.25, 0.85, 0.95, 1.0) # 青蓝亮标
+        col_energy  = (0.20, 0.90, 1.00, 1.0) # 等离子能量脉冲蓝
 
-    col_track   = srgb_to_linear((0.18, 0.18, 0.20, 1.0)) # 重型履带暗铁
-    col_steel   = srgb_to_linear((0.45, 0.48, 0.52, 1.0)) # 炮身加固合金钢
-    col_brass   = srgb_to_linear((0.88, 0.65, 0.22, 1.0)) # 铸造黄铜铆钉与制退器饰环
-    col_anchor  = srgb_to_linear((0.35, 0.36, 0.40, 1.0)) # 液压驻锄重钢
+    col_track   = (0.18, 0.18, 0.20, 1.0) # 重型履带暗铁
+    col_steel   = (0.45, 0.48, 0.52, 1.0) # 炮身加固合金钢
+    col_brass   = (0.88, 0.65, 0.22, 1.0) # 铸造黄铜铆钉与制退器饰环
+    col_anchor  = (0.35, 0.36, 0.40, 1.0) # 液压驻锄重钢
 
     mat_hull    = create_clay_mat("m_cn_hl", col_hull, roughness=0.60)
     mat_shield  = create_clay_mat("m_cn_shd", col_shield, roughness=0.50)

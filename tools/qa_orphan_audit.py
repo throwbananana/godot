@@ -122,6 +122,27 @@ CANDIDATES = [
      [("point/PROP", False, ORTHO_SCALE_PROP),
       ("point/3.3", False, ORTHO_SCALE_DEFAULT)]),
 
+    # 下面三条不是"疑似孤儿", 是**待机动画的前置体检**。
+    # build_building_idle_anims.py 里的三段待机循环都是包装器 —— 调属主的
+    # build_radar_station()/build_emp_tower()/build_factory() 拿对象再位移。
+    # 只要属主已经复现不出已提交的 PNG, 那套包装器渲出来的 6 帧就会连带把这张
+    # 图**悄悄改样**: 动画是新加的, 没人有旧版可比, 改样不会有任何报错。
+    # 所以先在这里把 d_rgb 钉住, 再去渲动画。
+    ("buildings/radar_station.png",
+     _lazy("build_new_buildings_and_tanks", "build_radar_station"),
+     [("point/PROP", False, ORTHO_SCALE_PROP),
+      ("point/3.3", False, ORTHO_SCALE_DEFAULT)]),
+
+    ("buildings/emp_tower.png",
+     _lazy("build_new_buildings_and_tanks", "build_emp_tower"),
+     [("point/PROP", False, ORTHO_SCALE_PROP),
+      ("point/3.3", False, ORTHO_SCALE_DEFAULT)]),
+
+    ("buildings/factory.png",
+     _lazy("build_jammer_factory_assets", "build_factory"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+
     ("powerups/treasure_chest.png",
      _lazy("build_treasure_and_challenge_assets", "build_treasure_chest"),
      [("point/PROP", False, ORTHO_SCALE_PROP),

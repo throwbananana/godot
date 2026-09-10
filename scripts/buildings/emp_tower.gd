@@ -2,6 +2,7 @@ class_name EMPTower
 extends StaticBody2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
+const BuildingIdleAnim = preload("res://scripts/building_idle_anim.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
@@ -34,6 +35,13 @@ func _ready() -> void:
 	sprite.texture = tex
 	sprite.scale = Vector2(48.0 / 256.0, 48.0 / 256.0)
 	add_child(sprite)
+
+	# 电弧极公转 + 线圈能量上行的待机循环。同 radar_station: 建模注释写的是
+	# "旋转放电线圈", 而它在游戏里一直是张静止的图, 只在放脉冲时闪一下。
+	# 帧见 tools/build_building_idle_anims.py::build_emp_tower_idle。
+	BuildingIdleAnim.attach(self, sprite,
+		"res://assets/sprites/buildings/emp_tower.png",
+		func() -> bool: return not is_destroyed)
 
 	collision_shape = CollisionShape2D.new()
 	var box = RectangleShape2D.new()

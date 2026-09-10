@@ -8,7 +8,7 @@
 
 有 [FAIL] 就以非零码退出, 和 tools/test_*.gd 的约定一致。
 
-五项检查, 每一项都对应一个真出过的事故:
+七项检查, 每一项都对应一个真出过的事故:
 
   blank    整张图方差极低 / alpha 覆盖率异常高。
            build_ui_character_art_replacements.py 漏调 clear_scene(), Blender
@@ -29,12 +29,19 @@
   palette  饱和度过低的资源在浅色地形上没有轮廓。enemy_basic 曾是近白灰
            (饱和度 15.3%), 而同类都在 42~52%。
 
+  srgb     **这一项查的是源码, 不是图。** create_clay_mat 内部已经做 sRGB->linear,
+           调用方再包一层就转了两次, 整份调色板被压暗四成 (emp_tower 亮度
+           52.9 vs 本意的 86.5)。之所以不能靠看图: 一张统一压暗的图和一次正常
+           的深色美术选择, 在任何像素级指标上都长得一样。57 个脚本里曾有 3 个
+           这么写。
+
   --vs     与某个 git 版本逐张比对, 把"渲染参数变了"和"美术被回退了"分开。
            这是查陈旧 build 脚本的主力手段 —— tools/ 里有几个脚本已经无法复现
            仓库里已提交的美术 (见 CLAUDE.md "Stale build scripts")。
 """
 
 import argparse
+import ast
 import io
 import os
 import subprocess
@@ -428,6 +435,111 @@ def check_vs(ref):
     print(f"    美术变化 {art} 张 / 仅细节差异 {grain} 张 / 基本一致 {same} 张")
 
 
+# ---------------------------------------------------------------- srgb
+
+TOOLS_DIR = SCRIPT_DIR
+
+MAT_FN = "create_clay_mat"
+CONV_FN = "srgb_to_linear"
+
+
+def _fn_name(node):
+    """Call 节点的被调用名 —— 裸函数名和 mod.fn 两种写法都归一成末段名字。"""
+    f = node.func
+    if isinstance(f, ast.Name):
+        return f.id
+    if isinstance(f, ast.Attribute):
+        return f.attr
+    return None
+
+
+def check_srgb():
+    """颜色不能转两次 sRGB->linear。
+
+    create_clay_mat() 内部就会转 (sokpop_common.py: `lin_col = srgb_to_linear(col)`),
+    所以调用方**必须**以 sRGB 传入。外面再包一层等于转了两次, 整份调色板被
+    系统性压暗 —— 而且不报任何错, 图照渲, 只是暗。
+
+    实测把外层拆掉重渲, 与已提交 PNG 相比:
+
+        emp_tower     亮度 52.9 -> 86.5      command_post  45.3 -> 76.8
+        radar_station 亮度 62.3 -> 88.0
+
+    也就是这些资源一直只渲出了作者写下的亮度的六成左右。
+
+    **为什么必须查源码而不是查图**: 一张统一压暗四成的图, 和一次"这个资源本来
+    就该偏深"的正常美术选择, 在任何像素级指标上都长得一模一样。产物里已经看不出
+    违反过 —— 这和 test_net_spawn_audit.gd 静态那半边是同一个理由。
+
+    === 两种写法都要抓, 只修一种比不修更糟 ===
+
+    内联:  create_clay_mat("m", srgb_to_linear((r, g, b, a)))
+    间接:  col_body = srgb_to_linear((r, g, b, a))
+           create_clay_mat("m", col_body)
+
+    第一版只抓了内联的, 于是 build_engineer_tank.py 里那个唯一内联的箱子材质被
+    改亮, 车体等七个走间接写法的没动 —— 同一辆坦克内部反而不一致了。
+
+    === 用 ast 而不是扫文本 ===
+
+    第一版是手写括号配对扫原文, 结果把本文件自己 docstring 里那行示例
+    (`create_clay_mat(名字, srgb_to_linear((r,g,b,a)))`) 当成了真实违规报出来。
+    注释和字符串里出现这个模式是完全正常的 —— 讲的就是它。ast 只看真实的
+    Call 节点, 不会有这个问题。
+    """
+    n_bad = 0
+    scanned = 0
+    for fname in sorted(os.listdir(TOOLS_DIR)):
+        if not fname.startswith("build_") or not fname.endswith(".py"):
+            continue
+        path = os.path.join(TOOLS_DIR, fname)
+        try:
+            # utf-8-sig 而不是 utf-8: tools/ 里有两个脚本 (build_normal_maps.py,
+            # build_svg_assets_to_3d.py) 带 UTF-8 BOM, 用 utf-8 读进来开头会多一个
+            # U+FEFF, ast.parse 当场 SyntaxError。第一版就是这样把这两个文件静默
+            # 跳过的 —— 一个"解析不了就跳过"的兜底, 恰好在门禁上开了个没人注意的
+            # 洞。没有 BOM 时 utf-8-sig 与 utf-8 等价, 所以这里一律用它。
+            with io.open(path, encoding="utf-8-sig") as fh:
+                tree = ast.parse(fh.read(), filename=fname)
+        except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+            warn(f"tools/{fname}: 解析不了, 本项跳过 ({exc.__class__.__name__})")
+            continue
+        scanned += 1
+
+        # 先收集 `名字 = srgb_to_linear(...)` 这类预先转换过的颜色变量
+        preconv = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if isinstance(node.value, ast.Call) and _fn_name(node.value) == CONV_FN:
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name):
+                        preconv[tgt.id] = node.lineno
+
+        hits = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or _fn_name(node) != MAT_FN:
+                continue
+            args = list(node.args) + [kw.value for kw in node.keywords]
+            for arg in args:
+                # 内联: 实参里套着一次 srgb_to_linear
+                for sub in ast.walk(arg):
+                    if isinstance(sub, ast.Call) and _fn_name(sub) == CONV_FN:
+                        hits.append((node.lineno, "内联 srgb_to_linear(...)"))
+                        break
+                else:
+                    # 间接: 实参是一个预先转换过的变量
+                    if isinstance(arg, ast.Name) and arg.id in preconv:
+                        hits.append((node.lineno,
+                                     f"实参 {arg.id} 在第 {preconv[arg.id]} 行已转换过"))
+
+        for lineno, why in sorted(set(hits)):
+            fail(f"tools/{fname}:{lineno}: 颜色被转了两次 sRGB->linear —— {why}")
+            n_bad += 1
+
+    print(f"    扫描 {scanned} 个 build 脚本, {n_bad} 处双重 sRGB 转换")
+
+
 CHECKS = {
     "blank": check_blank,
     "seam": check_seam,
@@ -435,6 +547,7 @@ CHECKS = {
     "frame": check_frame,
     "clip": check_clip,
     "palette": check_palette,
+    "srgb": check_srgb,
 }
 
 

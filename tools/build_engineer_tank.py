@@ -11,6 +11,11 @@
   - assets/sprites/tanks/tank_engineer_f0.png ~ f5.png
   - assets/sprites/tanks/enemy_engineer_f0.png ~ f5.png
   - assets/sprites/tanks/tank_engineer.png
+
+注: 本文件曾把颜色转了两次 sRGB->linear (外面包一层 srgb_to_linear, 而
+create_clay_mat 内部本来就会转), 整体压暗约四成。已统一为"以 sRGB 传入,
+转换交给 create_clay_mat"。来龙去脉见
+build_new_buildings_and_tanks.py 文件头。
 """
 
 import bpy
@@ -23,7 +28,6 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from sokpop_common import (
-    srgb_to_linear,
     clear_scene,
     setup_render_settings,
     create_sokpop_lighting,
@@ -44,18 +48,18 @@ def build_engineer_tank(frame: int = 0, is_enemy: bool = False):
 
     # 1. 材质定义 (遵循 Sokpop 黏土着色)
     if not is_enemy:
-        col_body   = srgb_to_linear((0.92, 0.68, 0.12, 1.0)) # 工业亮黄
-        col_turret = srgb_to_linear((0.26, 0.28, 0.30, 1.0)) # 工业深灰
-        col_trim   = srgb_to_linear((0.96, 0.78, 0.20, 1.0)) # 明黄点缀
+        col_body   = (0.92, 0.68, 0.12, 1.0) # 工业亮黄
+        col_turret = (0.26, 0.28, 0.30, 1.0) # 工业深灰
+        col_trim   = (0.96, 0.78, 0.20, 1.0) # 明黄点缀
     else:
-        col_body   = srgb_to_linear((0.85, 0.42, 0.14, 1.0)) # 敌方警示橙红
-        col_turret = srgb_to_linear((0.24, 0.20, 0.22, 1.0)) # 敌方暗铁
-        col_trim   = srgb_to_linear((0.92, 0.55, 0.18, 1.0)) # 橙红点缀
+        col_body   = (0.85, 0.42, 0.14, 1.0) # 敌方警示橙红
+        col_turret = (0.24, 0.20, 0.22, 1.0) # 敌方暗铁
+        col_trim   = (0.92, 0.55, 0.18, 1.0) # 橙红点缀
 
-    col_track  = srgb_to_linear((0.25, 0.25, 0.27, 1.0)) # 履带黑铁
-    col_hazard = srgb_to_linear((0.10, 0.10, 0.12, 1.0)) # 警示黑纹
-    col_beacon = srgb_to_linear((1.00, 0.60, 0.05, 1.0)) # 琥珀警示灯
-    col_steel  = srgb_to_linear((0.62, 0.66, 0.68, 1.0)) # 液压杆金属
+    col_track  = (0.25, 0.25, 0.27, 1.0) # 履带黑铁
+    col_hazard = (0.10, 0.10, 0.12, 1.0) # 警示黑纹
+    col_beacon = (1.00, 0.60, 0.05, 1.0) # 琥珀警示灯
+    col_steel  = (0.62, 0.66, 0.68, 1.0) # 液压杆金属
 
     mat_body   = create_clay_mat("m_eng_b", col_body, roughness=0.62)
     mat_turret = create_clay_mat("m_eng_t", col_turret, roughness=0.55)
@@ -63,7 +67,7 @@ def build_engineer_tank(frame: int = 0, is_enemy: bool = False):
     mat_trim   = create_clay_mat("m_eng_tm", col_trim, roughness=0.50)
     mat_hazard = create_clay_mat("m_eng_hz", col_hazard, roughness=0.70)
     mat_steel  = create_clay_mat("m_eng_st", col_steel, roughness=0.35)
-    mat_crate  = create_clay_mat("m_eng_cr", srgb_to_linear((0.55, 0.38, 0.22, 1.0)), roughness=0.80)
+    mat_crate  = create_clay_mat("m_eng_cr", (0.55, 0.38, 0.22, 1.0), roughness=0.80)
 
     # 警示灯发光材质 (根据帧数产生旋转发光强弱呼吸)
     beacon_pulse = 3.5 + 2.5 * math.sin(frame * (2.0 * math.pi / 6.0))

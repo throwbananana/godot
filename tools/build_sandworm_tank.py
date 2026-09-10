@@ -44,17 +44,17 @@ def build_sandworm_tank(frame: int = 0, is_enemy: bool = True):
 
     # 1. 材质定义
     if is_enemy:
-        col_hull    = srgb_to_linear((0.36, 0.24, 0.14, 1.0)) # 敌方深砂岩土褐
-        col_chitin  = srgb_to_linear((0.78, 0.52, 0.20, 1.0)) # 几丁质砂丘金褐
-        col_drill   = srgb_to_linear((0.48, 0.45, 0.42, 1.0)) # 硬岩高锰钢钻头
-        col_amber   = srgb_to_linear((1.00, 0.65, 0.10, 1.0)) # 琥珀震波感知晶体 (金橙)
+        col_hull    = (0.36, 0.24, 0.14, 1.0) # 敌方深砂岩土褐
+        col_chitin  = (0.78, 0.52, 0.20, 1.0) # 几丁质砂丘金褐
+        col_drill   = (0.48, 0.45, 0.42, 1.0) # 硬岩高锰钢钻头
+        col_amber   = (1.00, 0.65, 0.10, 1.0) # 琥珀震波感知晶体 (金橙)
     else:
-        col_hull    = srgb_to_linear((0.18, 0.22, 0.26, 1.0)) # 友方深蓝岩底盘
-        col_chitin  = srgb_to_linear((0.25, 0.60, 0.75, 1.0)) # 友方晶石青蓝甲
-        col_drill   = srgb_to_linear((0.55, 0.60, 0.65, 1.0)) # 友方白钢钻头
-        col_amber   = srgb_to_linear((0.30, 0.90, 1.00, 1.0)) # 友方苍蓝晶体
+        col_hull    = (0.18, 0.22, 0.26, 1.0) # 友方深蓝岩底盘
+        col_chitin  = (0.25, 0.60, 0.75, 1.0) # 友方晶石青蓝甲
+        col_drill   = (0.55, 0.60, 0.65, 1.0) # 友方白钢钻头
+        col_amber   = (0.30, 0.90, 1.00, 1.0) # 友方苍蓝晶体
 
-    col_track = srgb_to_linear((0.20, 0.18, 0.16, 1.0)) # 埋地防卡死履带暗泥
+    col_track = (0.20, 0.18, 0.16, 1.0) # 埋地防卡死履带暗泥
 
     mat_hull   = create_clay_mat("m_sw_hl", col_hull, roughness=0.70)
     mat_chitin = create_clay_mat("m_sw_ch", col_chitin, roughness=0.55)

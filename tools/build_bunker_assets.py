@@ -44,12 +44,12 @@ def build_bunker(rot_deg: float = 0.0):
     objs = []
 
     # 1. 材质定义 (Sokpop 黏土着色)
-    col_concrete = srgb_to_linear((0.48, 0.50, 0.46, 1.0)) # 堡垒厚重混泥土/装甲灰绿
-    col_steel    = srgb_to_linear((0.30, 0.32, 0.35, 1.0)) # 重型加固角钢与射击孔边缘
-    col_shield   = srgb_to_linear((0.24, 0.38, 0.32, 1.0)) # 正面重装甲防盾深绿
-    col_trim     = srgb_to_linear((0.85, 0.65, 0.15, 1.0)) # 正面射击孔引导金黄标线
-    col_floor    = srgb_to_linear((0.36, 0.35, 0.32, 1.0)) # 掩体内部踏板
-    col_sandbag  = srgb_to_linear((0.68, 0.58, 0.38, 1.0)) # 侧后方沙袋/掩体墙
+    col_concrete = (0.48, 0.50, 0.46, 1.0) # 堡垒厚重混泥土/装甲灰绿
+    col_steel    = (0.30, 0.32, 0.35, 1.0) # 重型加固角钢与射击孔边缘
+    col_shield   = (0.24, 0.38, 0.32, 1.0) # 正面重装甲防盾深绿
+    col_trim     = (0.85, 0.65, 0.15, 1.0) # 正面射击孔引导金黄标线
+    col_floor    = (0.36, 0.35, 0.32, 1.0) # 掩体内部踏板
+    col_sandbag  = (0.68, 0.58, 0.38, 1.0) # 侧后方沙袋/掩体墙
 
     mat_concrete = create_clay_mat("m_bk_conc", col_concrete, roughness=0.75)
     mat_steel    = create_clay_mat("m_bk_stl", col_steel, roughness=0.50)

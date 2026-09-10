@@ -49,14 +49,14 @@ def build_wooden_wall(frame: int = 0, damage_stage: int = 0):
     objs = []
 
     # 1. 材质定义 (Sokpop 原木黏土与锻铁着色)
-    col_wood_bark  = srgb_to_linear((0.54, 0.34, 0.18, 1.0)) # 树皮深棕
-    col_wood_core  = srgb_to_linear((0.74, 0.52, 0.28, 1.0)) # 原木截面年轮暖黄
-    col_wood_brace = srgb_to_linear((0.64, 0.44, 0.22, 1.0)) # 交叉斜撑木条
-    col_iron_strap = srgb_to_linear((0.26, 0.27, 0.30, 1.0)) # 加固锻铁箍带
-    col_bolt       = srgb_to_linear((0.85, 0.65, 0.22, 1.0)) # 黄铜/硬铁铆钉
-    col_rope       = srgb_to_linear((0.76, 0.68, 0.48, 1.0)) # 麻绳系带
-    col_skid       = srgb_to_linear((0.40, 0.26, 0.14, 1.0)) # 底部滑靴木橇
-    col_moss       = srgb_to_linear((0.36, 0.50, 0.24, 1.0)) # 边角青苔细节
+    col_wood_bark  = (0.54, 0.34, 0.18, 1.0) # 树皮深棕
+    col_wood_core  = (0.74, 0.52, 0.28, 1.0) # 原木截面年轮暖黄
+    col_wood_brace = (0.64, 0.44, 0.22, 1.0) # 交叉斜撑木条
+    col_iron_strap = (0.26, 0.27, 0.30, 1.0) # 加固锻铁箍带
+    col_bolt       = (0.85, 0.65, 0.22, 1.0) # 黄铜/硬铁铆钉
+    col_rope       = (0.76, 0.68, 0.48, 1.0) # 麻绳系带
+    col_skid       = (0.40, 0.26, 0.14, 1.0) # 底部滑靴木橇
+    col_moss       = (0.36, 0.50, 0.24, 1.0) # 边角青苔细节
 
     mat_bark  = create_clay_mat(f"m_ww_bark_{frame}_{damage_stage}", col_wood_bark, roughness=0.75)
     mat_core  = create_clay_mat(f"m_ww_core_{frame}_{damage_stage}", col_wood_core, roughness=0.65)
@@ -274,10 +274,10 @@ def build_wooden_wall(frame: int = 0, damage_stage: int = 0):
 def build_wood_debris_effect(frame_idx: int):
     """构建受损击碎时的木屑木刺飞溅特效 (Wood Splinter Debris VFX 4 Frames)"""
     objs = []
-    col_bark   = srgb_to_linear((0.54, 0.34, 0.18, 1.0))
-    col_splint = srgb_to_linear((0.78, 0.56, 0.30, 1.0))
-    col_iron   = srgb_to_linear((0.26, 0.27, 0.30, 1.0))
-    col_dust   = srgb_to_linear((0.85, 0.78, 0.65, 0.8))
+    col_bark   = (0.54, 0.34, 0.18, 1.0)
+    col_splint = (0.78, 0.56, 0.30, 1.0)
+    col_iron   = (0.26, 0.27, 0.30, 1.0)
+    col_dust   = (0.85, 0.78, 0.65, 0.8)
 
     mat_bark   = create_clay_mat(f"m_wdeb_b_{frame_idx}", col_bark)
     mat_splint = create_clay_mat(f"m_wdeb_s_{frame_idx}", col_splint)
