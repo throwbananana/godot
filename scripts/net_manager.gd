@@ -194,6 +194,15 @@ func detach_game(g: Node) -> void:
 func _on_peer_connected(id: int) -> void:
 	if NetSession.is_host():
 		NetSession.remote_peer_id = id
+		# 对局已经开打了还有人连进来 = 掉线的队友回来了 (只有一个客位, 见
+		# _make_host_peer)。补一份开局包给他, 否则他会卡在标题界面 ——
+		# begin_match 是"进对局"的唯一入口, 而那一发在他掉线前就播完了。
+		#
+		# last_begin_mode/_campaign 一直存着但以前没人读, 就是为这一刻。
+		# 里面的战役状态是开局那一刻的旧值, 只够把他送进正确的场景和种子;
+		# 真正的当前状态由 _rpc_client_ready 那边的 net_resync_client() 补。
+		if last_begin_mode != -1:
+			_rpc_begin_match.rpc_id(id, NetSession.match_seed, last_begin_mode, last_begin_campaign)
 		peer_joined.emit(id)
 
 
@@ -201,6 +210,11 @@ func _on_peer_disconnected(id: int) -> void:
 	if NetSession.is_host() and NetSession.remote_peer_id == id:
 		NetSession.remote_peer_id = 0
 		NetSession.remote_input.clear()
+		# 客位空出来了, 房间又该被看见了。开局时 _stop_beacon() 停掉广播是
+		# 为了别让人看到一个进不去的满房间; 队友掉线之后那个理由不成立了,
+		# 不重开广播的话他只能手输 IP 才回得来。
+		client_in_match = false
+		_start_beacon(_beacon_game_port)
 	peer_left.emit(id)
 
 
@@ -379,7 +393,30 @@ func notify_ready() -> void:
 func _rpc_client_ready() -> void:
 	if not NetSession.is_host():
 		return
+
+	# **把实体登记整个作废, 让下一帧快照重新宣告一遍全场。**
+	#
+	# spawn 包是一次性的可靠事件: _send_snapshot() 头一次见到某个节点时给它
+	# 分配 net_id 并广播, 之后永远不再提它。首次进场没问题 (那时场上还没有
+	# 任何东西), 但**重连回来的客户端会进到一个空房间** —— 它自己那份世界是
+	# 全新的, 而主机这边每个单位都早就有 net_id 了, 于是一个 spawn 包都不会
+	# 再发。表现是有地图有 HUD 但一辆坦克都没有, 跟 CLAUDE.md 里记的那次
+	# "谁加载得快谁决定这局能不能玩" 是同一个失败形态, 一样不报错。
+	#
+	# 清掉 meta 和 _tracked 之后走的还是"头一次见到"那条既有路径, 而不是另写
+	# 一条重发路径 —— 两条路迟早会分叉, 而分叉在这里的表现是重连后少了某一类
+	# 单位。代价是重新分配一轮 net_id, 客户端那边 puppets 是空的, 不冲突。
+	for nid in _tracked:
+		var n = _tracked[nid]
+		if is_instance_valid(n):
+			n.remove_meta("net_id")
+	_tracked.clear()
+
 	client_in_match = true
+	# 重连时 last_begin_campaign 是**开局那一刻**的战役状态, 早就过期了
+	# (清了几间房、买了东西、金币变了)。让主机把当前状态补一份过去。
+	if game != null and is_instance_valid(game) and game.has_method("net_resync_client"):
+		game.net_resync_client()
 	client_ready.emit()
 
 # ================================================================ 输入
@@ -781,6 +818,31 @@ func _rpc_event_closed() -> void:
 		return
 	if game.has_method("net_close_event"):
 		game.net_close_event()
+
+
+# ---------------------------------------------------------------- 公告
+#
+# 主机侧的一条"两个人都该看到"的提示。刻意**echo 字符串本身而不是事件名** ——
+# 跟 VFXAnimator/SoundManager 那两个回声点同一个理由 (见 CLAUDE.md
+# "Presentation is echoed from two choke points"): 传事件名就得在两边各维护
+# 一张 名字 -> 文案 的表, 加一条公告要改两处, 迟早漏。
+#
+# **不是所有 show_toast() 都该走这里**, 所以没有把它挂进 show_toast() 本身。
+# 大多数提示是"这台机器上的这个玩家"的事 (你升级了、你钱不够、你的坦克被
+# 击毁), 全量回声会让两个人互相看到对方的私人提示。只有房间级别的公共事件
+# (宝物房开箱、隐藏房补给) 显式调用。
+func broadcast_toast(text: String) -> void:
+	if not NetSession.is_host() or NetSession.remote_peer_id == 0:
+		return
+	_rpc_toast.rpc(text)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_toast(text: String) -> void:
+	if not NetSession.is_client() or game == null or not is_instance_valid(game):
+		return
+	if game.has_method("show_toast"):
+		game.show_toast(text)
 
 
 # ---------------------------------------------------------------- 电路谜题

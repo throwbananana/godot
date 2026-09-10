@@ -993,6 +993,18 @@ func _net_push_campaign() -> void:
 		net.broadcast_campaign(GameState.campaign_to_dict())
 
 
+## 主机侧: 一个客户端刚刚报告"我的世界建好了" (首次进场或掉线重连)。
+##
+## 单独一个公开入口而不是让 net_manager 直接调 _net_push_campaign() ——
+## 下划线前缀在这个项目里是"只在本文件内部调"的约定, 而且这里的语义是
+## "把这个新来的人拉到当前进度", 将来要补的东西 (夜战雾状态、当前 BOSS 血条
+## 之类) 都该挂在这个名字下面, 而不是散进各处的推送点。
+func net_resync_client() -> void:
+	if not NetSession.is_host():
+		return
+	_net_push_campaign()
+
+
 ## 客户端: 收下主机推来的战役状态, 并把由它派生的表现刷新一遍。
 ##
 ## 门的开合、商店货位的售罄、小地图、HUD 全都是**从 GameState 推出来的**,
@@ -1890,7 +1902,12 @@ func _on_enter_non_combat_room(room: Dictionary) -> void:
 				# 编号却对得上, 玩家以为选的是 A、主机结算的是 B。
 				pass
 			"treasure", "secret":
-				show_toast("📦 队友正在开箱…")
+				# 刻意什么都不做。奖励是主机结算并同步回来的, 提示由主机的
+				# _net_broadcast_toast() 在同一帧发出 (局域网一个来回可以忽略)。
+				# 这里再本地补一句"队友正在开箱…"是错的: 它把一件两人共享的
+				# 好事说成了旁观, 而且属于客户端擅自做乐观更新 —— 万一这间房
+				# 已经被 looted 过, 主机根本不会发奖, 那句话就成了纯谎报。
+				pass
 		return
 
 	match room_type:
@@ -1914,8 +1931,10 @@ func _on_enter_non_combat_room(room: Dictionary) -> void:
 			_grant_treasure_room_reward()
 			_net_push_campaign()
 		"secret":
-			show_toast("🔒 隐藏房间 —— 补给已就位")
-			_grant_treasure_room_reward()
+			# 提示交给 _grant_treasure_room_reward() 一起发 —— 它现在既本地
+			# 显示也推给对面。这里再单独 show_toast() 一次的话, 主机会连着
+			# 弹两条而客户端只看得到后一条。
+			_grant_treasure_room_reward("🔒 隐藏房间")
 			_net_push_campaign()
 
 
@@ -2084,7 +2103,18 @@ func _sync_after_shop_purchase() -> void:
 
 ## 宝物房/秘密房的一次性奖励。用 once 标记记在房间字典里, 否则玩家来回走
 ## 两趟就能反复领 —— 房间是可以回头的, 这一点和原来单向向上的尖塔不一样。
-func _grant_treasure_room_reward() -> void:
+## 房间级别的公共公告: 本机显示一次, 并推给联机对面。
+##
+## 单机/主机无客户端时 broadcast_toast() 自己会 no-op, 所以这就是原来的
+## show_toast(), 行为不变。
+func _net_broadcast_toast(text: String) -> void:
+	show_toast(text)
+	var net := get_node_or_null("/root/Net")
+	if net:
+		net.broadcast_toast(text)
+
+
+func _grant_treasure_room_reward(label: String = "📦 宝物房") -> void:
 	var room := GameState.current_room_data()
 	if bool(room.get("looted", false)):
 		return
@@ -2102,6 +2132,13 @@ func _grant_treasure_room_reward() -> void:
 		actors_container.call_deferred("add_child", p_inst)
 	add_gold(80)
 	GameState.save_campaign()
+
+	# 联机: 奖励本身两端都已经拿到了 —— 金币走战役字典同步, 道具是
+	# Kind.POWERUP 的正经复制实体 (客户端看到的是同一个图标, 而且开过去
+	# 就能吃: 拾取判定跑在主机那边, 它看得到客户端坦克的权威位置)。
+	# 缺的只是**告诉他发生了什么**。客户端此前显示的是"队友正在开箱…",
+	# 那句话把一件两人共享的好事说成了旁观, 是这条公告要替掉的东西。
+	_net_broadcast_toast("%s：+80 G 与一件补给已就位！" % label)
 
 
 func _announce_room(room: Dictionary) -> void:
@@ -3378,6 +3415,15 @@ func _spawn_escort_ally(room_size: String = "normal") -> void:
 ## 4 只的房间下门槛是 3, 即最多容许损失 1 只 (3/4 > 半数), 而不是常见的
 ## ceil(4/2)==2 那种"刚好损失一半也算及格"的读法。
 func _on_escort_ally_destroyed(instance: AllyTank) -> void:
+	# 判负是权威侧的事。_game_over() 的注释断言"客户端自己永远不会走到这里",
+	# 而这条路以前只是**碰巧**守住了它: 客户端从不跑 _begin_room_encounter(),
+	# 所以 escort_ally_instances 恒为空, 信号也就接不上。那是个不稳的理由 ——
+	# 哪天有人让客户端也本地生成友军 (比如为了让它看到友军的移动更跟手),
+	# 这里就会变成客户端单方面判负, 而且主机毫不知情。
+	# tools/test_net_room_variants.gd 钉着"客户端不本地生成友军", 这一行则是
+	# 万一那条被改了之后的第二道闸。
+	if not NetSession.is_authority():
+		return
 	escort_ally_instances.erase(instance)
 	var remaining := escort_ally_instances.size()
 	var required := escort_ally_original_count / 2 + 1

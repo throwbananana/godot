@@ -70,6 +70,7 @@ func _run() -> void:
 	await _test_room_size("large", 26)
 	await _test_room_size("huge", 52)
 	await _test_escort_room()
+	await _test_treasure_room()
 
 	NetSession.reset()
 	print("==================================================")
@@ -239,4 +240,50 @@ func _test_escort_room() -> void:
 	# "客户端单方面判负"。
 	check(client.escort_ally_instances.is_empty(),
 		"客户端的判负路径不可达 (escort_ally_instances 为空)")
+	client.free()
+
+
+## 宝物房/隐藏房。这两种房以前被记成"主机独占, 客户端只有提示", 实际查下来
+## **奖励早就两端都拿到了**: 金币走战役字典同步, 道具是 Kind.POWERUP 的正经
+## 复制实体 (客户端看到同一个图标, 而且开过去就能吃 —— 拾取判定跑在主机侧,
+## 它看得到客户端坦克的权威位置)。缺的只是告诉客户端发生了什么, 而它当时
+## 显示的那句"队友正在开箱…"把一件两人共享的好事说成了旁观。
+##
+## 所以这里断言的是三件事, 而不是"客户端能不能开箱":
+##   1. 主机确实发奖并标记 looted (looted 在战役字典里 -> 会同步)。
+##   2. 存在把公告推给对面的通道 (broadcast_toast)。
+##   3. 客户端**不**本地发奖 —— 否则金币会在两端各加一次。
+func _test_treasure_room() -> void:
+	print("\n[宝物房]")
+	var made := _make_campaign()
+	var campaign: Dictionary = made[0]
+	var room_key: String = made[1]
+	if room_key == "":
+		fail("本层没有可改造的房间, 无法测试宝物房")
+		return
+
+	var host := await _boot(NetSession.Role.HOST, campaign, room_key, "normal", "treasure", "")
+	if host == null:
+		return
+	var host_gold: int = GameState.gold
+	var looted: bool = bool(GameState.floor_rooms[room_key].get("looted", false))
+	check(looted, "主机: 房间已标记 looted (该字段随战役字典同步)")
+	check(host_gold > 0, "主机: 金币已发放 (%d)" % host_gold)
+	host.free()
+
+	var net_script = load("res://scripts/net_manager.gd")
+	var has_toast: bool = false
+	if net_script:
+		for meth in net_script.get_script_method_list():
+			if String(meth.get("name", "")) == "broadcast_toast":
+				has_toast = true
+				break
+	check(has_toast, "net_manager.gd 提供 broadcast_toast() 公告通道")
+
+	# 客户端: 不许自己发奖。它拿到的应该是主机同步过来的战役状态。
+	var client := await _boot(NetSession.Role.CLIENT, campaign, room_key, "normal", "treasure", "")
+	if client == null:
+		return
+	check(not bool(GameState.floor_rooms[room_key].get("looted", false)),
+		"客户端没有本地发奖 (looted 仍为 false, 等主机同步)")
 	client.free()
