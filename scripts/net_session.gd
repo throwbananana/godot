@@ -409,10 +409,36 @@ static func decode_snapshot(payload: Array) -> Array:
 
 # ================================================================ 实体
 
+## 地图家具的标记 meta。main.gd::_add_map_furniture() 给 _build_map() 铺出来的
+## 每一件建筑打上它, classify() 见到就当 IGNORED。
+##
+## 为什么需要这么一条例外, 而不是让"actors_container 里的场景实例一律复制"
+## 那条兜底规则继续管: **_build_map() 是两端都跑的**, 它没有、也不该有
+## authority 判定 —— 地图靠种子同步而不是复制瓦片, 这是整个联机设计的地基。
+## 于是压力板/炸开关/充能站/油桶/宝箱这些进 actors_container 的建筑, 客户端
+## 自己会建一份, 主机又会把自己那份当实体下发一份, 客户端手里就是**双份**:
+## 一份活的 + 一份 monitoring=false 的惰性傀儡, 位置完全重叠, 肉眼看不出来,
+## 直到你朝它开一枪。实测客户端本地建出 5 个这样的实体。
+##
+## 正确的归类是: 这些东西跟地形一个性质 —— 确定性地图内容, 按种子同步,
+## **只复制它的状态变化** (被打掉 -> 走 net_remove_tile 那条既有的
+## "格号 + 名字前缀" 通道; 电路接通 -> Net.broadcast_circuit)。
+## 顺带省掉一堆静态物体每帧 30Hz 的快照槽位。
+##
+## 反过来说: 由主机逻辑动态生成的东西 (敌人、子弹、护送友军、掉落) 绝不能
+## 打这个标记 —— 它们不是确定性的, 客户端复现不出来。护送友军就是正例:
+## 它生在 _begin_room_encounter() 里, 而客户端整段跳过那个函数。
+const FURNITURE_META := "net_map_furniture"
+
+
 ## 这个节点属于哪一类。认不出来的 (VFX、建筑、火车车厢……) 返回 IGNORED,
 ## 不复制。
 static func classify(node: Node) -> int:
 	if node == null:
+		return Kind.IGNORED
+	# 地图家具优先判 —— 它必须压过下面那条 SCENE_NODE 兜底, 否则两端各建
+	# 一份的东西还会被再复制一份。见 FURNITURE_META 的注释。
+	if node.has_meta(FURNITURE_META):
 		return Kind.IGNORED
 	var scr: Script = node.get_script() as Script
 	if scr != null and SCRIPT_KIND.has(scr.resource_path):

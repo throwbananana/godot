@@ -783,6 +783,34 @@ func _rpc_event_closed() -> void:
 		game.net_close_event()
 
 
+# ---------------------------------------------------------------- 电路谜题
+#
+# 压力板/炸开关 (瓦片 46/47/52/53) 接通某个颜色的电路后, 该颜色下的受控建筑
+# 一次性 set_circuit_solved(true)。
+#
+# 为什么必须单独一条通道: 这个"接通"是**改状态而不是删节点** ——
+# electric_wall 改的是 is_powered / collision_shape.disabled / modulate,
+# shield_station 改的是能不能用。既有的两条兜底都接不住它:
+# child_exiting_tree 那条只报节点消失 (能量墙自毁恰好蹭得上, 电墙/充能站
+# 蹭不上), 快照那条只带位置/朝向。
+#
+# 开关本身是地图家具 (两端各建一份, 见 NetSession.FURNITURE_META), 所以
+# 客户端的预测坦克真的会压中它自己那块压力板。结算权因此必须收归主机:
+# main.gd::_on_circuit_switch_pressed() 早退, 只认这条下发。
+func broadcast_circuit(color: String) -> void:
+	if not NetSession.is_host() or NetSession.remote_peer_id == 0:
+		return
+	_rpc_circuit.rpc(color)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_circuit(color: String) -> void:
+	if not NetSession.is_client() or game == null or not is_instance_valid(game):
+		return
+	if game.has_method("net_apply_circuit"):
+		game.net_apply_circuit(color)
+
+
 func request_event_choice(idx: int) -> void:
 	if NetSession.is_client():
 		_rpc_event_choice.rpc_id(1, idx)

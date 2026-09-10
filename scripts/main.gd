@@ -826,6 +826,13 @@ func _net_attach() -> void:
 		# 滚墙/能量墙…), 一个个改等于十几个能漏掉的地方。
 		if not map_container.child_exiting_tree.is_connected(_on_net_tile_exiting):
 			map_container.child_exiting_tree.connect(_on_net_tile_exiting)
+		# 地图家具 (油桶/宝箱/炸开关/掩体…) 走同一条通道。它们进的是
+		# actors_container 而不是 map_container, 但性质跟地形一样是确定性
+		# 地图内容, 两端各建一份、不进复制层 (见 NetSession.FURNITURE_META),
+		# 所以"没了"这件事必须自己报 —— 否则主机炸掉的油桶会永远留在客户端
+		# 屏幕上。只报打了家具标记的, 敌人/子弹/掉落照旧走复制层的 despawn。
+		if not actors_container.child_exiting_tree.is_connected(_on_net_furniture_exiting):
+			actors_container.child_exiting_tree.connect(_on_net_furniture_exiting)
 
 
 func _exit_tree() -> void:
@@ -836,6 +843,22 @@ func _exit_tree() -> void:
 
 func _on_net_tile_exiting(child: Node) -> void:
 	if not (child is Node2D):
+		return
+	var net := get_node_or_null("/root/Net")
+	if net == null:
+		return
+	var p: Vector2 = (child as Node2D).position
+	net.notify_tile_gone(_grid_col(p.x), _grid_col(p.y), String(child.name).left(6))
+
+
+## actors_container 版本。只报地图家具 —— 别的东西 (敌人、子弹、掉落、护送
+## 友军) 都是复制层的实体, 它们消失时 _send_snapshot() 的 despawn 已经在管,
+## 这里再报一次会让客户端按格号去删一个傀儡, 删错的概率不低 (同一格里可能
+## 同时站着坦克和地上的金币)。
+func _on_net_furniture_exiting(child: Node) -> void:
+	if not (child is Node2D):
+		return
+	if not child.has_meta(NetSession.FURNITURE_META):
 		return
 	var net := get_node_or_null("/root/Net")
 	if net == null:
@@ -864,6 +887,20 @@ func net_remove_tile(gx: int, gy: int, tag: String = "") -> void:
 			continue
 		var p: Vector2 = (child as Node2D).position
 		if _grid_col(p.x) != gx or _grid_col(p.y) != gy:
+			continue
+		if tag != "" and String(child.name).left(6) != tag:
+			continue
+		child.queue_free()
+		return
+	# 地图家具在 actors_container 里 (见 _add_map_furniture)。**只找打了标记的**:
+	# 这个容器里还站着傀儡坦克、傀儡子弹和掉落, 按格号删是会误伤的 —— 同一格
+	# 里同时有一辆坦克和一枚金币是常态。带标记的那批才是两端各建一份、需要
+	# 靠这条通道对齐的东西。
+	for child in actors_container.get_children():
+		if not (child is Node2D) or not child.has_meta(NetSession.FURNITURE_META):
+			continue
+		var p2: Vector2 = (child as Node2D).position
+		if _grid_col(p2.x) != gx or _grid_col(p2.y) != gy:
 			continue
 		if tag != "" and String(child.name).left(6) != tag:
 			continue
@@ -1836,7 +1873,13 @@ func _on_enter_non_combat_room(room: Dictionary) -> void:
 	# 所以两端摆的是同一批货同一个价; 客户端开上货位会发一条成交请求, 由主机
 	# 执行并把结果同步回来 (ShopStand._on_body_entered / net_apply_buy)。
 	#
-	# 事件/休息/宝物房还没有对应的上行交互, 客户端只有提示。
+	# 事件/休息也是完整可玩的, 但走的是另一条路: 事件种类由主机掷 (见下面
+	# broadcast_event 那段), 对话框由主机推过来, 任一方都能提交选项
+	# (Net.request_event_choice -> net_apply_event_choice), 主机用
+	# _net_event_open 这个闩去重。客户端**不能**自己 setup 事件框。
+	#
+	# 只剩宝物房/隐藏房是纯主机结算, 客户端只有提示 —— 那两种房没有交互,
+	# 就是进门发奖, 奖励跟着战役字典同步回来即可。
 	if NetSession.is_client():
 		match room_type:
 			"shop":
@@ -2697,6 +2740,24 @@ func _spawn_tile(type: String, pos: Vector2, tex: Texture2D) -> void:
 		)
 		map_container.add_child(water_area)
 
+## _build_map() 铺出来的建筑统一走这里进 actors_container, 顺手打上
+## "地图家具" 标记。
+##
+## **这个标记是联机正确性的一部分, 不是可选的优化。** _build_map() 两端都跑
+## (地图靠种子同步, 见 net_session.gd::FURNITURE_META 的长注释), 所以客户端
+## 自己就会建出这些建筑; 而 net_manager::_send_snapshot() 每帧扫
+## actors_container, 把任何非 IGNORED 的东西登记下发 —— 不打标记的话客户端
+## 手里就是双份 (本地一份活的 + 傀儡一份惰性的, 位置完全重叠)。
+##
+## 判据是"这东西是不是确定性地图内容": 是 -> 走这里; 由主机逻辑动态生成的
+## (敌人、子弹、掉落、护送友军) -> 照旧 actors_container.add_child(), 让复制层
+## 接管。护送友军之所以不用改, 是因为它生在 _begin_room_encounter() 里, 而
+## 客户端整段跳过那个函数。
+func _add_map_furniture(node: Node) -> void:
+	node.set_meta(NetSession.FURNITURE_META, true)
+	actors_container.add_child(node)
+
+
 func _spawn_moving_platform(pos: Vector2, axis: Vector2 = Vector2.RIGHT, dist: float = 144.0, speed: float = 48.0) -> void:
 	if not moving_platform_scene:
 		moving_platform_scene = load("res://scenes/moving_platform.tscn")
@@ -2706,7 +2767,7 @@ func _spawn_moving_platform(pos: Vector2, axis: Vector2 = Vector2.RIGHT, dist: f
 		plat.patrol_axis = axis
 		plat.patrol_distance = dist
 		plat.move_speed = speed
-		actors_container.add_child(plat)
+		_add_map_furniture(plat)
 
 func _spawn_wormhole(pos: Vector2) -> void:
 	GameState.discover_encyclopedia_entry("tile_wormhole")
@@ -2715,7 +2776,7 @@ func _spawn_wormhole(pos: Vector2) -> void:
 	if wormhole_scene:
 		var wh = wormhole_scene.instantiate()
 		wh.position = pos
-		actors_container.add_child(wh)
+		_add_map_furniture(wh)
 
 func _spawn_shield_station(pos: Vector2) -> void:
 	if not shield_station_scene:
@@ -2723,7 +2784,7 @@ func _spawn_shield_station(pos: Vector2) -> void:
 	if shield_station_scene:
 		var st = shield_station_scene.instantiate()
 		st.position = pos
-		actors_container.add_child(st)
+		_add_map_furniture(st)
 
 func _spawn_wind_blower(pos: Vector2, dir: WindBlower.Direction) -> void:
 	if not wind_blower_scene:
@@ -2732,7 +2793,7 @@ func _spawn_wind_blower(pos: Vector2, dir: WindBlower.Direction) -> void:
 		var wb = wind_blower_scene.instantiate()
 		wb.position = pos
 		wb.set_direction(dir)
-		actors_container.add_child(wb)
+		_add_map_furniture(wb)
 
 func _spawn_conveyor(pos: Vector2, dir: ConveyorBelt.Direction) -> void:
 	GameState.discover_encyclopedia_entry("tile_conveyor")
@@ -2759,7 +2820,7 @@ func _spawn_street_lamp(pos: Vector2) -> void:
 	if street_lamp_scene:
 		var lamp = street_lamp_scene.instantiate()
 		lamp.position = pos
-		actors_container.add_child(lamp)
+		_add_map_furniture(lamp)
 
 func _spawn_electric_wall(pos: Vector2) -> void:
 	if not electric_wall_scene:
@@ -2779,7 +2840,7 @@ func _spawn_piston_switch(pos: Vector2, color: String) -> void:
 		var sw = piston_switch_scene.instantiate()
 		sw.gate_color = color
 		sw.position = pos
-		actors_container.add_child(sw)
+		_add_map_furniture(sw)
 		sw.switch_pressed.connect(_on_circuit_switch_pressed)
 
 ## 受电路控制的电墙: 默认保持 is_powered=true (跟普通电墙一样, 出生即通电/
@@ -2807,7 +2868,7 @@ func _spawn_gated_shield_station(pos: Vector2, color: String) -> void:
 		var st = shield_station_scene.instantiate()
 		st.is_powered = false
 		st.position = pos
-		actors_container.add_child(st)
+		_add_map_furniture(st)
 		if not circuit_gated_buildings.has(color):
 			circuit_gated_buildings[color] = []
 		circuit_gated_buildings[color].append(st)
@@ -2817,8 +2878,36 @@ func _spawn_gated_shield_station(pos: Vector2, color: String) -> void:
 ## 不止一个开关 (任意一个按下即算解开, OR 逻辑), 后按的那些应该是无操作,
 ## 不用重放一次音效/提示。
 func _on_circuit_switch_pressed(color: String) -> void:
+	# 联机: 结算权归主机。开关是地图家具, 两端各建一份 (见
+	# NetSession.FURNITURE_META), 而客户端的预测坦克有真碰撞, 会压中它自己
+	# 本地那块压力板 —— 没有这一行的话只有客户端那边断电, 主机毫不知情,
+	# 而且不报任何错。客户端要等主机的 net_apply_circuit() 下发。
+	#
+	# 单机时 is_authority() 恒为 true, 行为一行不变。
+	if not NetSession.is_authority():
+		return
 	if circuit_solved.get(color, false):
 		return
+	_apply_circuit_solved(color)
+	var net := get_node_or_null("/root/Net")
+	if net:
+		net.broadcast_circuit(color)
+
+
+## 客户端侧: 主机说某个颜色的电路接通了。
+##
+## 作用在**客户端自己本地建的**那批受控建筑上 —— 它们是地图家具, 两端从同一个
+## 种子铺出同一张图, 所以 circuit_gated_buildings 两边内容一致, 不需要按 id
+## 一个个点名。
+func net_apply_circuit(color: String) -> void:
+	if circuit_solved.get(color, false):
+		return
+	_apply_circuit_solved(color)
+
+
+## 主客两侧共用的结算体。抽出来是为了让"主机怎么算的, 客户端就怎么算" ——
+## 两份手抄的实现迟早会分叉, 而分叉在这里的表现是"我这边墙没电了, 你那边还有电"。
+func _apply_circuit_solved(color: String) -> void:
 	circuit_solved[color] = true
 	for building in circuit_gated_buildings.get(color, []):
 		if is_instance_valid(building) and building.has_method("set_circuit_solved"):
@@ -2836,7 +2925,7 @@ func _spawn_bomb_switch(pos: Vector2, color: String) -> void:
 		var sw = bomb_switch_scene.instantiate()
 		sw.gate_color = color
 		sw.position = pos
-		actors_container.add_child(sw)
+		_add_map_furniture(sw)
 		sw.switch_pressed.connect(_on_circuit_switch_pressed)
 
 ## 能量墙: 出生即对一切火力免疫, 只有同色开关 (压力板或可摧毁款均可) 触发后
@@ -2859,7 +2948,7 @@ func _spawn_oil_barrel(pos: Vector2) -> void:
 	if oil_barrel_scene:
 		var barrel = oil_barrel_scene.instantiate()
 		barrel.position = pos
-		actors_container.add_child(barrel)
+		_add_map_furniture(barrel)
 
 func _spawn_signal_jammer_tower(pos: Vector2) -> void:
 	if not signal_jammer_tower_scene:
@@ -2867,7 +2956,7 @@ func _spawn_signal_jammer_tower(pos: Vector2) -> void:
 	if signal_jammer_tower_scene:
 		var jammer = signal_jammer_tower_scene.instantiate()
 		jammer.position = pos
-		actors_container.add_child(jammer)
+		_add_map_furniture(jammer)
 
 func _spawn_factory(pos: Vector2) -> void:
 	if not factory_scene:
@@ -2875,7 +2964,7 @@ func _spawn_factory(pos: Vector2) -> void:
 	if factory_scene:
 		var factory = factory_scene.instantiate()
 		factory.position = pos
-		actors_container.add_child(factory)
+		_add_map_furniture(factory)
 		factory_instances.append(factory)
 
 func _spawn_drifting_supplies(pos: Vector2) -> void:
@@ -2897,7 +2986,7 @@ func _spawn_drifting_supplies(pos: Vector2) -> void:
 	if drifting_supplies_scene:
 		var crate = drifting_supplies_scene.instantiate()
 		crate.position = pos
-		actors_container.add_child(crate)
+		_add_map_furniture(crate)
 
 func _spawn_enemy_shield_tower(pos: Vector2) -> void:
 	if not enemy_shield_tower_scene:
@@ -2905,7 +2994,7 @@ func _spawn_enemy_shield_tower(pos: Vector2) -> void:
 	if enemy_shield_tower_scene:
 		var tower = enemy_shield_tower_scene.instantiate()
 		tower.position = pos
-		actors_container.add_child(tower)
+		_add_map_furniture(tower)
 
 func _spawn_pipe_conduit(pos: Vector2, orient: int) -> void:
 	if not pipe_conduit_scene:
@@ -2915,7 +3004,7 @@ func _spawn_pipe_conduit(pos: Vector2, orient: int) -> void:
 		pipe.position = pos
 		if pipe.has_method("set_orientation"):
 			pipe.set_orientation(orient)
-		actors_container.add_child(pipe)
+		_add_map_furniture(pipe)
 
 func _spawn_radar_station(pos: Vector2) -> void:
 	if not radar_station_scene:
@@ -2923,7 +3012,7 @@ func _spawn_radar_station(pos: Vector2) -> void:
 	if radar_station_scene:
 		var radar = radar_station_scene.instantiate()
 		radar.position = pos
-		actors_container.add_child(radar)
+		_add_map_furniture(radar)
 
 func _spawn_ammo_depot(pos: Vector2) -> void:
 	if not ammo_depot_scene:
@@ -2931,7 +3020,7 @@ func _spawn_ammo_depot(pos: Vector2) -> void:
 	if ammo_depot_scene:
 		var depot = ammo_depot_scene.instantiate()
 		depot.position = pos
-		actors_container.add_child(depot)
+		_add_map_furniture(depot)
 
 func _spawn_command_post(pos: Vector2) -> void:
 	if not command_post_scene:
@@ -2939,7 +3028,7 @@ func _spawn_command_post(pos: Vector2) -> void:
 	if command_post_scene:
 		var cp = command_post_scene.instantiate()
 		cp.position = pos
-		actors_container.add_child(cp)
+		_add_map_furniture(cp)
 
 func _spawn_sniper_nest(pos: Vector2, fire_dir: Vector2 = Vector2.UP) -> void:
 	if not sniper_nest_scene:
@@ -2949,7 +3038,7 @@ func _spawn_sniper_nest(pos: Vector2, fire_dir: Vector2 = Vector2.UP) -> void:
 		nest.position = pos
 		if nest.has_method("set_fire_direction"):
 			nest.set_fire_direction(fire_dir)
-		actors_container.add_child(nest)
+		_add_map_furniture(nest)
 
 func _spawn_emp_tower(pos: Vector2) -> void:
 	if not emp_tower_scene:
@@ -2957,7 +3046,7 @@ func _spawn_emp_tower(pos: Vector2) -> void:
 	if emp_tower_scene:
 		var emp = emp_tower_scene.instantiate()
 		emp.position = pos
-		actors_container.add_child(emp)
+		_add_map_furniture(emp)
 
 func _spawn_bunker(pos: Vector2, facing: int = 0) -> void:
 	var bunker_scene = load("res://scenes/buildings/bunker.tscn")
@@ -2966,14 +3055,14 @@ func _spawn_bunker(pos: Vector2, facing: int = 0) -> void:
 		bunker.position = pos
 		if bunker.has_method("set_facing"):
 			bunker.set_facing(facing)
-		actors_container.add_child(bunker)
+		_add_map_furniture(bunker)
 
 func _spawn_wooden_wall(pos: Vector2) -> void:
 	var wooden_wall_scene = load("res://scenes/buildings/wooden_wall.tscn")
 	if wooden_wall_scene:
 		var w_wall = wooden_wall_scene.instantiate()
 		w_wall.position = pos
-		actors_container.add_child(w_wall)
+		_add_map_furniture(w_wall)
 
 func _setup_challenge_treasure() -> void:
 	has_treasure_key = false
@@ -2990,7 +3079,7 @@ func _setup_challenge_treasure() -> void:
 	if treasure_chest_scene:
 		var chest_pos = get_random_empty_tile_position()
 		var chest = treasure_chest_scene.instantiate()
-		actors_container.add_child(chest)
+		_add_map_furniture(chest)
 		# get_random_empty_tile_position() 现在返回全局坐标, 所以要先入树再设
 		# global_position —— 入树前设 global_position 等价于设 position, 白搭。
 		chest.global_position = chest_pos
