@@ -160,6 +160,11 @@ const IN_BUILD_PREV := 1 << 5
 const IN_BUILD_NEXT := 1 << 6
 const IN_BUILD_PLACE := 1 << 7
 const IN_BUILD_CANCEL := 1 << 8
+## 双人合体挂载 (见 train_link.gd)。走输入位而不是单开一条 RPC, 是因为挂载
+## 判定需要**同时**看到两个人的按键状态 —— 而输入位本来就是唯一一处两边输入
+## 汇合到主机的地方。走既有通道还白拿了主机权威: 客户端只是把自己的位报上来,
+## 判定完全在主机做。
+const IN_LINK := 1 << 9
 
 ## player_id -> 该玩家当前这一帧的输入位。
 ##
@@ -292,6 +297,7 @@ static func pack_input(prefix: String) -> int:
 	if Input.is_action_pressed(prefix + "_build_next"): bits |= IN_BUILD_NEXT
 	if Input.is_action_pressed(prefix + "_build_place"): bits |= IN_BUILD_PLACE
 	if Input.is_action_pressed(prefix + "_build_cancel"): bits |= IN_BUILD_CANCEL
+	if Input.is_action_pressed(prefix + "_link"): bits |= IN_LINK
 	return bits
 
 
@@ -354,6 +360,13 @@ const F_VISIBLE := 1 << 2
 ## 玩家坦克此刻能不能开火 (主机的 can_fire)。客户端的开火反馈预测靠它闸住 ——
 ## 见 player.gd::_net_predict_step 里那段。
 const F_CAN_FIRE := 1 << 3
+## 这辆坦克此刻是被拖着走的后车 (train_link.gd)。**只置在后车身上**, 机车照常。
+##
+## 客户端要靠它关掉自己那辆的移动预测: 挂载之后位置由主机按机车尾迹算,
+## 而预测是按本地方向键算的 —— 两者每帧都不一致, 于是每帧都会触发一次
+## NetPuppet.reconcile 的硬拉回, 表现为后车疯狂抖动。开火反馈的预测不受影响,
+## 后车仍然是自己开火 (见 AskUser 定下的设计: 只失去转向)。
+const F_TOWED := 1 << 4
 
 
 ## 把一组实体编成快照。entities 是 [{id, pos, rot, vel, flags}] 形式的数组,

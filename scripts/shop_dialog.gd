@@ -4,6 +4,7 @@ extends PanelContainer
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const GameState = preload("res://scripts/game_state.gd")
+const BranchBlueprints = preload("res://scripts/branch_blueprints.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const RPGManager = preload("res://scripts/rpg_manager.gd")
 
@@ -153,7 +154,14 @@ func _generate_shop_inventory() -> void:
 ## (tools/probe_balance_report.gd) 只盯得住其中一份。
 static func build_inventory() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	var all_items: Array[Dictionary] = _upgrade_pool()
+	# 已经解锁的分支, 它的图纸不能再上架 —— 买了完全没有效果, 而 can_buy_item
+	# 会挡住成交, 于是货位上摆着一件永远点不动的商品, 白占 3 个升级槽之一。
+	var all_items: Array[Dictionary] = []
+	for it in _upgrade_pool():
+		var bp := BranchBlueprints.branch_of_item(str(it["id"]))
+		if bp != "" and GameState.is_branch_unlocked(bp):
+			continue
+		all_items.append(it)
 	all_items.shuffle()
 	for i in range(min(6, all_items.size())):
 		var it = all_items[i].duplicate()
@@ -192,7 +200,10 @@ static func item_by_id(item_id: String) -> Dictionary:
 ## 这里是它们的**唯一**定义 —— build_inventory() 从这里抽 6 种上架,
 ## item_by_id() 从这里回查。
 static func _upgrade_pool() -> Array[Dictionary]:
-	return [
+	# 先落进一个**类型化**的局部变量再 append —— `[...] + _blueprint_items()`
+	# 的结果是无类型 Array, 直接 return 会在运行时报
+	# "Trying to return an array of type Array where expected Array[Dictionary]"。
+	var pool: Array[Dictionary] = [
 		{
 			"id": "star_tier",
 			"name": "战车升阶模块 (Star Upgrade)",
@@ -302,6 +313,32 @@ static func _upgrade_pool() -> Array[Dictionary]:
 			"category": "BASE"
 		}
 	]
+	pool.append_array(_blueprint_items())
+	return pool
+
+
+## 五张进阶流派解锁图纸。
+##
+## 从 branch_blueprints.gd 那张表现生成, 而不是在这里再抄一遍名字 —— 那张表
+## 同时被宝箱、Boss 掉落和升级界面读, 抄第四份必然漂。这里只补商店特有的
+## 字段 (价格/图标/分类)。
+##
+## **贵得很显眼是故意的。** 图纸的替代来源是 Boss 必掉和上锁宝箱, 两者都要
+## 打过去才拿得到; 商店这条是"这一局运气不好, 用钱买路"的兜底, 定价必须让
+## 它是一次真正的取舍, 而不是顺手买齐。
+static func _blueprint_items() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for b in BranchBlueprints.all_branches():
+		var info: Dictionary = BranchBlueprints.info(b)
+		out.append({
+			"id": str(info["item_id"]),
+			"name": "%s (Blueprint)" % str(info["name"]),
+			"desc": "%s。找到图纸后, 升级时才会出现这条进阶路线。" % str(info["desc"]),
+			"cost": 220,
+			"icon": "res://assets/sprites/powerups/treasure_key.png",
+			"category": "BLUEPRINT",
+		})
+	return out
 
 
 ## 售价随楼层缩放。表里写死的价格是"第 1 层的价格"。
@@ -385,6 +422,13 @@ static func _shop_atk_bonus_capped() -> bool:
 
 
 static func can_buy_item(item_id: String) -> bool:
+	# 图纸: 已解锁就不卖。和 autoloader 的射速封顶、天赋的层数上限一样,
+	# 这道闸必须在**成交路径**上, 不能只靠"货架不上架" —— 老存档里的货架
+	# 是存过的 id, 会绕过 build_inventory() 那道过滤直接摆出来。
+	var bp := BranchBlueprints.branch_of_item(item_id)
+	if bp != "":
+		return not GameState.is_branch_unlocked(bp)
+
 	if item_id == "star_tier":
 		# Only default-branch players actually cap at tier 3 (multi-shot/plasma
 		# progression). Once a branch is picked, this item redirects to a
@@ -446,6 +490,11 @@ static func apply_item_purchase(item_id: String) -> String:
 		if b["id"] == item_id:
 			GameState.add_structure_stock(item_id, 1)
 			return "%s 已入库！当前库存 x%d，可在热键栏放置。" % [b["name"], GameState.get_structure_stock(item_id)]
+
+	var bp_branch := BranchBlueprints.branch_of_item(item_id)
+	if bp_branch != "":
+		GameState.unlock_branch(bp_branch)
+		return "%s 已解析！升级时可选择该进阶流派。" % BranchBlueprints.display_name(bp_branch)
 
 	match item_id:
 		"star_tier":

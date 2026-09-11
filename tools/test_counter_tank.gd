@@ -13,6 +13,10 @@ func _init() -> void:
 func _run_tests() -> void:
 	print("[TEST] Starting Counter Tank (反击坦克) verification suite...")
 	var tests_passed: int = 0
+	# assert 在 headless 下会挂起等调试器, 于是失败表现为 TIMEOUT 而不是 FAIL,
+	# 摘要里连一行诊断都没有 (见 CLAUDE.md "Commands" 那一节)。新加的检查
+	# 一律走这个标志 + 末尾唯一一次 quit()。
+	var failed: bool = false
 
 	# -------------------------------------------------------------
 	# Test 1: RPGManager branch stats and cooldown scaling
@@ -64,13 +68,26 @@ func _run_tests() -> void:
 	# -------------------------------------------------------------
 	var test_rpg = RPGManager.new()
 	var dialog = UpgradeSelectionDialog.new()
+	# 分支现在要先拿到改装图纸才会出现在升级界面上 (scripts/branch_blueprints.gd)。
+	# 这里**两个方向都要验**: 只验"解锁后会出现"的话, 把解锁判断整个删掉测试
+	# 照样是绿的 —— 那正是这条断言原来的样子 (它编码的是"无条件给全部分支"
+	# 那版旧规则)。
+	GameStateScript.reset_campaign(1)
+	for ch in dialog._generate_choices(test_rpg, 1):
+		if ch.get("branch") == "counter":
+			failed = true
+			print("[FAIL] 还没拿到图纸, 升级界面却给出了 counter 分支")
+
+	GameStateScript.unlock_branch("counter")
 	var default_choices = dialog._generate_choices(test_rpg, 1)
 	var has_counter_branch: bool = false
 	for ch in default_choices:
 		if ch.get("branch") == "counter":
 			has_counter_branch = true
 			break
-	assert(has_counter_branch, "Default branch choices must offer counter branch")
+	if not has_counter_branch:
+		failed = true
+		print("[FAIL] 已解锁 counter 图纸, 升级界面却没有这条分支")
 
 	# Set branch to counter and check tier 2 evolution
 	test_rpg.set_branch("counter", 1)
@@ -171,4 +188,4 @@ func _run_tests() -> void:
 	print("=============================================================")
 	print("ALL %d TESTS PASSED! Counter Tank implementation 100%% verified!" % tests_passed)
 	print("=============================================================")
-	quit(0)
+	quit(1 if failed else 0)

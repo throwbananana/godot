@@ -15,6 +15,7 @@ extends SceneTree
 ## 两端各跑 RUN_SECONDS 秒真实对局, 然后各自打印结论并按 [FAIL] 决定退出码。
 
 const NetSession = preload("res://scripts/net_session.gd")
+const TrainLink = preload("res://scripts/train_link.gd")
 const NetPuppet = preload("res://scripts/net_puppet.gd")
 const GameState = preload("res://scripts/game_state.gd")
 const BuilderControllerCls = preload("res://scripts/builder_controller.gd")
@@ -243,6 +244,41 @@ func _run_host() -> void:
 	var left := GameState.get_structure_stock(BUILD_ID)
 	check(left == BUILD_STOCK - 1, "客户端的建造请求在主机侧扣了 1 个库存 (%d -> %d)" % [BUILD_STOCK, left])
 
+	await _check_train_link()
+
+
+## 双人合体挂载走的是**输入位** (NetSession.IN_LINK), 不是单独的 RPC ——
+## 也就是说它能不能成, 完全取决于客户端那一位有没有真的穿过 socket 到主机。
+## 这是 e2e 唯一能证明、而 test_netcode / test_net_runtime 都证明不了的一段:
+## 那两个都是单进程, 输入位是本地直接读的。
+##
+## 客户端在它整个观测窗口里一直按着 link 键 (见 _run_client), 所以这里只需要
+## 主机自己按下去, 时机完全由主机定, 不存在跨进程对拍的问题。
+func _check_train_link() -> void:
+	if main_node == null or main_node.p1_instance == null or main_node.p2_instance == null:
+		fail("挂载测试: 拿不到两辆玩家坦克")
+		return
+
+	GameState.player_count = 2
+	if main_node.rpg_mgr:
+		main_node.rpg_mgr.set_branch(1, "train")
+	# 挂载有距离门槛 (LINK_RANGE), 把 P2 挪到 P1 边上
+	main_node.p2_instance.global_position = main_node.p1_instance.global_position + Vector2(24, 0)
+
+	TrainLink.reset()
+	Input.action_press("p1_link")
+	await _run_frames(0.4)
+	Input.action_release("p1_link")
+
+	check(TrainLink.is_linked(),
+		"两人同时按住 link 键后挂载成立 —— 挂了说明客户端的 IN_LINK 位没穿过 socket 到主机 (leader=%d, 主机收到的输入包 %d 个)"
+			% [TrainLink.leader_id, net.inputs_recv])
+	if TrainLink.is_linked():
+		check(TrainLink.leader_id == 1 and TrainLink.follower_id == 2,
+			"列车分支的 P1 当机车, P2 成为后车 (leader=%d follower=%d)"
+				% [TrainLink.leader_id, TrainLink.follower_id])
+	TrainLink.reset()
+
 # ================================================================ 客户端
 
 func _run_client() -> void:
@@ -280,7 +316,17 @@ func _run_client() -> void:
 		return
 	ok("收到第一帧快照, 开始计时")
 
+	# 双人合体挂载: **整段观测窗口都按住 link 键, 不松手。**
+	#
+	# 挂载要求两人同时按住, 而两个进程的观测窗口起跑点差着几十毫秒、长度也
+	# 故意不一样 (见 CLIENT_TAIL_SECONDS)。想让两边"在同一帧一起按"是在赌
+	# 时序, 而这个仓库的联机测试栽在时序上已经不止一次了。
+	# 让客户端全程按住, 挂载的时机就完全由主机单方面决定 —— 断言那一侧同时
+	# 也是判定那一侧, 不需要任何同步。按住本身是无害的: 主机不按就挂不上。
+	Input.action_press("p1_link")
+
 	await _run_frames(CLIENT_RUN_SECONDS)
+	Input.action_release("p1_link")
 
 	check(net.snapshots_recv > 20, "持续收到了快照 (%d 帧)" % net.snapshots_recv)
 	check(NetSession.is_client(), "断言时会话仍然活着 (role=%d) —— 这条挂了说明主机先跑完并断开了, 下面的结论全部不作数" % NetSession.role)

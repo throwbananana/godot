@@ -18,7 +18,17 @@ var regen_lvl: int = 0      # 纳米自愈等级
 var builder_lvl: int = 0    # 防御工程强化
 
 # RPG 分支流派与特性 (P1)
-var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter", "trench"
+
+## 分支流派的**权威名单**。
+##
+## 这份名单以前只是下面那行注释里的一串字符串, 而 CLAUDE.md 记着它"已经长过
+## 两次", 每次新增还都得配一个自己的射速地板 (FIRE_CD_FLOOR_*), 漏了就静默
+## 继承 FIRE_CD_FLOOR_OTHER。注释管不住这种事 —— 现在有了常量, 就能被断言:
+## tools/test_branch_unlock.gd 拿它和 branch_blueprints.gd 的图纸表对齐,
+## 少一条 = 那条分支这一局永远解锁不了, 而那不会有任何报错。
+const BRANCHES := ["default", "speed", "heavy", "train", "counter", "trench"]
+
+var tank_branch: String = "default" # 取值见 BRANCHES
 var branch_tier: int = 0            # 0=基础, 1=一阶进阶, 2=二阶终极
 var unlocked_perks: Dictionary = {} # perk_id -> stack count, see GameState.PERK_MAX_STACKS
 

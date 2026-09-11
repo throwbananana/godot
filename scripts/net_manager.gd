@@ -26,6 +26,7 @@ extends Node
 
 const NetSession = preload("res://scripts/net_session.gd")
 const NetPuppet = preload("res://scripts/net_puppet.gd")
+const TrainLink = preload("res://scripts/train_link.gd")
 
 ## 大厅相关
 signal lobby_list_changed()
@@ -612,6 +613,11 @@ func _flags_of(node: Node) -> int:
 	# 冷却期间狂按开火键会一直播枪口火焰, 而主机一枪都没打出去。
 	if node.get("can_fire") == true:
 		f |= NetSession.F_CAN_FIRE
+	# 双人合体的后车。客户端靠它关掉自己那辆的移动预测 —— 挂载期间位置是主机
+	# 按机车尾迹算的, 而预测按本地方向键算, 两者每帧都不一致。
+	var pid = node.get("player_id")
+	if pid != null and TrainLink.is_follower(int(pid)):
+		f |= NetSession.F_TOWED
 	return f
 
 

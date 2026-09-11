@@ -13,6 +13,8 @@ const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 const MapTemplates = preload("res://scripts/map_templates.gd")
 const MapDirector = preload("res://scripts/map_director.gd")
 const CompositeRoomBuilder = preload("res://scripts/composite_room_builder.gd")
+const TrainLink = preload("res://scripts/train_link.gd")
+const BranchBlueprints = preload("res://scripts/branch_blueprints.gd")
 const DarknessFog = preload("res://scripts/darkness_fog.gd")
 const FallingBombHazard = preload("res://scripts/falling_bomb_hazard.gd")
 const BalanceLog = preload("res://scripts/balance_log.gd")
@@ -836,6 +838,10 @@ func _net_attach() -> void:
 
 
 func _exit_tree() -> void:
+	# 挂载状态是 static 的, 会活过场景切换 —— 退出对局时不清, 下一局开场
+	# TrainLink 还记着"P2 挂在 P1 后面", 而那两个节点已经不存在了。
+	# enter_room() 也会清, 但那是进房间的路径; 这里管的是退出这一条。
+	TrainLink.reset()
 	var net := get_node_or_null("/root/Net")
 	if net:
 		net.detach_game(self)
@@ -1738,6 +1744,11 @@ func enter_room(room_key: String, entry_dir: int, room_seed: int = 0) -> void:
 	# 随机数序列完全相同。
 	if room_seed != 0:
 		seed(room_seed)
+	# 切房间必定解除合体。_place_players_at_entry() 会把两辆车分别摆到门口,
+	# 而挂载状态下后车的位置是从机车尾迹采样的 —— 那条尾迹属于上一个房间,
+	# 不解除的话后车会被拖回旧坐标, 而 TrainFollowHelper 对跨图的长线段本来
+	# 就没有防御 (teleport_train_chain 的注释讲的就是这件事)。
+	TrainLink.reset()
 	GameState.visit_room(room_key)
 
 	var room := GameState.current_room_data()
@@ -2112,6 +2123,25 @@ func _net_broadcast_toast(text: String) -> void:
 	var net := get_node_or_null("/root/Net")
 	if net:
 		net.broadcast_toast(text)
+
+
+## 掉一张还没拿到的进阶图纸, 并广播。全部集齐时改发金币 —— 一个稀缺来源
+## 给出空气是最挫败的结果, 而 Boss/上锁宝箱正是全局最稀缺的两个来源。
+##
+## 只在主机 (或单机) 调。unlocked_branches 是随战役字典同步下去的, 客户端
+## 自己掷会解锁到不同的分支, 于是两边升级界面的卡面对不上 —— 而客户端选卡
+## 回报的是**索引**。
+func _grant_branch_blueprint(source_label: String) -> void:
+	if not NetSession.is_authority():
+		return
+	var branch := BranchBlueprints.roll_unlock()
+	if branch == "":
+		add_gold(120)
+		_net_broadcast_toast("%s：改装图纸已全部收集，折算 +120 G" % source_label)
+		return
+	GameState.save_campaign()
+	_net_broadcast_toast("%s：获得【%s】—— 升级时可选择该进阶流派！"
+		% [source_label, BranchBlueprints.display_name(branch)])
 
 
 func _grant_treasure_room_reward(label: String = "📦 宝物房") -> void:
@@ -3654,6 +3684,28 @@ func _process(delta: float) -> void:
 
 	_net_update_fire_edges()
 
+	# 双人合体挂载。放在权威早退**之后** —— 挂载判定要同时看两个人的按键,
+	# 只有主机手上两份输入都全 (客户端那份走 NetSession.remote_input 上来)。
+	# 客户端自己判会和主机各挂各的, 而这个状态没有任何东西在校验。
+	if GameState.player_count == 2:
+		# 分支在这里读好再传进去 —— TrainLink 是纯规则模块, 不伸手去 scene tree
+		# 里摸 rpg_mgr (见那个文件里 evaluate() 的注释)。
+		var lb1 := rpg_mgr.get_branch(1) if rpg_mgr else "default"
+		var lb2 := rpg_mgr.get_branch(2) if rpg_mgr else "default"
+		# **已释放的实例要先换成 null 再传。** host_step 的形参是 Node 类型,
+		# 而 GDScript 是在**调用那一刻**做类型检查的 —— 传一个已 free 的对象
+		# 会直接抛 "argument 2 (previously freed) is not a subclass", 函数体里
+		# 那句 is_instance_valid() 根本来不及跑。玩家阵亡后 p2_instance 正好是
+		# 这个状态, 于是每一帧都在报错 (test_shared_life_revive 就是这么挂的)。
+		var lp1: Node = p1_instance if is_instance_valid(p1_instance) else null
+		var lp2: Node = p2_instance if is_instance_valid(p2_instance) else null
+		var link_msg := TrainLink.host_step(delta, lp1, lp2, lb1, lb2)
+		if link_msg != "":
+			# 走 _net_broadcast_toast 而不是 show_toast: 挂载是**两个人共同的
+			# 状态**, 两边都得看到。这和"你升级了"那种私人提示不一样, 后者
+			# 刻意不广播 (见 _net_broadcast_toast 的注释)。
+			_net_broadcast_toast(link_msg)
+
 	if is_shovel_active:
 		shovel_timer -= delta
 		if shovel_timer <= 3.0:
@@ -4095,6 +4147,19 @@ func _on_room_cleared() -> void:
 	# 清房改了一大票状态: 房间标记为已清、门开了、掉了奖励、难度曲线的
 	# rooms_cleared 也进了一格。客户端的门要跟着开, 小地图要跟着变色。
 	_net_push_campaign()
+
+	# Boss 必掉一张进阶图纸。
+	#
+	# 掉落方必须是**主机权威**的: unlocked_branches 跟着战役字典同步下去,
+	# 客户端自己再掷一次就会解锁到另一条分支, 而两边的升级界面从此列出不同
+	# 的卡 —— 客户端点"第 2 张", 主机结算的是它自己那张第 2 张。这和商店
+	# 货架、事件种类栽的是同一个坑。_on_room_cleared 整个只在主机跑
+	# (调用它的 _process 早退在权威判断之后), 所以这里天然安全。
+	#
+	# 必掉而不是概率: 每幕一个 Boss, 一共 5 张图纸, 也就是要打到第 5 幕才
+	# 集齐 —— 掉落再打折的话, 大多数人整局只会看到一两条分支。
+	if GameState.battle_type == "boss":
+		_grant_branch_blueprint("👑 击败首领")
 
 	if GameState.is_floor_complete():
 		# boss 房清空 = 这一层打通。走原来的胜利结算, 由 _on_button_action()

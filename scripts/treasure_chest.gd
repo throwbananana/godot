@@ -84,6 +84,11 @@ func _open_chest(main: Node) -> void:
 			main.add_life(1)
 		if main.has_method("show_toast"):
 			main.show_toast("🎉 秘宝宝箱开启！获得 +250G 与 +1 额外生命！")
+		# 上锁宝箱是全局最难拿的东西 (要先找到金钥匙), 所以它也必掉一张
+		# 进阶图纸。走 main 上的那个函数而不是自己调 BranchBlueprints:
+		# 那边带着主机权威判断和联机广播, 抄一份过来迟早两边会漂。
+		if main.has_method("_grant_branch_blueprint"):
+			main._grant_branch_blueprint("🗝️ 秘宝宝箱")
 
 		# Spawn 8 outward flying gold coins
 		var coin_scene = load("res://scenes/gold_coin.tscn")

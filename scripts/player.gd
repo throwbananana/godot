@@ -6,6 +6,7 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const PowerUp = preload("res://scripts/power_up.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const TrainLink = preload("res://scripts/train_link.gd")
 const LaserPiercer = preload("res://scripts/laser_piercer.gd")
 const LaserRingCutter = preload("res://scripts/laser_ring_cutter.gd")
 const NetSession = preload("res://scripts/net_session.gd")
@@ -445,6 +446,48 @@ func stun(duration: float = 2.5) -> void:
 ## 履带帧特意保留 —— 它由**实际位移量**驱动 (见 TREAD_PX_PER_FRAME 的注释),
 ## 而傀儡的位移量就是主机的位移量, 所以客户端看到的履带节奏和主机完全一致,
 ## 不需要额外同步一个动画帧号。预测的那辆同理: 位移是本地算的, 履带自然跟上。
+## 被拖着走的那一帧 —— 双人合体的后车 (train_link.gd)。
+##
+## 位置/车身来自机车整列车最后一节的尾迹, 转向来自自己的方向键。
+##
+## **不调 move_and_slide()。** 和 train_carriage.gd 一样直接写 global_position:
+## 跟随是"重放一条已经走过的路径", 让物理再解一次碰撞只会把后车挤到路径之外,
+## 下一帧又被拽回来。代价是后车挂载期间不参与碰撞解算 —— 这正是现有 AI 车厢
+## 的行为, 两者保持一致。
+##
+## 拿不到尾迹 (机车刚生成, 历史还是空的) 就原地不动, 而不是跳到机车身上。
+func _towed_step(delta: float, input_vec: Vector2) -> void:
+	var main = get_tree().current_scene
+	var leader: Node = null
+	if main:
+		leader = main.p1_instance if TrainLink.leader_id == 1 else main.p2_instance
+
+	var before := global_position
+	var target := TrainLink.follower_target(leader)
+	if not target.is_empty():
+		global_position = target["position"]
+
+	# 车身朝自己瞄的方向。没按方向键时保持上一帧的朝向 —— 归零会让后车在
+	# 松手的瞬间弹回默认朝向。
+	if input_vec != Vector2.ZERO:
+		facing_direction = input_vec
+	rotation = facing_direction.angle() + PI / 2.0
+
+	velocity = Vector2.ZERO
+	# 上报 0: 这个值是随快照下发给客户端做移动预测的速度源。挂载期间客户端那边
+	# 由 F_TOWED 关掉了预测, 所以它其实没人读 —— 但留一个上一帧的陈旧速度在
+	# 那里, 是在等下一个读它的人踩坑。
+	net_effective_speed = 0.0
+	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
+
+	if tank_frames.size() > 0:
+		tread_accum_dist += before.distance_to(global_position)
+		var f_idx := int(tread_accum_dist / TREAD_PX_PER_FRAME) % tank_frames.size()
+		if f_idx != current_frame:
+			current_frame = f_idx
+			sprite.texture = tank_frames[current_frame]
+
+
 func _net_puppet_step(delta: float) -> void:
 	var before := position
 	if NetPuppet.is_predicted(self):
@@ -471,6 +514,18 @@ func _net_puppet_step(delta: float) -> void:
 ## 就没有这一类问题: 眩晕时主机报 0, 客户端自然就不动了。
 func _net_predict_step(delta: float) -> void:
 	var bits := NetSession.pack_input("p1")
+
+	# 挂载期间**不预测移动**。后车的位置由主机按机车尾迹算, 而预测是按本地
+	# 方向键算的 —— 两者每帧都对不上, 于是每帧都会触发一次 NetPuppet.reconcile
+	# 的拉回, 表现为后车原地高频抖动。这一位只置在后车身上, 所以机车 (哪怕
+	# 机车就是客户端这辆) 照常预测。
+	#
+	# 开火反馈仍然预测: 后车保留手动开火, 那部分和位置无关。
+	if (int(get_meta("net_flags", 0)) & NetSession.F_TOWED) != 0:
+		NetPuppet.update(self, delta)
+		_net_predict_fire_feedback(bits)
+		return
+
 	var dir := NetSession.dir_from_bits(bits)
 	var spd: float = float(get_meta("net_speed", 0.0))
 
@@ -625,6 +680,22 @@ func _physics_process(delta: float) -> void:
 	# always derived from input_vec, never read independently.
 	if is_jammed:
 		input_vec = -input_vec
+
+	# === 双人合体: 这一帧我是被拖着走的后车 ===
+	#
+	# 位置和车身朝向交给机车的尾迹, 但**方向键仍然改 facing_direction** ——
+	# 后车保留手动开火, 所以它得能瞄。等于把"走位"和"瞄准"拆给了两个人:
+	# 一个人负责躲, 一个人负责打。
+	#
+	# 放在信号干扰反转**之后**: 干扰塔的语义是"这辆车的操作全部反向", 而后车
+	# 仅存的操作就是瞄准, 跳过反转等于挂载期间对干扰塔免疫。
+	#
+	# 提前 return 而不是往下走: 下面整段是速度倍率、流沙冰面、推箱子和
+	# move_and_slide, 对一辆被拖着的车全都不适用。履带动画和历史记录在这里
+	# 自己做掉 —— 历史必须照记, 否则后车自己那几节 AI 车厢会跟丢。
+	if TrainLink.is_follower(player_id):
+		_towed_step(delta, input_vec)
+		return
 
 	var speed_mult = 1.0
 	var is_speed_branch = (main and main.rpg_mgr and main.rpg_mgr.get_branch(player_id) == "speed")

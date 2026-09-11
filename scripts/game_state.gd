@@ -121,6 +121,19 @@ static var regen_lvl: int = 0
 static var builder_lvl: int = 0
 
 # RPG Branch & Archetype Specialization
+## 这一局已经解锁的进阶流派 (团队共享)。空 = 只能走经典线。
+##
+## 分支不再是第一次升级就白给的了 —— 得先拿到对应的改装图纸
+## (见 branch_blueprints.gd)。这条改动顺带把经典线的星级成长救活了:
+## 以前所有人第一级就跳分支, player_tier 那条 0->3 的线实装了却没人见过。
+##
+## **团队共享而不是每人一份。** CLAUDE.md 记着这类奖励最容易踩的坑:
+## "Any reward granted outside a battle has to ask 'which players?'" ——
+## 商店那边就因为把 player_id 写死成 1, 让 P2 永远拿不到命/星级/天赋。
+## 图纸是"这一局捡到的装备", 做成共享池就没有这一类分叉: 两个人看到的
+## 可选分支永远一样, 也不会出现"P1 解锁了而 P2 的升级界面还是空的"。
+static var unlocked_branches: Array[String] = []
+
 static var tank_branch: String = "default" # "default", "speed", "heavy", "train", "counter", "trench"
 static var branch_tier: int = 0            # 0=Unassigned/Base, 1=Tier 1, 2=Tier 2
 static var has_iff_flag: bool = false      # Friendly IFF Flag: player attacks never damage the base eagle
@@ -203,6 +216,20 @@ static func grant_perk_stack(perk_id: String, player_id: int = 1) -> bool:
 ## three "star" reward sources would silently do nothing for the ~100% of
 ## players who've picked a branch. Redirect to +1 permanent ATK instead --
 ## every branch's damage formula (RPGManager.get_atk_damage) uses atk_bonus.
+## 这一局有没有解锁某条进阶流派。
+static func is_branch_unlocked(branch: String) -> bool:
+	return unlocked_branches.has(branch)
+
+
+## 解锁一条流派。返回 false 表示本来就已经解锁 —— 调用方拿它决定要不要发提示,
+## 以及 (对宝箱/Boss 这类稀缺来源) 要不要改抽别的东西。
+static func unlock_branch(branch: String) -> bool:
+	if branch == "" or unlocked_branches.has(branch):
+		return false
+	unlocked_branches.append(branch)
+	return true
+
+
 static func grant_star_tier_reward(player_id: int = 1) -> void:
 	var branch = tank_branch if player_id == 1 else p2_branch
 	if branch == "default":
@@ -351,6 +378,7 @@ static func reset_campaign(p_count: int = 1) -> void:
 	player_lives = 3
 	tank_branch = "default"
 	branch_tier = 0
+	unlocked_branches.clear()
 	has_iff_flag = false
 	unlocked_perks.clear()
 	structure_inventory.clear()
@@ -632,8 +660,15 @@ static func campaign_to_dict() -> Dictionary:
 		"player_lives": player_lives,
 		"tank_branch": tank_branch,
 		"branch_tier": branch_tier,
-		"unlocked_perks": unlocked_perks,
-		"structure_inventory": structure_inventory,
+		# **必须 duplicate()。** 字典和数组是引用: 直接放进去的话, 之后任何一次
+		# reset_campaign() (它会 .clear()) 都会把这份"已经存下来的"快照一起清空。
+		# 存盘那条路径侥幸没事 (立刻就 JSON 序列化了), 但 NetSession 的
+		# client_campaign_backup 是**原样留在内存里**的 —— 客户端进大厅时备份
+		# 自己那局, 等 leave() 再还原, 中间隔着一次 reset。CLAUDE.md 给
+		# test_persistence_roundtrip.gd 记的正是同一个坑。
+		"unlocked_branches": unlocked_branches.duplicate(),
+		"unlocked_perks": unlocked_perks.duplicate(),
+		"structure_inventory": structure_inventory.duplicate(),
 		"p2_tier": p2_tier,
 		"p2_branch": p2_branch,
 		"p2_branch_tier": p2_branch_tier,
@@ -699,6 +734,12 @@ static func campaign_from_dict(d: Dictionary) -> void:
 	player_lives = int(d.get("player_lives", 3))
 	tank_branch = str(d.get("tank_branch", "default"))
 	branch_tier = int(d.get("branch_tier", 0))
+	# 逐个转成 String 再装进 Array[String] —— JSON 反序列化出来的是无类型
+	# Array, 直接赋值给类型化数组会在运行时报类型错。老存档没有这个 key,
+	# 读出来就是空数组 = 一条分支都没解锁, 正好是新规则下的正确起点。
+	unlocked_branches.clear()
+	for b in d.get("unlocked_branches", []):
+		unlocked_branches.append(str(b))
 	unlocked_perks = _load_perk_dict(d.get("unlocked_perks", {}))
 	structure_inventory = _load_perk_dict(d.get("structure_inventory", {})) # same {string: int} shape, reuse the same loader
 	p2_tier = int(d.get("p2_tier", 0))
