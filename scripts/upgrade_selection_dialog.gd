@@ -416,22 +416,11 @@ func _generate_choices(rpg_mgr: RPGManager, player_id: int) -> Array[Dictionary]
 
 	return choices
 
-## 经典线升一阶。
-##
-## **两个地方都要写**: GameState.player_tier 是跨幕存档的那一份, 而
-## player.upgrade_tier 是这一局战斗里真正被 _shoot() / speed_mult /
-## _update_tier_appearance() 读的那一份。main.gd 在开局把前者灌进后者
-## (main.gd:3550), 战斗结束再写回去 (main.gd:4380) —— 也就是说只改
-## GameState 的话，这一阶要等到下一幕才生效, 而玩家刚刚点的是一张
-## "立刻变强"的卡。
-##
-## 上限 3 和 grant_star_tier_reward 保持一致; 卡面在 tier>=3 时就不发了,
-## 这里再夹一次是防手滑 (mini 而不是 assert —— 这是 UI 路径, 不该崩)。
 ## 经典线当前阶级 —— **优先读战斗中那辆坦克身上的值**。
 ##
 ## 这个数有两份: GameState.player_tier 是跨幕存档的那一份, player.upgrade_tier
 ## 是战斗中真正被 _shoot()/speed_mult 读的那一份。main.gd 开局把前者灌进后者
-## (main.gd:3550), 战斗结束再写回去 (main.gd:4380) —— 中间这一整场,
+## (_spawn_players), 战斗结束再写回去 (_game_over) —— 中间这一整场,
 ## ⭐ 道具只加 player.upgrade_tier (player.gd 的 STAR 分支), GameState 那份是
 ## 落后的。只读 GameState 的话, 一个刚吃了星升到 3 阶的玩家还会被发一张
 ## "经典线 ↑ 阶"的卡, 点下去 mini(3+1,3) 什么也不会发生。
@@ -446,18 +435,38 @@ func _live_classic_tier(pid: int) -> int:
 	return GameState.player_tier if pid == 1 else GameState.p2_tier
 
 
+## 升一阶。**必须从 _live_classic_tier() 往上加, 不能从 GameState 往上加** ——
+## 这两份值在一场战斗中是会分叉的, 而这里原来只认落后的那一份。
+##
+## 分叉是这样来的: ⭐ 道具在 default 分支下只加 player.upgrade_tier
+## (player.gd 的 STAR 分支), 而 RPGManager.sync_to_game_state() 的字段表里
+## **没有 player_tier**, 所以 GameState 那份要等到战斗结束 (main.gd:4413) 才
+## 追上。原来的写法是 `GameState.player_tier + 1` 再**覆写**回坦克, 于是:
+##
+##   吃过 1 颗星: 坦克 1 / GameState 0 -> 点卡 -> 两边都成 1。**这张卡是空卡**,
+##     卡面写着 TWIN-CANNON, 点下去什么也没发生。
+##   吃过 2 颗星: 坦克 2 / GameState 0 -> 点卡 -> 两边都成 1。**倒退一阶**,
+##     玩家选了一张"升阶"卡, 结果丢掉了刚吃到的双管齐射。
+##
+## 上面的 _live_classic_tier() 已经为了同一个分叉改成优先读坦克实例 —— 但只改
+## 了"发什么卡"那一半, "点下去做什么"这一半还留在 GameState 上, 两半不对称就
+## 等于没修。tools/_probe_classic_doubledip.gd 复现过这两种情形。
+##
+## 上限 3 和 grant_star_tier_reward 保持一致; 卡面在 tier>=3 时就不发了,
+## 这里再夹一次是防手滑 (mini 而不是 assert —— 这是 UI 路径, 不该崩)。
 func _promote_classic_tier(pid: int) -> void:
 	var main = get_tree().current_scene
+	var next: int = mini(_live_classic_tier(pid) + 1, 3)
 	if pid == 1:
-		GameState.player_tier = mini(GameState.player_tier + 1, 3)
+		GameState.player_tier = next
 	else:
-		GameState.p2_tier = mini(GameState.p2_tier + 1, 3)
+		GameState.p2_tier = next
 
 	var tank = null
 	if main:
-		tank = main.p1_instance if pid == 1 else main.p2_instance
+		tank = main.get("p1_instance") if pid == 1 else main.get("p2_instance")
 	if is_instance_valid(tank):
-		tank.upgrade_tier = GameState.player_tier if pid == 1 else GameState.p2_tier
+		tank.upgrade_tier = next
 		if tank.has_method("_update_tier_appearance"):
 			tank._update_tier_appearance()
 
