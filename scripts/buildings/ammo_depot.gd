@@ -4,6 +4,7 @@ extends StaticBody2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 
 @export var max_health: int = 6
 var current_health: int = 6
@@ -30,6 +31,14 @@ func _ready() -> void:
 	sprite.texture = tex
 	sprite.scale = Vector2(48.0 / 256.0, 48.0 / 256.0)
 	add_child(sprite)
+
+	# 顶部危险警示灯的脉动待机。这栋楼原本除了"挨打闪一下红"之外一动不动 ——
+	# 而它是场上唯一一个"碰了会连锁爆炸"的箱垛, 一盏会呼吸的警示灯正是它该有的
+	# 提示。帧见 tools/build_building_idle_anims.py::build_ammo_depot_idle。
+	# 取不到帧会返回 null 并保留上面那张静态图, 所以这行不是必需依赖。
+	SpriteIdleAnim.attach(self, sprite,
+		"res://assets/sprites/buildings/ammo_depot.png",
+		func() -> bool: return not is_destroyed)
 
 	collision_shape = CollisionShape2D.new()
 	var box = RectangleShape2D.new()

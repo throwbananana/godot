@@ -9,13 +9,42 @@ const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 @export var attack_range: float = 220.0
 @export var fire_interval: float = 0.65
 
+## 无目标时的待机扫描。
+##
+## 原来没有目标时 `gun_sprite.rotation` 一行都不写, 炮管就**永远定格在最后一次
+## 交战的朝向**上。炮塔是玩家最常放下的建筑 (商店 80G, 热键第一位), 一排朝向
+## 各异、纹丝不动的炮管读起来像是坏了, 而不像在警戒。
+##
+## 扫描只在四个基本方向之间轮转, 不停在斜角 —— 沿用下面 _physics_process 里
+## 那条规矩: 这个游戏里所有坦克和子弹都只上下左右, 自动炮塔不能是唯一一个
+## 瞄自由角度的东西。转场过程是平滑的 (会路过斜角), 但**开火只发生在有目标的
+## 分支里**, 那一支是硬置朝向的, 所以不存在斜着开火的可能。
+const IDLE_SCAN_INTERVAL := 1.5
+const IDLE_TURN_SPEED := 2.2
+const IDLE_CARDINALS := [Vector2.UP, Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT]
+
+## 起始朝向逐座错开一格, 否则并排几座会像仪仗队一样同步转。
+##
+## 用静态计数器而不是 randi(): 每日挑战在 main.gd::start_game() 里给全局 RNG
+## 播了种, 之后地图生成和敌人 roll 一路都在这条流上取数 —— 在 _ready() 里随手
+## 取一个数会让当天所有人的 run 分叉。explosion.gd 轮转爆炸差分、
+## sprite_idle_anim.gd 错开起始帧, 都是同一个理由。
+static var _scan_stagger: int = 0
+
 var current_health: int = 8
 var fire_timer: float = 0.0
 var target_enemy: Node2D = null
+var idle_scan_idx: int = 0
+var idle_scan_timer: float = 0.0
 
 @onready var base_sprite: Sprite2D = $BaseSprite
 @onready var gun_sprite: Sprite2D = $GunSprite
-@onready var range_area: Area2D = $RangeArea
+# 这里原来还有一行 `@onready var range_area: Area2D = $RangeArea`。
+# defense_turret.tscn 里**根本没有 RangeArea 这个节点** (只有 BaseSprite /
+# GunSprite / CollisionShape2D), 所以它每放下一座炮塔就往日志里报一次
+# "Node not found", 而这个变量全项目没有任何地方读过 —— 索敌走的是
+# _find_nearest_target() 遍历 enemies 组 + attack_range 距离判断, 不是 Area2D。
+# 删掉的是一条死引用, 不是功能。
 
 var bullet_scene: PackedScene
 var explosion_scene: PackedScene
@@ -33,6 +62,9 @@ func _ready() -> void:
 	current_health = max_health
 	bullet_scene = load("res://scenes/bullet.tscn")
 	explosion_scene = load("res://scenes/explosion.tscn")
+
+	idle_scan_idx = _scan_stagger % IDLE_CARDINALS.size()
+	_scan_stagger += 1
 
 	var b_tex = TextureHelper.get_tex("res://assets/sprites/buildings/turret_base.png")
 	var g_tex = TextureHelper.get_tex("res://assets/sprites/buildings/turret_gun.png")
@@ -59,6 +91,24 @@ func _physics_process(delta: float) -> void:
 			_shoot(target_dir)
 	else:
 		fire_timer = maxf(0.0, fire_timer - delta)
+		_idle_scan(delta)
+
+## 无目标时在四个基本方向之间缓慢轮转, 见 IDLE_SCAN_INTERVAL 的注释。
+##
+## 刻意留在 _physics_process 里而不是改用 Tween 驱动: 联机时客户端上的炮塔是
+## SCENE_NODE 傀儡, net_puppet.gd 会把 _process 和 _physics_process 一起关掉,
+## 所以那边的炮管本来就不会瞄准 (瞄准也在这个函数所在的分支里)。待机扫描跟着
+## 同一条路径走, 行为和现状完全一致; 改成 Tween 反而会造出新的分歧 —— 主机正
+## 瞄着敌人打, 客户端上那座却在自顾自地扫。
+func _idle_scan(delta: float) -> void:
+	if not is_instance_valid(gun_sprite):
+		return
+	idle_scan_timer -= delta
+	if idle_scan_timer <= 0.0:
+		idle_scan_timer = IDLE_SCAN_INTERVAL
+		idle_scan_idx = (idle_scan_idx + 1) % IDLE_CARDINALS.size()
+	var want: float = (IDLE_CARDINALS[idle_scan_idx] as Vector2).angle() + PI / 2.0
+	gun_sprite.rotation = rotate_toward(gun_sprite.rotation, want, IDLE_TURN_SPEED * delta)
 
 func _find_nearest_target() -> void:
 	var enemies = get_tree().get_nodes_in_group("enemies")

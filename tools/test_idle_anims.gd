@@ -22,8 +22,23 @@ extends SceneTree
 ## 像素"—— 一个能直接和显示尺寸对话的量。全部在 48px 上算, 因为那才是玩家
 ## 看到的尺寸 (main.gd: TILE_SIZE 48 / 渲染 256)。
 ##
-## 实测现役循环 (px/帧): base_eagle 0.13 / roller_wall 0.16 / factory 0.36 /
-## wind_blower 0.50 / emp_tower 0.61 / radar_station 0.77 / bunker 1.97。
+## 实测现役循环 (px/帧, 本文件自己打印的口径): base_eagle 0.13 /
+## roller_wall 0.16 / ammo_depot 0.18 / command_post 0.22 / sniper_nest 0.25 /
+## factory 0.40 / wind_blower 0.50 / emp_tower 0.61 / radar_station 0.79 /
+## bunker 1.97。
+##
+## === 自发光脉动曾经整体失效, 排查动画"没动"时先查这条 ===
+##
+## create_clay_mat 末尾有一道防过曝钳位 (emission_peak=0.85): 对线性峰值为 1.0
+## 的颜色, **任何大于 0.85 的 emission_str 都会被压成同一个 0.85**。而现役几段
+## 待机动画原本给的是 1.7~8.0, 整个区间都在钳位线以上 —— 于是四个"明灭/呼吸"
+## 通道逐帧完全没有变化, 恒等于零而不是幅度不够。
+##
+## 佐证是工厂那串逐帧读数曾经是 `0.36 0.36 0.36 0.36 0.36 0.36`, 六个数一位
+## 小数都不差 —— 画面上只有烟 (纯几何) 在动。修好之后变成
+## `0.40 0.37 0.39 0.41 0.37 0.40`。
+##
+## 现在一律走 build_building_idle_anims.py::_pulse_str 把强度映射到钳位以内。
 ##
 ## === 其余三条检查 ===
 ##
@@ -31,8 +46,9 @@ extends SceneTree
 ##      动画 (鹰巢 0.13) 和幅度大的动画不该用同一个绝对下限。雷达站第一版
 ##      `3.28 0.01 3.28 3.31 0.00 3.31` 中位健康而每循环卡顿两次, 炸弹第一版
 ##      更是有一对完全相同的帧 —— 两者的中位数都看不出问题。
-##   2. 地基逐帧 alpha 掩码完全一致 (**只对建筑**)。建筑压在固定格子上, 底座
-##      一动整栋楼就像在地上漂; 拾取物是自由摆放的, 没有这条。
+##   2. 地基不许整体在动 (**只对建筑**)。建筑压在固定格子上, 底座一动整栋楼
+##      就像在地上漂; 拾取物是自由摆放的, 没有这条。判据是环带里"有变化的
+##      扇区占比", 不是"变化的像素数"—— 详见 BASE_CHURN_MAX_FRAC 的注释。
 ##   3. 不能被画幅裁掉 (**只对拾取物**)。道具本来就把 256px 占得比较满, 动起来
 ##      一旦出框就是"边缘一闪一闪"。建筑是满幅底板, 贴边是正常的。
 ##
@@ -57,6 +73,38 @@ const STALL_ABS_FLOOR := 0.12
 ## 地基环带 (像素半径), 只对建筑。
 const BASE_RING_MIN := 70.0
 const BASE_RING_MAX := 118.0
+
+## 环带按角度切成多少份, 以及"有变化的扇区"占比的上限。
+##
+## === 为什么从"一个像素都不许变"改成"变化必须局限在一个扇区" ===
+##
+## 原判据是: 环带 r[70,118) 里的 alpha 掩码必须逐帧完全一致 (churn == 0)。
+## 那个环带**只是"地基在哪"的代理**, 而这个代理对一部分建筑不成立 ——
+## 狙击碉堡伸在外面的枪架落在 r=0.56~1.12, 正好压在环带上。枪架是武器不是
+## 地基, 它横扫搜索是这栋楼该有的动作, 老判据却会把它判成"整栋楼在地上漂"。
+##
+## 直接放宽成"允许若干像素变化"是不行的: 环带检查真正要抓的两个 bug ——
+## 整栋楼平移、以及逐帧重播抖动种子导致的轮廓沸腾 —— 都是**低强度但遍布
+## 全周**的, 用像素数当阈值就得放到很大, 那时候它也抓不住原来那两个 bug 了。
+##
+## 区分它们的不是强度而是**角向分布形状**: 附件在动 = churn 集中在一个扇区;
+## 整栋楼在动 / 轮廓沸腾 = churn 铺满整个周长。实测 (自测方法见下):
+##
+##                      正常          逐帧重播种子 (复现 bug)
+##     command_post     0/180  (0%)   178/180  (99%)
+##     sniper_nest     20/112 (18%)   114/112 (102%)
+##     radar/emp/factory/ammo_depot   0%
+##
+## 18% 与 99% 之间空档极大, 阈值取 0.35 两边都有两三倍余量。
+##
+## === 这条放宽是自测过的, 不是"调到能过为止" ===
+##
+## 把 reset_jitter_seed 换成逐帧不同的种子 (rerender_vfx.py 就是这么写的,
+## 也正是鹰巢待机第一版的真实 bug), 重渲 6 帧, 新判据必须变红。实测 99%/102%,
+## 远在 35% 之上。**幅度指标抓不住这个 bug** (command_post 0.21 -> 0.36, 反而
+## 更"合格"了), 所以环带检查是承重的, 只能改判据不能删。
+const BASE_ANGLE_BINS := 180
+const BASE_CHURN_MAX_FRAC := 0.35
 
 ## 拾取物离画幅边缘至少要留的像素。
 const PICKUP_MARGIN_MIN := 3
@@ -145,25 +193,44 @@ func _median(vals: Array) -> float:
 	return s[s.size() / 2]
 
 
-func _base_ring_mask_churn(frames: Array) -> int:
+## 地基环带里的逐帧 alpha 掩码变化, 按角度分箱统计。
+##
+## 返回 {px, hit, present}: 变化的像素数 / 含变化的扇区数 / 环带里**任意一帧**
+## 有不透明像素的扇区数。分母用"任意一帧"而不是"第 0 帧" —— 拿第 0 帧当分母
+## 时, 一个扫出第 0 帧轮廓之外的附件会让占比算出 102% 这种数。
+func _base_ring_churn(frames: Array) -> Dictionary:
 	var base: Image = frames[0]
 	var w: int = base.get_width()
 	var h: int = base.get_height()
 	var cx: float = w * 0.5
 	var cy: float = h * 0.5
+	var bin_w := 360.0 / float(BASE_ANGLE_BINS)
 	var churn := 0
+	var hit := {}
+	var present := {}
 	for y in range(h):
 		for x in range(w):
-			var r := sqrt(pow(x - cx, 2.0) + pow(y - cy, 2.0))
+			var dx := float(x) - cx
+			var dy := float(y) - cy
+			var r := sqrt(dx * dx + dy * dy)
 			if r < BASE_RING_MIN or r >= BASE_RING_MAX:
 				continue
+			var b := int(fposmod(rad_to_deg(atan2(dy, dx)), 360.0) / bin_w) % BASE_ANGLE_BINS
 			var first: bool = base.get_pixel(x, y).a > 0.5
+			var any_opaque := first
+			var differs := false
 			for i in range(1, frames.size()):
-				var other: Image = frames[i]
-				if (other.get_pixel(x, y).a > 0.5) != first:
-					churn += 1
-					break
-	return churn
+				var other: bool = (frames[i] as Image).get_pixel(x, y).a > 0.5
+				if other:
+					any_opaque = true
+				if other != first:
+					differs = true
+			if any_opaque:
+				present[b] = true
+			if differs:
+				churn += 1
+				hit[b] = true
+	return {"px": churn, "hit": hit.size(), "present": present.size()}
 
 
 ## 各帧里最靠近画幅边缘的那一帧, 还剩多少像素余量。
@@ -234,11 +301,14 @@ func _check_sequence(dir_name: String, stem: String, is_building: bool) -> void:
 
 	var extra := ""
 	if is_building:
-		var churn := _base_ring_mask_churn(frames)
-		extra = "地基churn %d" % churn
-		if churn > 0:
-			_fail("%s 地基在动: 环带 r[%d,%d) 里有 %d 个像素的 alpha 掩码逐帧不一致, 期望 0 —— 底座压在固定格子上, 一动整栋楼看起来就在地上漂。多半是逐帧重播了抖动种子 (应当在 builder 里 reset_jitter_seed 成同一个值)。"
-				% [stem, int(BASE_RING_MIN), int(BASE_RING_MAX), churn])
+		var ring := _base_ring_churn(frames)
+		var present: int = maxi(ring["present"], 1)
+		var frac := float(ring["hit"]) / float(present)
+		extra = "地基churn %d px, %d/%d 扇区 (%.0f%%)" % [ring["px"], ring["hit"], present, 100.0 * frac]
+		if frac > BASE_CHURN_MAX_FRAC:
+			_fail("%s 地基在动: 环带 r[%d,%d) 里有 %d/%d 个扇区 (%.0f%%) 的 alpha 掩码逐帧不一致, 上限 %.0f%% —— 变化铺满整个周长而不是集中在某一处, 这是**整栋楼在动**或**轮廓在沸腾**的形状, 不是某个附件在动 (附件实测只占 18%%)。底座压在固定格子上, 一动整栋楼看起来就在地上漂。最常见的原因是逐帧重播了抖动种子: builder 里应当 reset_jitter_seed 成**同一个值**, 而不是像 rerender_vfx.py 那样 seed+i。注意幅度指标抓不住这个 bug (实测重播种子反而让幅度从 0.21 涨到 0.36), 别拿「幅度正常」当反证。"
+				% [stem, int(BASE_RING_MIN), int(BASE_RING_MAX), ring["hit"], present,
+					100.0 * frac, 100.0 * BASE_CHURN_MAX_FRAC])
 	else:
 		var margin := _min_frame_margin(frames)
 		extra = "画幅余量 %dpx" % margin
@@ -271,6 +341,9 @@ func _check_wired() -> void:
 		"res://scripts/buildings/radar_station.gd",
 		"res://scripts/buildings/emp_tower.gd",
 		"res://scripts/buildings/factory.gd",
+		"res://scripts/buildings/command_post.gd",
+		"res://scripts/buildings/ammo_depot.gd",
+		"res://scripts/buildings/sniper_nest.gd",
 		"res://scripts/power_up.gd",
 		"res://scripts/gold_coin.gd",
 	]:
@@ -313,7 +386,8 @@ func _check_wired() -> void:
 func _run() -> void:
 	print("=== 待机循环动画 (幅度按 48px 下每帧移动的像素数) ===")
 	print("--- 有源建筑 ---")
-	for stem in ["radar_station", "emp_tower", "factory"]:
+	for stem in ["radar_station", "emp_tower", "factory",
+			"command_post", "ammo_depot", "sniper_nest"]:
 		_check_sequence("buildings", stem, true)
 	print("--- 战场拾取物 ---")
 	for stem in ["star", "gold_coin", "clock", "helmet", "shovel", "bomb", "life"]:

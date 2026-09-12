@@ -4,6 +4,7 @@ extends StaticBody2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 
 @export var max_health: int = 8
 @export var fire_direction: Vector2 = Vector2.UP
@@ -36,6 +37,16 @@ func _ready() -> void:
 	sprite.texture = tex
 	sprite.scale = Vector2(48.0 / 256.0, 48.0 / 256.0)
 	add_child(sprite)
+
+	# 枪架横扫搜索的待机循环。原来这栋楼只在开火时有反馈, 平时枪口定格不动,
+	# 读起来像个石墩而不像有人在里面盯着。帧见
+	# tools/build_building_idle_anims.py::build_sniper_nest_idle。
+	# 只换 texture, 不碰 sprite.rotation —— 朝向仍然由 _update_rotation() 按
+	# fire_direction 决定, 两者互不干扰。
+	# 取不到帧会返回 null 并保留上面那张静态图, 所以这行不是必需依赖。
+	SpriteIdleAnim.attach(self, sprite,
+		"res://assets/sprites/buildings/sniper_nest.png",
+		func() -> bool: return not is_destroyed)
 
 	collision_shape = CollisionShape2D.new()
 	var box = RectangleShape2D.new()

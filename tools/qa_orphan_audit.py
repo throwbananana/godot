@@ -143,6 +143,44 @@ CANDIDATES = [
      [("point/3.3", False, ORTHO_SCALE_DEFAULT),
       ("point/PROP", False, ORTHO_SCALE_PROP)]),
 
+    # ── 炮塔: 第二组"两个脚本都声称能渲"的资产 ──
+    #
+    # turret_gun.png 同时被下面两个函数写:
+    #
+    #   build_all_sokpop_assets_unified.py::build_sokpop_turret_gun
+    #       蓝色圆顶 + 顶舱盖 + 光学瞄具, ortho 继承上文的 3.3
+    #   refine_buildings_and_tanks.py::build_refined_turret_gun
+    #       深色底盘 + 双管加特林 + 警示黄炮盾 + 侧挂导弹巢, ortho_scale=2.7
+    #
+    # 两者形态完全不同, 所以这不是"渲染设置漂了", 是**两版不同的美术**。
+    # CLAUDE.md 已经记过 refine_all_assets.py 对六个道具的同款陷阱, 但那条注记
+    # 只点了 refine_all_assets.py 一个文件; refine_buildings_and_tanks.py 是
+    # 同一个坑的**另一个洞**, 之前没有任何地方写过。跑它会静默把炮塔换一版。
+    ("buildings/turret_gun.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_turret_gun"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+    ("buildings/turret_base.png",
+     _lazy("build_all_sokpop_assets_unified", "build_sokpop_turret_base"),
+     [("point/3.3", False, ORTHO_SCALE_DEFAULT),
+      ("point/PROP", False, ORTHO_SCALE_PROP)]),
+
+    # ── 三座纯地图家具: 下一批待机动画的前置体检 ──
+    # 和上面雷达站/EMP塔/工厂那三条同理 —— 包装器会连带重渲静态图, 而静态图
+    # 一旦被属主改样, 是没有旧版可比、也不会报错的。
+    ("buildings/ammo_depot.png",
+     _lazy("build_new_buildings_and_tanks", "build_ammo_depot"),
+     [("point/PROP", False, ORTHO_SCALE_PROP),
+      ("point/3.3", False, ORTHO_SCALE_DEFAULT)]),
+    ("buildings/command_post.png",
+     _lazy("build_new_buildings_and_tanks", "build_command_post"),
+     [("point/PROP", False, ORTHO_SCALE_PROP),
+      ("point/3.3", False, ORTHO_SCALE_DEFAULT)]),
+    ("buildings/sniper_nest.png",
+     _lazy("build_new_buildings_and_tanks", "build_sniper_nest"),
+     [("point/PROP", False, ORTHO_SCALE_PROP),
+      ("point/3.3", False, ORTHO_SCALE_DEFAULT)]),
+
     # 六个核心道具 + 金币。这七张图**有两个脚本都声称能渲**, 而且结论和
     # CLAUDE.md 上原来记的相反, 所以钉在这里:
     #

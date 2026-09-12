@@ -4,6 +4,7 @@ extends StaticBody2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 
 @export var max_health: int = 18
 var current_health: int = 18
@@ -30,6 +31,14 @@ func _ready() -> void:
 	sprite.texture = tex
 	sprite.scale = Vector2(48.0 / 256.0, 48.0 / 256.0)
 	add_child(sprite)
+
+	# 旗帜迎风 + 通信天线阵旋转的待机循环。建模注释一直写着"旗杆 + 通信天线",
+	# 两件本该会动的东西造出来了却一件都没动过 —— 一面不飘的旗子比没有旗子
+	# 更显眼。帧见 tools/build_building_idle_anims.py::build_command_post_idle。
+	# 取不到帧会返回 null 并保留上面那张静态图, 所以这行不是必需依赖。
+	SpriteIdleAnim.attach(self, sprite,
+		"res://assets/sprites/buildings/command_post.png",
+		func() -> bool: return not is_destroyed)
 
 	collision_shape = CollisionShape2D.new()
 	var box = RectangleShape2D.new()

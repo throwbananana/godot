@@ -58,13 +58,39 @@ func _run_tests() -> void:
 	print("✓ Shop generated %d items." % shop_inst.current_shop_items.size())
 
 	# Test purchase
+	#
+	# **金币必须按抽到的那件商品的实价来给, 不能写死。** 这里原来是上面那句
+	# `GameState.gold = 300` 直接用到底, 然后买 current_shop_items[0] —— 而
+	# items[0] 是从随机货架上抽的, 价格还要乘 PRICE_BASE_MULT(2.0) 和楼层系数。
+	# 实测 400 次采样: min 99 / p50 220 / p90 484 / max 484, 其中
+	# **28.5% 的抽取超过 300**, 也就是每四次就有一次根本买不起, 于是
+	# _on_buy_item() 走"金币不足"分支直接 return 不扣钱, 下面的断言必然不成立。
+	#
+	# 484 的那几件是分支图纸 (blueprint_*), 基础价 220 且故意很贵
+	# (见 CLAUDE.md "Branches are unlocked by blueprints")。它们是**后来才进
+	# 商店池的**, 也就是说这条前置条件不是一开始就写错, 而是被一个后加的功能
+	# 悄悄作废了 —— 这比写错更难发现, 因为改动方根本不会想到去看这个测试。
+	#
+	# 表现同样不是 [FAIL] 而是**整个进程挂住** (headless 下 assert 失败会停下来
+	# 等一个永远不会来的调试器), 在 run_tests.ps1 里就是一条没有任何诊断的
+	# TIMEOUT。实测约每 4 次挂 1 次, 和上面那 28.5% 对得上。
+	#
+	# 这一段测的是**扣款**, 不是买得起买不起, 所以直接按实价给钱。
 	var first_item = shop_inst.current_shop_items[0]
-	var initial_gold = GameState.gold
 	var cost = first_item["cost"]
+	GameState.gold = cost + 500
+	var initial_gold = GameState.gold
 	shop_inst._on_buy_item(first_item)
-	assert(GameState.gold == initial_gold - cost, "Gold should be deducted after purchase")
-	assert(first_item["sold_out"] == true, "Item should be marked as sold out")
-	print("✓ Item purchase and gold deduction verified.")
+	if GameState.gold != initial_gold - cost:
+		print("[FAIL] 购买没有扣费: 商品 %s 标价 %d, 购买前 %d, 购买后 %d"
+			% [first_item["id"], cost, initial_gold, GameState.gold])
+		quit(1)
+		return
+	if first_item["sold_out"] != true:
+		print("[FAIL] 购买后商品没有标记售罄: %s" % first_item["id"])
+		quit(1)
+		return
+	print("✓ Item purchase and gold deduction verified (%s, %d G)." % [first_item["id"], cost])
 
 	# Test Reroll
 	#
@@ -91,7 +117,14 @@ func _run_tests() -> void:
 	# 这两条**故意不用 assert**。它们守的是一段依赖商店随机内容的行为, 一旦
 	# 再出问题, 显式 quit(1) 会给出一条带数字的 [FAIL]; 用 assert 的话只会得到
 	# 一个没有任何信息的挂起, 而"挂起"这个信号在批量跑里最容易被当成机器慢。
-	# 本文件其余的 assert 守的都是确定性的数值表, 失败即必然, 不在此列。
+	#
+	# 这里原来还写着一句"本文件其余的 assert 守的都是确定性的数值表, 失败即必然,
+	# 不在此列"—— **那句话是错的, 而且正是它让上面购买那条又挂了好几个月。**
+	# 购买断言守的同样是随机货架 (见那一段的注释), 只不过它随机的是*价格*而不是
+	# *余额*, 所以上一次修刷新的时候没被一起看见。
+	# 教训: 一条"其余的都没问题"的注释, 会让下一个人跳过复查 —— 和 CLAUDE.md
+	# 里瓦片豁免名单那两条写错的诊断是同一类东西。现在剩下的 assert 只有开头
+	# 那批开火冷却/敌人 fire_interval 的固定数值表, 那些是真的确定性。
 	if GameState.gold != old_gold - paid:
 		print("[FAIL] 刷新没有扣费: 刷新前 %d, 报价 %d, 刷新后 %d" % [old_gold, paid, GameState.gold])
 		quit(1)

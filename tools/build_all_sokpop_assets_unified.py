@@ -973,6 +973,37 @@ def build_sokpop_turret_base():
     return objs
 
 def build_sokpop_turret_gun():
+    """防御炮塔的炮体 (可旋转部分)。
+
+    === 剪影是按"48px 上要认得出朝向"重做过的 ===
+
+    改之前, 这个炮塔在游戏里读成**一个扁平的蓝色圆饼加一个芥末黄圆点**, 完全
+    看不出朝哪边。原因不是建模缺件 —— 顶舱盖、光学瞄具、炮盾、双管、消焰器
+    全都在 —— 而是**圆顶把它们全吞了**:
+
+      - 圆顶半径 0.68。炮盾原来在 (0, 0.45, 0.20), 半宽 0.36, 最远角
+        (0.36, 0.61) 的半径 0.70, 几乎正好贴在圆顶投影的边界上, 俯视下完全
+        埋在圆顶底下, 一个像素都看不见。
+      - 双管原来在 z=0.20, 顶面才 0.30; 而圆顶在 (0.22, 0.60) 处的表面高度是
+        0.398 —— 炮管被圆顶压住, 只有伸出 r>0.68 之外的那 0.44 露在外面。
+        1.05 长的炮管, 露出来的连一半都不到, 于是读成两个小突起。
+
+    正交俯视下能不能看见一个部件, 取决于它在该 (x,y) 上是不是最高的那层表面,
+    这件事在侧视思维里很容易漏掉 —— 和 build_factory_idle 里"烟往 +Z 飘在俯视
+    下完全看不见"是同一类坑。
+
+    修法 (用户定的"中等"力度: 调整剪影让类型一眼可辨, 不换设计语言):
+      - 炮盾**抬高并加宽**到能真的破开圆顶的轮廓, 在正前方形成一条方形肩线。
+        圆顶保留, 但不再是一个纯圆 —— 48px 上"圆 + 一条平前沿"就有朝向了。
+      - 双管加长并抬到炮盾同高, 露出的长度从 0.44 提到约 1.0。
+      - 光学瞄具移到炮盾顶面, 成为肩线上的一点红。
+      - 配色、材质、圆顶本体一律不动。
+
+    注意: 这张图的属主之争是**已经量过**的 —— tools/qa_orphan_audit.py 里
+    buildings/turret_gun.png 一条实测 d_rgb 0.34 (point/3.3), 属主就是这个函数;
+    refine_buildings_and_tanks.py::build_refined_turret_gun 是另一版完全不同的
+    美术 (深色底盘 + 加特林 + 导弹巢), 跑它会静默把炮塔换掉。
+    """
     objs = []
     mat_g = create_clay_mat("m_ubld_tg", (0.32, 0.62, 0.92, 1.0))
     mat_mantlet = create_clay_mat("m_ubld_tmantlet", (0.26, 0.48, 0.75, 1.0))
@@ -988,40 +1019,59 @@ def build_sokpop_turret_gun():
     bpy.ops.object.shade_smooth()
     objs.append(d)
 
-    # 2. Top Hatch
-    bpy.ops.mesh.primitive_cylinder_add(radius=0.28, depth=0.12, vertices=16, location=(0, -0.10, 0.74))
+    # 2. Top Hatch —— 半径从 0.28 收到 0.21。
+    # 原尺寸在 48px 显示尺寸下直径约 8px, 而整个炮塔才 20px 宽 —— 一个占了
+    # 四成宽度、正居中、且不含任何方向信息的金色圆盘, 是全图最抢眼的元素,
+    # 把炮管和炮盾的方向线索全压下去了。
+    bpy.ops.mesh.primitive_cylinder_add(radius=0.21, depth=0.12, vertices=16, location=(0, -0.14, 0.74))
     hatch = bpy.context.active_object
     hatch.data.materials.append(mat_m)
     apply_uniform_clay_bevel(hatch, width=0.04, segments=2)
     objs.append(hatch)
 
-    # 3. Optical Targeting Sensor / Eye
-    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(0, 0.50, 0.55))
+    # 4. Gun Mantlet —— 正前方的方形肩线, 这是整个剪影改造的主角。
+    # 抬到 z=0.44 且加宽到半宽 0.47: 最远角 (0.47, 0.73) 半径 0.87, 已经伸到
+    # 圆顶投影 (0.68) 之外; 正中 (0, 0.52) 处圆顶表面高 0.572, 而炮盾顶面
+    # 0.44+0.17=0.61 高过它 —— 两条路都保证它露得出来。
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.52, 0.44))
+    mantlet = bpy.context.active_object
+    mantlet.scale = (0.94, 0.42, 0.34)
+    mantlet.data.materials.append(mat_mantlet)
+    apply_uniform_clay_bevel(mantlet, width=0.06, segments=3)
+    objs.append(mantlet)
+
+    # 3. Optical Targeting Sensor / Eye —— 移到炮盾顶面, 成为肩线上的一点红。
+    # 原位置 (0, 0.50, 0.55) 会被抬高后的炮盾埋掉。
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=0.12, location=(0, 0.52, 0.63))
     eye = bpy.context.active_object
     eye.data.materials.append(mat_optic)
     bpy.ops.object.shade_smooth()
     objs.append(eye)
 
-    # 4. Gun Mantlet (Protective recoil collar block spanning the front)
-    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0, 0.45, 0.20))
-    mantlet = bpy.context.active_object
-    mantlet.scale = (0.72, 0.32, 0.36)
-    mantlet.data.materials.append(mat_mantlet)
-    apply_uniform_clay_bevel(mantlet, width=0.06, segments=3)
-    objs.append(mantlet)
-
     # 5. Dual Cannons emerging cleanly from Mantlet
-    for bx in [-0.22, 0.22]:
+    # 抬到和炮盾同高 (z=0.44) 并加长到 1.24: 露出长度从 0.44 提到约 1.0,
+    # 炮口最远到 y=1.30, 加上消焰器的 0.20 是 1.50, 画幅半宽 1.65 还剩 0.15。
+    # 精灵在游戏里绕图心旋转 (gun_sprite.rotation), 所以只要半径进得了画幅,
+    # 转到任何角度都不会被裁。
+    for bx in [-0.24, 0.24]:
         # Barrel
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.10, depth=1.05, vertices=16, location=(bx, 0.60, 0.20))
+        #
+        # 材质从 mat_g 换成 mat_mantlet, 这是这次改造里最要紧的一步:
+        # 炮管原来和圆顶**是同一个蓝色**, 于是在 48px 下整根融进圆顶, 剩下的
+        # 方向线索只有伸出轮廓的那一小截。项目的规矩是"48px 上靠明度分离,
+        # 不靠色相" (见 CLAUDE.md 装甲板分级那一节) —— 换成炮盾那档深蓝之后,
+        # 炮盾 + 双管成为一整块深色炮组, 压在浅蓝圆顶上, 朝向一眼就出来了,
+        # 而且没有引入任何新颜色。
+        # 半径 0.10 -> 0.145 同理: 48px 下 2.9px 太细, 撑不住这条线索。
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.145, depth=1.24, vertices=16, location=(bx, 0.68, 0.44))
         barrel = bpy.context.active_object
         barrel.rotation_euler = (math.radians(90), 0, 0)
-        barrel.data.materials.append(mat_g)
+        barrel.data.materials.append(mat_mantlet)
         apply_uniform_clay_bevel(barrel, width=0.04, segments=2)
         objs.append(barrel)
 
         # Recoil Collar Ring at the base of the barrel
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.13, minor_radius=0.04, location=(bx, 0.52, 0.20))
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.175, minor_radius=0.045, location=(bx, 0.62, 0.44))
         rc = bpy.context.active_object
         rc.rotation_euler = (math.radians(90), 0, 0)
         rc.data.materials.append(mat_m)
@@ -1029,7 +1079,7 @@ def build_sokpop_turret_gun():
         objs.append(rc)
 
         # Muzzle Brake
-        bpy.ops.mesh.primitive_torus_add(major_radius=0.14, minor_radius=0.06, location=(bx, 1.12, 0.20))
+        bpy.ops.mesh.primitive_torus_add(major_radius=0.185, minor_radius=0.06, location=(bx, 1.27, 0.44))
         muzzle = bpy.context.active_object
         muzzle.rotation_euler = (math.radians(90), 0, 0)
         muzzle.data.materials.append(mat_m)
@@ -1037,7 +1087,7 @@ def build_sokpop_turret_gun():
         objs.append(muzzle)
 
         # Bore Hole
-        bpy.ops.mesh.primitive_cylinder_add(radius=0.07, depth=0.10, vertices=12, location=(bx, 1.14, 0.20))
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.07, depth=0.10, vertices=12, location=(bx, 1.29, 0.44))
         bore = bpy.context.active_object
         bore.rotation_euler = (math.radians(90), 0, 0)
         bore.data.materials.append(mat_bore)
