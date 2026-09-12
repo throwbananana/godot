@@ -107,14 +107,34 @@ static var player_tier: int = 0
 static var player_lives: int = 3
 static var max_hp_lvl: int = 0
 static var atk_bonus: int = 0
-## 商店花钱买到的 atk_bonus 总数 (plasma_mod + 分支后的 star_tier), 与靠打
-## 楼层升级涨的那部分分开计数。atk_bonus 是全项目唯一被精心限速的战斗数值
-## (RPGManager.ATK_LEVELS_PER_POINT), 而 plasma_mod/star_tier 原来对购买
-## 次数完全没有限制——autoloader 有 is_fire_rate_capped() 那样的"不卖零"
-## 闸门, atk_bonus 却没有对应的机制。这个计数器就是补上那道闸门, 见
-## shop_dialog.gd::can_buy_item() 和 SHOP_ATK_BONUS_CAP。
+## **非升级来源**的 atk_bonus 总数, 与靠升级曲线涨的那部分分开计数。
+##
+## atk_bonus 是全项目唯一被精心限速的战斗数值 (RPGManager.ATK_LEVELS_PER_POINT
+## 专门放慢了它的自然成长节奏), 而绕过那条曲线直接给 atk_bonus 的路一共有三条:
+##   1. 商店 plasma_mod
+##   2. 商店 star_tier / 事件的升阶奖励 (已分支玩家走 grant_star_tier_reward 的
+##      重定向分支)
+##   3. **战场上吃到的 ⭐** (player.gd::apply_powerup 的 STAR 分支)
+##
+## 字段名留着 "shop_" 前缀是为了不动存档键 —— load_campaign() 读的就是这个名字,
+## 改名会让老存档静默地把计数归零, 而这个计数器正是上限的全部依据。现在它统计
+## 的是上面三条路的**总和**, 不再只是商店。
+##
+## === 为什么第 3 条必须算进来 ===
+##
+## 这道闸门原本只在 shop_dialog.gd::can_buy_item() 上检查, 于是三条路里只有第
+## 1、2 条中的商店部分真的被拦住: grant_star_tier_reward() 往这个计数器里**加数
+## 却从不检查它**, 而 player.gd 的战场 ⭐ 连加都不加。
+##
+## 后果是量级上的: 实测一局战役能吃到约 25 颗 ⭐ (真实 FloorMap + 真实
+## encounter_size 采样), 而同期升级曲线只给 5 点攻击力 —— 也就是说这条"补偿"
+## 路径的产出是被限速的那条主线的 5 倍, 而它本身没有任何上限。经典线玩家的
+## ⭐ 收益在第 3 颗就封顶 (upgrade_tier 夹在 3), 已分支玩家却是每颗永久 +1,
+## 实测整场打完两者伤害 6 : 31。见 tools/test_player_power.gd 的
+## _check_star_driven_atk_gap()。
 static var shop_atk_bonus_purchases: int = 0
 const SHOP_ATK_BONUS_CAP := 5
+
 static var speed_lvl: int = 0
 static var fire_rate_lvl: int = 0
 static var regen_lvl: int = 0
@@ -230,16 +250,87 @@ static func unlock_branch(branch: String) -> bool:
 	return true
 
 
-static func grant_star_tier_reward(player_id: int = 1) -> void:
+## 非升级来源的 atk_bonus 还能不能再给一份。**上限的唯一判定处** ——
+## 商店、事件、战场 ⭐ 三条路都问这里, 而不是各自抄一份比较。
+##
+## 和 RPGManager.is_fire_rate_capped() 是同一条原则 ("不卖零"/不发废牌), 也和
+## 商店把上限检查从 btn_buy.disabled 挪进 _on_buy_item 是同一件事: 门禁要放在
+## **真正生效的那一步**, 放在 UI 上挡不住新的调用方。
+static func can_grant_flat_atk() -> bool:
+	return shop_atk_bonus_purchases < SHOP_ATK_BONUS_CAP
+
+
+## 记一次非升级来源的 atk_bonus 授予。返回是否真的给了 (到顶了就返回 false,
+## 调用方据此决定提示文案 —— 不要在到顶时还播一条"攻击力 +1"的 toast)。
+## (不带 player_id: atk_bonus 和这个计数器都是队伍共享的字段 —— 属性点本来就
+## 不分玩家, 只有 branch/tier/perks 才分。带一个用不到的参数会让人误以为
+## 上限是每人一份。)
+static func try_grant_flat_atk() -> bool:
+	if not can_grant_flat_atk():
+		return false
+	atk_bonus += 1
+	shop_atk_bonus_purchases += 1
+	return true
+
+
+## 返回这次奖励是否真的产生了效果。
+##
+## 两条路现在**都有上限**, 而且这是刻意对齐的:
+##   default  -> upgrade_tier 夹在 3 (一直如此)
+##   已分支   -> +1 atk_bonus, 夹在 SHOP_ATK_BONUS_CAP (新增, 见该常量上面
+##               那段: 这条重定向本来就是 tier 封顶后的"补偿", 补偿却比被补偿
+##               的东西还没有上限, 是说不通的)
+##
+## 到顶之后 ⭐ 仍然给一级 (add_level 在调用方那边), 只是不再叠平砍伤害 ——
+## 和经典线玩家 tier 满 3 之后的处境完全一样。
+static func is_branched(player_id: int = 1) -> bool:
+	return (tank_branch if player_id == 1 else p2_branch) != "default"
+
+
+## 把**一次**"星级模块"奖励发给这些玩家 (商店的 star_tier、事件的升阶选项)。
+## 返回有没有人真的拿到东西。
+##
+## === 为什么不是调用方自己循环 grant_star_tier_reward() ===
+##
+## 这份奖励的两半归属不同:
+##   tier      -> 每人一份 (player_tier / p2_tier), **该** fan-out
+##   重定向    -> 落到 atk_bonus, 而那是**队伍共享**字段, **不该** fan-out
+##
+## 两个都已分支的玩家各调一次, 一次奖励就变成 +2 攻击力, 并且烧掉 2 份
+## SHOP_ATK_BONUS_CAP 预算 —— 双人凭空比单人多拿一倍, 而且不会有任何报错。
+## (CLAUDE.md 早就记着这一类坑的另一面: "Any reward granted outside a battle
+## has to ask 'which players?'" —— 当年商店把 player_id 写死成 1, 让 P2 永远
+## 拿不到命/星级/天赋。那次的教训是"该分的没分", 这次是"不该分的分了", 同一个
+## 问题的两个方向。)
+##
+## 规则放在这里而不是两个调用方各写一遍: 商店和事件是两份手写的 fan-out,
+## 迟早有一份忘记跟着改。
+static func grant_star_tier_reward_to(player_ids: Array) -> bool:
+	var any := false
+	var redirected := false
+	for pid_v in player_ids:
+		var pid := int(pid_v)
+		if is_branched(pid):
+			# 共享字段, 一次奖励只转化一次
+			if redirected:
+				continue
+			redirected = true
+		if grant_star_tier_reward(pid):
+			any = true
+	return any
+
+
+static func grant_star_tier_reward(player_id: int = 1) -> bool:
 	var branch = tank_branch if player_id == 1 else p2_branch
 	if branch == "default":
+		var before: int = player_tier if player_id == 1 else p2_tier
 		if player_id == 1:
 			player_tier = mini(player_tier + 1, 3)
+			return player_tier != before
 		else:
 			p2_tier = mini(p2_tier + 1, 3)
-	else:
-		atk_bonus += 1
-		shop_atk_bonus_purchases += 1
+			return p2_tier != before
+	return try_grant_flat_atk()
 
 ## structure_id (String, e.g. "turret") -> owned count. Builder Controller
 ## structures used to be a flat "spend battle gold at placement time" cost;

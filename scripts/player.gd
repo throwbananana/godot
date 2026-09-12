@@ -343,12 +343,34 @@ func apply_powerup(type: PowerUp.Type) -> void:
 				var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
 				powerup_collected.emit("[%s] STAR UPGRADE: %s!" % [p_name, rank_name])
 			else:
+				# 重定向那一侧现在**也有上限** (GameState.SHOP_ATK_BONUS_CAP)。
+				#
+				# 这里原来是 `rpg_mgr.atk_bonus += 1`, 无条件、无上限 —— 而经典
+				# 线那一侧 (上面) 一直夹在 tier 3。重定向本来是"tier 封顶之后
+				# 的补偿", 补偿却比被补偿的东西还没有上限, 说不通; 实测一局约
+				# 25 颗 ⭐, 于是已分支玩家整场打完伤害 31 而经典线是 6。
+				#
+				# 判定和计数都交给 GameState.try_grant_flat_atk() —— 商店
+				# plasma_mod / 商店 star_tier / 事件奖励走的是同一个入口, 四条
+				# 路共用一个预算, 谁都别想各抄一份比较 (见该函数上面的注释)。
+				#
+				# 顺序要紧: 先 sync_to_game_state() 把战斗中的实时数值推进
+				# GameState (否则下面 try_grant 加完之后, 这边再同步会用陈旧的
+				# atk_bonus 把它盖掉), 授予之后再把结果拉回实时管理器。
+				var granted := false
 				if main and main.rpg_mgr:
-					main.rpg_mgr.atk_bonus += 1
 					main.rpg_mgr.sync_to_game_state()
-					main.rpg_mgr.stats_changed.emit()
+					granted = GameState.try_grant_flat_atk()
+					if granted:
+						main.rpg_mgr.atk_bonus = GameState.atk_bonus
+						main.rpg_mgr.stats_changed.emit()
 				VFXAnimator.spawn_shockwave(get_parent(), global_position)
-				powerup_collected.emit("[%s] STAR UPGRADE: +1 永久攻击力!" % p_name)
+				if granted:
+					powerup_collected.emit("[%s] STAR UPGRADE: +1 永久攻击力!" % p_name)
+				else:
+					# 到顶了就只剩这一级 —— 和经典线 tier 满 3 之后的处境一样,
+					# 不播一条骗人的 "+1 攻击力"。
+					powerup_collected.emit("[%s] STAR: 改装已达上限，仅获得等级提升" % p_name)
 			# 战车等级只有这一个入口: 没有经验条, 击杀/拾取/事件/商店都不再暗中
 			# 攒经验, 吃到几颗星就升几级 (RPGManager.add_level, 1 颗 = 1 级)。
 			# 这一份是队伍共享的 (rpg_mgr.level 本来就不分玩家), 谁捡到都一样。

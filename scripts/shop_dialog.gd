@@ -417,8 +417,11 @@ static func _reward_targets() -> Array:
 ## 和分支后的 star_tier——而且都曾经没有购买次数上限, 等于花钱绕开了特意收紧
 ## 的那条曲线。GameState.SHOP_ATK_BONUS_CAP 是两者共用的一个闸门, 和
 ## autoloader 那条"冷却到底就不卖"是同一个原则: 不卖已经不该再卖的东西。
+## 判定收归 GameState.can_grant_flat_atk() —— 这里原来自己写了一遍
+## `purchases >= CAP` 的比较。同一条上限现在有三个消费方 (商店、事件、战场 ⭐),
+## 各抄一份比较迟早会有一份忘记跟着改。
 static func _shop_atk_bonus_capped() -> bool:
-	return GameState.shop_atk_bonus_purchases >= GameState.SHOP_ATK_BONUS_CAP
+	return not GameState.can_grant_flat_atk()
 
 
 static func can_buy_item(item_id: String) -> bool:
@@ -499,12 +502,18 @@ static func apply_item_purchase(item_id: String) -> String:
 	match item_id:
 		"star_tier":
 			var was_default = (GameState.tank_branch == "default")
-			for pid in _reward_targets():
-				GameState.grant_star_tier_reward(pid)
+			# 记下有没有人真的拿到东西 —— 重定向那条路现在有上限了
+			# (GameState.SHOP_ATK_BONUS_CAP), 到顶之后还播"攻击力 +1"就是骗人,
+			# 而这正是 can_buy_item() 那道闸要防的情况的下游。
+			# 整批交给 GameState —— tier 那一半 fan-out, 落到共享 atk_bonus 的
+			# 重定向那一半只转化一次 (见 grant_star_tier_reward_to 的注释)。
+			var any_effect := GameState.grant_star_tier_reward_to(_reward_targets())
 			if was_default:
 				return "战车成功升级至阶级 %d !" % (GameState.player_tier + 1)
-			else:
+			elif any_effect:
 				return "已选定专属流派，武器模块转化为永久攻击力 +1！"
+			else:
+				return "本局武器模块改装已达上限，无法再转化攻击力！"
 		"heavy_armor":
 			GameState.max_hp_lvl += 1
 			return "装甲升级！最大生命值 +1"
@@ -523,8 +532,10 @@ static func apply_item_purchase(item_id: String) -> String:
 			GameState.builder_lvl += 1
 			return "基地防御掩体强度大幅提升！"
 		"plasma_mod":
-			GameState.atk_bonus += 1
-			GameState.shop_atk_bonus_purchases += 1
+			# 走统一的授予入口, 不再手动 += 两个字段。can_buy_item() 已经在
+			# 成交路径上拦过一次, 这里是第二道 —— 同 grant_perk_stack 的处理。
+			if not GameState.try_grant_flat_atk():
+				return "主炮口径已达本局改装上限！"
 			return "主炮口径扩容，攻击力 +1！"
 		"landmine_crate":
 			# 以前这里发 +50 XP; 升级已经不吃经验条了 (只能吃 STAR, 见

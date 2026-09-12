@@ -147,9 +147,12 @@ func _grant_life(amount: int) -> void:
 	GameState.player_lives += amount
 
 func _grant_tier_up() -> void:
-	GameState.grant_star_tier_reward(1)
-	if GameState.player_count == 2:
-		GameState.grant_star_tier_reward(2)
+	# 双人时不能对两个 pid 各调一次 grant_star_tier_reward(): tier 是每人一份,
+	# 但已分支玩家拿到的重定向落在**队伍共享**的 atk_bonus 上, 各调一次等于
+	# 一次事件给了 +2 并烧掉 2 份 SHOP_ATK_BONUS_CAP 预算。规则在 GameState
+	# 那一处, 商店走的是同一个入口。
+	var targets: Array = [1, 2] if GameState.player_count == 2 else [1]
+	GameState.grant_star_tier_reward_to(targets)
 
 ## grant_star_tier_reward() 对已经跑满 3 级的 "default" 分支玩家是纯粹的
 ## mini(tier+1, 3) 空操作(见 game_state.gd)。商店的"Star Weapon Module"选项

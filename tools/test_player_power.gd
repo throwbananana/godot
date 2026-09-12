@@ -65,6 +65,7 @@ func _run() -> void:
 	_check_no_selling_zero()
 	_check_branch_opening_parity()
 	_check_branch_tier1_parity()
+	_check_star_driven_atk_gap()
 	_check_six_branch_hp_speed_parity()
 	_check_counter_baseline_and_payoff()
 	_check_trench_aoe_output()
@@ -361,7 +362,9 @@ func _check_no_selling_zero() -> void:
 		fail("新档时 autoloader 就买不了了 —— 闸门写反了, 这是把有效的强化也挡掉")
 
 	# (b) 撞到地板之后必须挡掉。用 rapid_loader x3 制造这个状态:
-	#     实测叠满之后 10 级就到底, 而一幕会涨到 24 级左右。
+	#     实测叠满之后 10 级就到底 —— 而 24 级是**整场 12 幕战役**走完的量
+	#     (不是一幕, 见 rpg_manager.gd::ATK_LEVELS_PER_POINT 头上的订正),
+	#     所以 10 级大约是战役过半, 后面半场再抽到它就是废卡。
 	GameState.reset_campaign(1)
 	GameState.tank_branch = "default"
 	GameState.fire_rate_lvl = 14
@@ -458,6 +461,103 @@ func _check_branch_tier1_parity() -> void:
 			+ "分支一选定 tier 就立刻是 1, 这才是真实会发生的开局强度")
 
 
+# ---------------------------------------------------------------- 5.5 ⭐ 驱动的攻击力
+
+## 吃了 n 颗 ⭐ 之后的 RPGManager。
+##
+## ⭐ 是**双效**道具 (player.gd::apply_powerup 的 STAR 分支):
+##   1. 两种情况都 +1 级 (RPGManager.add_level —— 全游戏唯一的升级入口,
+##      没有经验条, 击杀/事件/商店都不再攒经验)
+##   2. 还有第二重, 两条分支路线各有各的上限:
+##        default  -> upgrade_tier + 1, 封顶 3
+##        已分支   -> atk_bonus + 1, 封顶 GameState.SHOP_ATK_BONUS_CAP
+##
+## 第二条**原来是没有上限的** —— 那才是这一节存在的原因: 实测整场战役约 25 颗
+## 星而升级曲线同期只给 5 点攻击力, 于是"补偿"路径的产出是被限速的主线的 5 倍,
+## 打完一局经典线伤害 6、已分支 31。上限补上之后两边都收敛, 这一节继续把倍差
+## 打印出来盯着它。
+##
+## 上面的 _mgr_at() 只走第 1 条。也就是说 _check_branch_opening_parity /
+## _check_branch_tier1_parity / _check_six_branch_hp_speed_parity 这三条量的
+## 都是一个**从不捡星星的玩家**。
+func _mgr_after_stars(n: int, branch: String, tier: int) -> RPGManager:
+	var m := RPGManager.new()
+	m.reset()
+	for _i in range(n):
+		m.add_level(1)
+	m.tank_branch = branch
+	m.branch_tier = tier
+	if branch != "default":
+		# 上限取自 GameState 那个常量, 不在这里抄一个数字 —— 调了上限,
+		# 这一节的数字要跟着动。
+		m.atk_bonus += mini(n, GameState.SHOP_ATK_BONUS_CAP)
+	return m
+
+
+## 取样点写成"⭐ 颗数"而不是"第几幕", 是因为这条要摆的是**结构**
+## (重定向无上限, 而它补偿的 tier 封顶 3), 不是某个掉落率下的具体数字 ——
+## 以后调 ⭐ 产出, 这条的结论仍然成立。
+##
+## 量级参考 (scratchpad/probe_star_supply.gd, 用真实 FloorMap + 真实
+## encounter_size 实测): 每幕 1.4 -> 2.5 颗, 整场 12 幕约 25 颗。所以
+## 5 / 10 / 25 大致对应第 3 / 6 / 12 幕。
+const STAR_SAMPLE_COUNTS := [5, 10, 25]
+
+## **这条只报告, 不拦截** —— 和 _check_counter_baseline_and_payoff() 同一个
+## 处理方式。倍差多大算"不平衡"是设计判断: ⭐ 对已分支玩家的 +1 atk 当初是
+## 作为**补偿**加的 (tier 对已分支玩家是死的, 见 GameState.grant_star_tier_reward),
+## 而 tools/test_star_tier_reward.gd 明确把"无上限"写成了预期行为。要给它定
+## 上限, 等于推翻那条既有的设计意图, 不该由一条测试单方面裁决。
+##
+## 本文件其它平价检查用的分寸线是 x2.0 —— 下面这个数会远远顶穿它, 这正是
+## 需要人来看一眼的原因。注意 default 那一侧的 DPS 是**低估**的: tier2 的
+## 三发平行弹和 tier3 的破钢/冲击波都不在"伤害/冷却"这把尺子里, 所以真实
+## 差距比打印出来的倍数小一些 —— 但小不到一个数量级。
+func _check_star_driven_atk_gap() -> void:
+	print("\n--- ⭐ 驱动的攻击力: 经典线 vs 已分支 (只报告, 不拦截) ---")
+
+	# 自检: 这条检查必须真的把 ⭐ 建模进去了。
+	# 有人把 _mgr_after_stars 化简回 _mgr_at 的话, 下面整段会变成
+	# "两边都一样, 倍差 1.0x" 的空转绿 —— 这正是本文件开头那类问题的形状。
+	var probe_star := _mgr_after_stars(10, "speed", 1)
+	var probe_flat := _mgr_at(11, "speed", 1) # 10 颗星 = 从 1 级升到 11 级
+	if probe_star.get_atk_damage(1) <= probe_flat.get_atk_damage(1):
+		fail("⭐ 模型没生效: _mgr_after_stars(10,'speed') 的伤害 %d 不高于只走升级曲线的 %d —— "
+			% [probe_star.get_atk_damage(1), probe_flat.get_atk_damage(1)]
+			+ "这条检查已经退化成空转, 下面的倍差数字没有意义")
+		return
+
+	for n in STAR_SAMPLE_COUNTS:
+		var md := _mgr_after_stars(n, "default", 0)
+		var d_dps := float(md.get_atk_damage(1)) / _cd_for(md, "default")
+		var d_tier: int = mini(n, 3) # default 的第二重效果, 封顶 3
+		var detail := PackedStringArray()
+		var worst_ratio := 1.0
+		for branch in ["speed", "heavy", "train"]:
+			var mb := _mgr_after_stars(n, branch, 1)
+			var b_dps := float(mb.get_atk_damage(1)) / _cd_for(mb, branch)
+			var ratio := b_dps / maxf(0.001, d_dps)
+			detail.append("%s x%.1f" % [branch, ratio])
+			worst_ratio = maxf(worst_ratio, ratio)
+		ok("%2d 颗⭐ (约第 %d 幕): default 伤害 %d/tier%d, DPS %.2f —— %s (最大 x%.1f)"
+			% [n, _act_for_stars(n), md.get_atk_damage(1), d_tier, d_dps,
+				" / ".join(detail), worst_ratio])
+
+	print("      ^ 经典线的 ⭐ 收益在第 3 颗封顶 (tier 3), 已分支在第 %d 颗封顶"
+		% GameState.SHOP_ATK_BONUS_CAP)
+	print("        (GameState.SHOP_ATK_BONUS_CAP, 与商店/事件共用同一个预算)。")
+	print("        两边都收敛之前, 这里的倍差曾经一路涨到 x7.6 —— 见本节注释。")
+
+
+## 只用于打印时给个幕数参照, 见 STAR_SAMPLE_COUNTS 上面的实测值。
+func _act_for_stars(n: int) -> int:
+	if n <= 5:
+		return 3
+	elif n <= 10:
+		return 6
+	return 12
+
+
 # ---------------------------------------------------------------- 6. 六分支 HP/机动 (含 counter/trench)
 
 ## HP 和移速不像伤害那样有"必须追上敌人血量"的硬约束, 但沿用同一条 x2.0 的
@@ -479,7 +579,7 @@ func _check_six_branch_hp_speed_parity() -> void:
 		var hp_detail := PackedStringArray()
 		var spd_detail := PackedStringArray()
 		for branch in ALL_BRANCHES:
-			var m := _mgr_at(12, branch, tier) # 12 级: 一幕中段, HP 相关加成已经过半解锁
+			var m := _mgr_at(12, branch, tier) # 12 级: 战役中段 (约第 6 幕), HP 相关加成已经过半解锁
 			var hp := float(m.get_player_max_hp(1))
 			var spd := m.get_speed_multiplier(1)
 			hp_detail.append("%s %.0f" % [branch, hp])
