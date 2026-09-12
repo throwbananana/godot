@@ -28,7 +28,17 @@ const GameState = preload("res://scripts/game_state.gd")
 const BalanceLog = preload("res://scripts/balance_log.gd")
 const PlayerTank = preload("res://scripts/player.gd")
 
-const BRANCHES := ["default", "speed", "heavy", "train"]
+## **counter / trench 原来不在这张表里**, 而射速地板恰恰是它们俩最特殊的地方:
+## 两条分支各有自己的地板常量 (FIRE_CD_FLOOR_COUNTER 1.10 / FIRE_CD_FLOOR_TRENCH
+## 0.40), 而 counter 的射速倍率又额外 x0.50 —— 两重"变慢"叠在一起, 实测它在
+## **4 级**就把冷却压到地板上, 此后整场战役的射速强化 (升级每 2 级自动给的那一点、
+## 商店 autoloader、perk rapid_loader) 全部归零, 对比 default 的 22 级 /
+## heavy 的 28 级。这条探针漏掉它们, 正是这件事一直没人看见的原因 ——
+## 和 test_player_power.gd 里那两条 tier0/tier1 平价检查漏掉 counter/trench
+## 是同一个形状的疏漏 (见那边第 5 节的长注释)。
+##
+## 加进来是安全的: 这个文件是**探针**不是闸门, 只打印不断言。
+const BRANCHES := ["default", "speed", "heavy", "train", "counter", "trench"]
 
 ## 基准冷却与地板值从 RPGManager 取, 不在这里再抄一份 —— 抄的必然发散。
 ## (那三个常量在 rpg_manager.gd 里, 注释说明了它们必须和 player.gd::_fire()
@@ -36,6 +46,28 @@ const BRANCHES := ["default", "speed", "heavy", "train"]
 const BASE_FIRE_COOLDOWN := RPGManager.BASE_FIRE_COOLDOWN
 const CD_FLOOR_SPEED := RPGManager.FIRE_CD_FLOOR_SPEED
 const CD_FLOOR_OTHER := RPGManager.FIRE_CD_FLOOR_OTHER
+const CD_FLOOR_COUNTER := RPGManager.FIRE_CD_FLOOR_COUNTER
+const CD_FLOOR_TRENCH := RPGManager.FIRE_CD_FLOOR_TRENCH
+
+
+## 分支 -> 冷却地板。**只此一处**。
+##
+## 这里原来是散在三个地方的一个二分支三元表达式 (speed 用 CD_FLOOR_SPEED,
+## 其余一律 CD_FLOOR_OTHER), 写在 counter/trench 出现之前。值确实是从 RPGManager
+## 取的 —— 上面那段注释说的就是这件事 —— 但**映射**照样是手抄的, 而且抄漏了那
+## 两条分支: 一旦把 counter 放进 BRANCHES, 它就会拿 0.32 去量一条地板是 1.10 的
+## 分支, 于是报出"整场都不会撞地板", 而真实答案是 4 级。
+##
+## 口径必须和 player.gd::_fire() 里那条 if/elif 一致 (test_player_power.gd 的
+## _cd_for() 已经是四分支的完整版, 这个文件是落后的那一份)。
+func _cd_floor_for(branch: String) -> float:
+	if branch == "speed":
+		return CD_FLOOR_SPEED
+	elif branch == "trench":
+		return CD_FLOOR_TRENCH
+	elif branch == "counter":
+		return CD_FLOOR_COUNTER
+	return CD_FLOOR_OTHER
 
 ## 一场常规战大概多久。用来把"每秒回复"折算成"这一场能回多少血"。
 ## 12 辆车 / 同屏上限 4 / 出车间隔 2.5 秒 -> 30 秒起步, 取 45 秒。
@@ -79,7 +111,7 @@ func _mgr_at(lvl: int, branch: String, tier: int) -> RPGManager:
 
 func _cd_for(m: RPGManager, branch: String) -> float:
 	var cd := BASE_FIRE_COOLDOWN * m.get_fire_cooldown_mult(1)
-	return maxf(CD_FLOOR_SPEED if branch == "speed" else CD_FLOOR_OTHER, cd)
+	return maxf(_cd_floor_for(branch), cd)
 
 
 func _dps_by_branch() -> void:
@@ -125,13 +157,13 @@ func _cooldown_floor() -> void:
 		for lvl in range(1, 41):
 			var m := _mgr_at(lvl, branch, tier)
 			var raw := BASE_FIRE_COOLDOWN * m.get_fire_cooldown_mult(1)
-			var floor_v := CD_FLOOR_SPEED if branch == "speed" else CD_FLOOR_OTHER
+			var floor_v := _cd_floor_for(branch)
 			if raw <= floor_v:
 				hit = lvl
 				break
 		rows.append({"metric": "cd_floor", "branch": branch, "level": hit})
 		if hit < 0:
-			print("  %-8s 一幕之内不会撞地板" % branch)
+			print("  %-8s 整场战役 (约 24 级) 都不会撞地板" % branch)
 		else:
 			print("  %-8s 从 %d 级起, 后续所有射速强化 (升级自动给的 / 商店 autoloader / perk rapid_loader) 完全无效"
 				% [branch, hit])
@@ -146,7 +178,7 @@ func _perk_inertness() -> void:
 	print("--- 叠了 rapid_loader 之后, 冷却从哪一级起撞地板 ---")
 	for stacks in range(0, 4):
 		for branch in ["default", "speed"]:
-			var floor_v := CD_FLOOR_SPEED if branch == "speed" else CD_FLOOR_OTHER
+			var floor_v := _cd_floor_for(branch)
 			var hit := -1
 			for lvl in range(1, 41):
 				var m := _mgr_at(lvl, branch, 2)
@@ -161,7 +193,7 @@ func _perk_inertness() -> void:
 			})
 			print("  %-8s rapid_loader x%d -> %s"
 				% [branch, stacks,
-				   "一幕内不撞地板" if hit < 0 else "%d 级起射速强化全部无效" % hit])
+				   "整场都不撞地板" if hit < 0 else "%d 级起射速强化全部无效" % hit])
 	print("")
 
 

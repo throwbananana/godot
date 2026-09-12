@@ -28,6 +28,57 @@ extends SceneTree
 const GameState = preload("res://scripts/game_state.gd")
 const EnemyTank = preload("res://scripts/enemy.gd")
 const RPGManager = preload("res://scripts/rpg_manager.gd")
+
+# ---------------------------------------------------------------- ⭐ 产出模型
+#
+# 这里原来是一个 XP 池 (xp_to_next = 100 * 1.22^(level-1), 由 avg_xp * enc
+# 喂进去)。**经验条这个机制已经不存在了** —— RPGManager.add_level() 是全游戏
+# 唯一的升级入口, 真实玩法里只有 player.gd::apply_powerup() 的 ⭐ STAR 分支会
+# 调它, 而 enemy.gd::get_xp() 没有任何调用方。那个模型是改造前留下的化石。
+#
+# 它为什么一直没被发现: 化石模型算出来的曲线和真实的星驱动曲线在**终点**几乎
+# 重合 (两者 floor 14 都落在伤害 6), 只是中段偏高约 1 点伤害。但它有一个真正
+# 要命的性质 —— 它**看不见 ⭐ 的掉落率**, 所以谁去调 bonus 坦克密度或掉落表,
+# 这条曲线都不会动一下, 而那正是这个文件存在的意义。
+#
+# ⭐ 的三个来源 (全部在 main.gd):
+#   1. bonus 坦克: is_bonus = (enemies_spawned in BONUS_SPAWN_IDX), 必掉 1 个
+#      道具, 从 10 种里均匀抽 (_on_enemy_destroyed)
+#   2. 清房掉落: r < 0.35 -> 9 种里抽 (boss 房 return 掉, 不走这条)
+#   3. 宝藏房: 必掉, 8 种里抽 (每层一间)
+const BONUS_SPAWN_IDX := [3, 10, 17]
+const P_STAR_BONUS := 1.0 / 10.0
+const P_STAR_CLEAR := 0.35 / 9.0
+const P_STAR_TREASURE := 1.0 / 8.0
+
+## 12 幕跨 current_floor 0..14, 所以推进一格 floor 约等于 0.8 幕。
+const ACTS_PER_FLOOR_STEP := 12.0 / 15.0
+## 每幕的战斗房数。实测真实 FloorMap.generate_floor(): act 1 是 4.0,
+## act 4 起封顶在 6.1 (target_room_count 到 ROOM_MAX 后房型构成稳定)。
+const COMBAT_ROOMS_PER_ACT := 6.0
+
+
+## 推进一格 floor 期间玩家能吃到几颗 ⭐ (期望值)。
+##
+## bonus 坦克的数量走真实的 MainGame.encounter_size() —— 这是刻意的: 遭遇
+## 规模会随难度圈和难度档变化, [3,10,17] 里有几个索引能真的刷出来也就跟着变,
+## 而这正是"调了产出这条曲线要动"所依赖的那一环。
+func _stars_per_floor_step() -> float:
+	var enc_battle: int = MainGame.encounter_size("battle", 0, GameState.difficulty)
+	var enc_boss: int = MainGame.encounter_size("boss", 0, GameState.difficulty)
+	var per_battle_room := float(_bonus_count(enc_battle)) * P_STAR_BONUS + P_STAR_CLEAR
+	var per_act := COMBAT_ROOMS_PER_ACT * per_battle_room \
+		+ float(_bonus_count(enc_boss)) * P_STAR_BONUS \
+		+ P_STAR_TREASURE
+	return ACTS_PER_FLOOR_STEP * per_act
+
+
+func _bonus_count(total_enemies: int) -> int:
+	var n := 0
+	for idx in BONUS_SPAWN_IDX:
+		if idx < total_enemies:
+			n += 1
+	return n
 const BalanceLog = preload("res://scripts/balance_log.gd")
 const MainGame = preload("res://scripts/main.gd")
 
@@ -61,12 +112,15 @@ func _run() -> void:
 	print(">>> ENEMY BALANCE CURVE TEST <<<")
 	print("==================================================")
 
-	# 沿着一幕推进, 边走边按真实奖励升级, 这样"玩家伤害"是挣出来的而不是拍的
+	# 沿 current_floor 0..14 推进 —— 这是**整场 12 幕战役**的难度轴, 不是一幕。
+	# (current_floor = (act-1) * ACT_DIFFICULTY_STRIDE + rooms_cleared/2, 夹在
+	# max_floors-1 = 14; 见 CLAUDE.md "Campaign structure"。)
+	# 边走边按真实产出升级, 这样"玩家伤害"是挣出来的而不是拍的。
 	var mgr = RPGManager.new()
 	mgr.reset()
 	var level := 1
-	var xp_pool := 0
-	var xp_to_next := 100
+	var star_carry := 0.0
+	var stars_total := 0.0
 	var stats := {}
 
 	for f in range(15):
@@ -78,11 +132,14 @@ func _run() -> void:
 			bt = "elite"; enc = 18
 
 		var r = await _sample(bt, f)
-		xp_pool += int(float(r["avg_xp"]) * float(enc))
-		while xp_pool >= xp_to_next:
-			xp_pool -= xp_to_next
+
+		# 升级 = 吃 ⭐, 没有别的入口 (见 _stars_per_floor_step 头上的注释)。
+		var gained := _stars_per_floor_step()
+		stars_total += gained
+		star_carry += gained
+		while star_carry >= 1.0:
+			star_carry -= 1.0
 			level += 1
-			xp_to_next = int(100.0 * pow(1.22, level - 1))
 			mgr.level = level
 			mgr._auto_level_bonus()
 
@@ -103,6 +160,9 @@ func _run() -> void:
 			% [f, bt, float(r["avg_hp"]), dmg, float(r["stk"]), float(r["one_shot"]),
 			   float(r["cheap_pct"]), float(r["train_pct"])])
 
+	print("")
+	print("  [模型] 整场战役 ⭐ 总量 %.1f 颗 -> 终局 %d 级, 攻击力 %d"
+		% [stars_total, mgr.level, mgr.get_atk_damage(1)])
 	print("")
 	_check_one_shot(stats)
 	_check_ramp(stats)
@@ -135,19 +195,19 @@ func _check_one_shot(stats: Dictionary) -> void:
 			+ "检查 rpg_manager._auto_level_bonus() 的攻击力节奏与 enemy.gd 的 floor_mult 是否作用于 max_health")
 
 
-## 2. 幕内强度必须爬升, 不能后十层持平。
+## 2. 沿难度轴 (current_floor 0..14, 即整场 12 幕) 强度必须爬升, 不能后半程持平。
 func _check_ramp(stats: Dictionary) -> void:
 	var early := float(stats[4]["avg_hp"])
 	var late := float(stats[12]["avg_hp"])
 	if late > early * 1.25:
-		ok("幕内强度确实在爬升: floor 4 均HP %.2f -> floor 12 %.2f (x%.2f)"
+		ok("难度轴上强度确实在爬升: floor 4 均HP %.2f -> floor 12 %.2f (x%.2f)"
 			% [early, late, late / early])
 	else:
-		fail("floor 4 (%.2f) 到 floor 12 (%.2f) 敌人几乎没变强 —— 后十层只有奖励在涨"
+		fail("floor 4 (%.2f) 到 floor 12 (%.2f) 敌人几乎没变强 —— 后半程只有奖励在涨"
 			% [early, late])
 
 
-## 2b. 幕的后半段, 一发秒杀不能成为常态。
+## 2b. 难度轴的后半段, 一发秒杀不能成为常态。
 ##
 ## _check_one_shot 只挡住了"某一层 100% 全秒"这个极端。但秒杀率长期停在
 ## 七成也一样要命: ARMOR(4) / BATTLESHIP(6) / TRAIN_BOSS(14) 这套血量分层是
