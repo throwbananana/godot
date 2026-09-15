@@ -1,0 +1,226 @@
+extends SceneTree
+
+const GameState = preload("res://scripts/game_state.gd")
+const RPGManager = preload("res://scripts/rpg_manager.gd")
+
+func _init() -> void:
+	print("==================================================")
+	print(">>> RUNNING STATE & SAVE REGRESSION TEST SUITE <<<")
+	print("==================================================")
+	
+	var passed = 0
+	var total = 0
+	
+	total += 1
+	if test_max_hp_reward():
+		print("  [PASS] Test 1: Max HP reward single source of truth")
+		passed += 1
+	else:
+		print("  [FAIL] Test 1: Max HP reward failed!")
+
+	total += 1
+	if test_speed_reward():
+		print("  [PASS] Test 2: Speed reward single source of truth")
+		passed += 1
+	else:
+		print("  [FAIL] Test 2: Speed reward failed!")
+
+	total += 1
+	if test_star_level_up():
+		print("  [PASS] Test 3: Star-driven multi-level jump emits signal & syncs")
+		passed += 1
+	else:
+		print("  [FAIL] Test 3: Star-driven multi-level jump failed!")
+
+	total += 1
+	if test_save_load_roundtrip():
+		print("  [PASS] Test 4: Save / Load roundtrip & type preservation")
+		passed += 1
+	else:
+		print("  [FAIL] Test 4: Save / Load roundtrip failed!")
+
+	print("==================================================")
+	print(">>> RESULTS: %d / %d TESTS PASSED <<<" % [passed, total])
+	print("==================================================")
+	
+	if passed == total:
+		quit(0)
+	else:
+		quit(1)
+
+func test_max_hp_reward() -> bool:
+	GameState.reset_campaign(1)
+	if GameState.get_player_max_hp() != 1:
+		print("    Error: Initial max HP is not 1")
+		return false
+	
+	GameState.max_hp_lvl += 2
+	
+	var rpg = RPGManager.new()
+	rpg.sync_from_game_state()
+	if rpg.get_player_max_hp() != 3:
+		print("    Error: RPG max HP is %d, expected 3" % rpg.get_player_max_hp())
+		return false
+	if rpg.max_hp_lvl != 2:
+		return false
+	
+	rpg.sync_to_game_state()
+	if GameState.max_hp_lvl != 2:
+		return false
+	return true
+
+func test_speed_reward() -> bool:
+	GameState.reset_campaign(1)
+	if GameState.speed_lvl != 0:
+		return false
+	
+	GameState.speed_lvl += 1
+	
+	var rpg = RPGManager.new()
+	rpg.sync_from_game_state()
+	if rpg.speed_lvl != 1:
+		print("    Error: RPG speed_lvl is %d, expected 1" % rpg.speed_lvl)
+		return false
+	
+	rpg.sync_to_game_state()
+	if GameState.speed_lvl != 1:
+		print("    Error: GameState speed_lvl is %d, expected 1" % GameState.speed_lvl)
+		return false
+	return true
+
+## 升级没有经验条了 —— 唯一入口是 RPGManager.add_level(), 战场上吃到一颗
+## STAR 就调一次 (见 player.gd::apply_powerup())。amount > 1 模拟同一帧内
+## 连吃两颗星 (或调试菜单一次补发多级), 必须连续触发两次 leveled_up 且不报错,
+## 还要能正常同步回 GameState.player_level。
+func test_star_level_up() -> bool:
+	GameState.reset_campaign(1)
+
+	var rpg = RPGManager.new()
+	rpg.sync_from_game_state()
+	var emitted_levels: Array[int] = []
+	rpg.leveled_up.connect(func(lvl): emitted_levels.append(lvl))
+
+	rpg.add_level(2)
+
+	if rpg.level != 3:
+		print("    Error: RPG level is %d, expected 3" % rpg.level)
+		return false
+	if emitted_levels.size() != 2 or emitted_levels != [2, 3]:
+		print("    Error: Emitted levels are %s, expected [2, 3]" % str(emitted_levels))
+		return false
+
+	rpg.sync_to_game_state()
+	if GameState.player_level != 3:
+		print("    Error: GameState.player_level is %d, expected 3" % GameState.player_level)
+		return false
+	return true
+
+func test_save_load_roundtrip() -> bool:
+	GameState.reset_campaign(2)
+	GameState.gold = 380
+	GameState.player_tier = 2
+	GameState.p2_tier = 1
+	GameState.player_lives = 4
+	GameState.max_hp_lvl = 3
+	GameState.speed_lvl = 2
+	GameState.current_floor = 3
+	# 楼层房间图的一些可观测状态: 当前在哪间房、清了几间、秘密房炸开了没。
+	var probe_room := str(GameState.floor_boss_room)
+	GameState.current_room = probe_room
+	GameState.rooms_cleared = 5
+	GameState.secret_room_found = true
+	GameState.floor_rooms[probe_room]["cleared"] = true
+	GameState.floor_rooms[probe_room]["visited"] = true
+	# "size" (大/超大房间标记) 是后加的字段, 靠 _load_floor_rooms() 里手抄的
+	# 白名单还原——漏抄的话这里会静默读回默认值 "normal", 而不是报错。
+	GameState.floor_rooms[probe_room]["size"] = "large"
+	# 商店货架同理, 而且这一格**真的漏抄过**: shop_stock 被 save_campaign()
+	# 原样写进文件 (floor_rooms 是整份 duplicate), 却在 _load_floor_rooms()
+	# 的白名单里没有位置, 于是读档静默丢货架。后果是 _ensure_shop_stock()
+	# 那段注释明令禁止的事: 在商店房存盘再读档 = 免费重洗一次货架, 换货机
+	# 和它的递增计费被架空。sold 也要一起验 —— 只验 id 的话"货架还在但
+	# 卖掉的又回来了"照样漏过去。
+	GameState.floor_rooms[probe_room]["shop_stock"] = [
+		{"id": "atk_up", "cost": 123, "sold": true},
+		{"id": "turret", "cost": 45, "sold": false},
+	]
+	# run_seed 决定这一局抽到哪批手搓地图 (MapTemplates._pick_from_pool)。
+	# 它必须跟着存档走: 存了不读回来的话, 同一个存档每次读进来都会换一批
+	# 地形 —— 已经打过的楼层也会跟着变脸。
+	var saved_seed := GameState.run_seed
+	if saved_seed == 0:
+		print("    Error: reset_campaign() 没有生成 run_seed")
+		return false
+
+	GameState.save_campaign()
+	if not GameState.has_saved_game():
+		print("    Error: Save file was not created")
+		return false
+	
+	GameState.reset_campaign(1)
+	
+	if not GameState.load_campaign():
+		print("    Error: Failed to load campaign")
+		return false
+	
+	if GameState.player_count != 2: return false
+	if GameState.gold != 380: return false
+	if GameState.player_tier != 2: return false
+	if GameState.p2_tier != 1: return false
+	if GameState.player_lives != 4: return false
+	if GameState.max_hp_lvl != 3: return false
+	if GameState.speed_lvl != 2: return false
+	if GameState.current_floor != 3: return false
+	if GameState.current_room != probe_room:
+		print("    Error: current_room 没存回来 (存 %s, 读 %s)" % [probe_room, GameState.current_room])
+		return false
+	if GameState.rooms_cleared != 5: return false
+	if not GameState.secret_room_found:
+		print("    Error: secret_room_found 没存回来 —— 读档后裂缝墙会重新长回去")
+		return false
+	if GameState.run_seed != saved_seed:
+		print("    Error: run_seed 没存回来 (存 %d, 读 %d) —— 地图会每次读档都变"
+			% [saved_seed, GameState.run_seed])
+		return false
+
+	# 嵌套结构的还原。floor_rooms 在 test_persistence_roundtrip.gd 里是被
+	# EXEMPT 掉的 (那份测试用 str() 比字段, 比不了字典套字典), 所以它的
+	# 类型还原必须在这里盯。JSON 把所有数字读成 float —— col/row/depth
+	# 要是留着 float, FloorMap 里所有整数比较和键拼接都会在 float 上做。
+	if GameState.floor_rooms.is_empty():
+		print("    Error: floor_rooms 读回来是空的")
+		return false
+	for k in GameState.floor_rooms.keys():
+		var room = GameState.floor_rooms[k]
+		if typeof(room["col"]) != TYPE_INT or typeof(room["row"]) != TYPE_INT:
+			print("    Error: 房间 %s 的 col/row 不是 int" % k)
+			return false
+		if typeof(room["depth"]) != TYPE_INT:
+			print("    Error: 房间 %s 的 depth 不是 int" % k)
+			return false
+		if not (room["doors"] is Array) or room["doors"].size() != 4:
+			print("    Error: 房间 %s 的 doors 不是长度 4 的数组" % k)
+			return false
+		if typeof(room.get("size", null)) != TYPE_STRING:
+			print("    Error: 房间 %s 的 size 不是 String" % k)
+			return false
+	if not bool(GameState.floor_rooms[probe_room]["cleared"]):
+		print("    Error: 房间的 cleared 标记没穿过存档")
+		return false
+	var stock = GameState.floor_rooms[probe_room].get("shop_stock", null)
+	if not (stock is Array) or stock.size() != 2:
+		print("    Error: 商店货架没穿过存档 (读回来是 %s) —— _load_floor_rooms() 的白名单漏抄了 shop_stock" % str(stock))
+		return false
+	if str(stock[0].get("id", "")) != "atk_up" or int(stock[0].get("cost", -1)) != 123 or not bool(stock[0].get("sold", false)):
+		print("    Error: 货架第 0 格还原错了 (应为 atk_up/123/已售, 实为 %s)" % str(stock[0]))
+		return false
+	if bool(stock[1].get("sold", true)):
+		print("    Error: 货架第 1 格的未售状态没还原 —— 卖掉的和没卖的分不清了")
+		return false
+	if str(GameState.floor_rooms[probe_room]["size"]) != "large":
+		print("    Error: 房间的 size 标记没穿过存档 (应为 large, 实为 %s) —— 大概率是 _load_floor_rooms() 的白名单漏抄了这个字段"
+			% str(GameState.floor_rooms[probe_room]["size"]))
+		return false
+	
+	GameState.delete_saved_game()
+	return true

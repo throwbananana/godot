@@ -3,8 +3,10 @@ extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 
-enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE }
+enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE, MISSILE, TIMED_BOMB, PISTON, IFF_FLAG }
 
 @export var power_up_type: Type = Type.STAR
 
@@ -12,6 +14,7 @@ enum Type { STAR, BOMB, CLOCK, HELMET, SHOVEL, LIFE }
 
 var lifetime: float = 20.0
 var flash_timer: float = 0.0
+var idle_tween: Tween = null
 
 func _ready() -> void:
 	add_to_group("powerups")
@@ -33,6 +36,10 @@ func _update_texture() -> void:
 		Type.HELMET: tex_name = "helmet"
 		Type.SHOVEL: tex_name = "shovel"
 		Type.LIFE: tex_name = "life"
+		Type.MISSILE: tex_name = "missile_strike"
+		Type.TIMED_BOMB: tex_name = "powerup_timed_bomb"
+		Type.PISTON: tex_name = "piston_rounds"
+		Type.IFF_FLAG: tex_name = "iff_flag"
 	
 	var path = "res://assets/sprites/powerups/%s.png" % tex_name
 	var tex = TextureHelper.get_tex(path)
@@ -40,6 +47,20 @@ func _update_texture() -> void:
 		tex = TextureHelper.get_tex("res://assets/sprites/powerups/%s.svg" % tex_name)
 	if tex:
 		sprite.texture = tex
+
+	# 待机循环 (tools/build_pickup_idle_anims.py)。
+	#
+	# 十种道具以前都是钉在地上的单帧静图, 只有下面 _process 里那一句幅度极小的
+	# 上下浮动 —— 而这是玩家整场都在追的东西。目前渲了 ☆/炸弹/时钟/头盔/铲子/心
+	# 六种; 其余四种取不到帧, attach() 返回 null, 保持原来的静态图。
+	#
+	# **必须先杀掉上一条**: setup() 可以在运行中改道具类型 (掉落时才定), 不杀的话
+	# 旧类型的 Tween 会继续往同一个 sprite 上写它自己那套帧, 两条循环互相覆盖,
+	# 表现为道具在两种外观之间乱跳。
+	if is_instance_valid(idle_tween):
+		idle_tween.kill()
+	idle_tween = SpriteIdleAnim.attach(
+		self, sprite, path, func() -> bool: return is_inside_tree())
 
 func _process(delta: float) -> void:
 	lifetime -= delta
@@ -56,8 +77,16 @@ func _process(delta: float) -> void:
 		queue_free()
 
 func _on_body_entered(body: Node2D) -> void:
-	if body.is_in_group("player"):
-		if body.has_method("apply_powerup"):
-			body.apply_powerup(power_up_type)
-		SoundManager.play_hit_steel(get_tree())
-		queue_free()
+	if not body.is_in_group("player"):
+		return
+	# "player"组里不只有坦克: train 分支的跟随车厢也在里面 (它必须在, 否则
+	# 敌方火力不认它)。以前这里是 has_method 判一下就完事, 车厢没有
+	# apply_powerup, 于是道具被销毁、音效照播、效果为零 —— 车队越长, 被自己
+	# 尾巴白吃掉的道具越多, 而且完全无声。
+	# 现在沿 leader_node 解析回车头那辆坦克, 由它来吃。
+	var owner_tank := TrainFollowHelper.resolve_train_owner(body)
+	if owner_tank == null:
+		return   # 不是坦克也不是车队的一部分 -> 道具留在原地, 不被消耗
+	owner_tank.apply_powerup(power_up_type)
+	SoundManager.play_pickup(get_tree())
+	queue_free()

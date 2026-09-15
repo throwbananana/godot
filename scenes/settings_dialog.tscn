@@ -1,0 +1,97 @@
+[gd_scene load_steps=2 format=3 uid="uid://settings101dlg"]
+
+[ext_resource type="Script" path="res://scripts/settings_dialog.gd" id="1_set"]
+
+[node name="SettingsDialog" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_set")
+
+[node name="DimBackground" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.08, 0.06, 0.1, 0.88)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MainPanel" type="PanelContainer" parent="CenterContainer"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="CenterContainer/MainPanel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.98, 0.82, 0.35, 1)
+theme_override_font_sizes/font_size = 20
+text = "SETTINGS (设置)"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+
+[node name="ResolutionRow" type="HBoxContainer" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ResolutionLabel" type="Label" parent="CenterContainer/MainPanel/VBox/ResolutionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+text = "分辨率 Resolution"
+
+[node name="ResolutionOption" type="OptionButton" parent="CenterContainer/MainPanel/VBox/ResolutionRow"]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+
+[node name="FullscreenRow" type="HBoxContainer" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="FullscreenLabel" type="Label" parent="CenterContainer/MainPanel/VBox/FullscreenRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+text = "全屏 Fullscreen"
+
+[node name="FullscreenCheck" type="CheckBox" parent="CenterContainer/MainPanel/VBox/FullscreenRow"]
+layout_mode = 2
+
+[node name="HSeparator2" type="HSeparator" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+
+[node name="VolumeLabel" type="Label" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "音量 Volume: 100%"
+
+[node name="VolumeSlider" type="HSlider" parent="CenterContainer/MainPanel/VBox"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+max_value = 100.0
+step = 1.0
+value = 100.0
+
+[node name="HSeparator3" type="HSeparator" parent="CenterContainer/MainPanel/VBox"]
+layout_mode = 2
+
+[node name="CloseButton" type="Button" parent="CenterContainer/MainPanel/VBox"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "CLOSE (关闭)"

@@ -1,0 +1,273 @@
+class_name EncyclopediaDialog
+extends Control
+
+const TextureHelper = preload("res://scripts/texture_helper.gd")
+const SoundManager = preload("res://scripts/sound_manager.gd")
+const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
+const EncyclopediaData = preload("res://scripts/encyclopedia_data.gd")
+const GameState = preload("res://scripts/game_state.gd")
+
+# 只有"遇到才算数"的条目才会被雾化: 敌人/道具/建筑/地形。UPGRADES (tree_/perk_)
+# 和 TANKS 里玩家自己的分支 (player_*) 是玩家自身的成长路线, 不是"遇到"的
+# 外部目标, 天然不在这四个前缀里, 所以永远保持全开 —— 不需要额外的白名单。
+const LOCKABLE_PREFIXES := ["enemy_", "item_", "bld_", "tile_"]
+
+const LOCKED_NAME := "？？？ 未知目标"
+const LOCKED_TAG := "尚未解锁"
+const LOCKED_ICON := "res://assets/sprites/ui/ui_icon_lock_key.png"
+const LOCKED_DESC := "在战斗中遇到该目标后，图鉴条目将自动解锁并显示完整数据。"
+const LOCKED_TACTICS := "继续游戏，遇到实体目标即可解锁。"
+
+signal closed
+
+@onready var main_panel: PanelContainer = $CenterContainer/MainPanel
+@onready var left_list_panel: PanelContainer = $CenterContainer/MainPanel/VBox/ContentSplit/LeftListPanel
+@onready var right_detail_panel: PanelContainer = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel
+@onready var stats_section: PanelContainer = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/StatsSection
+@onready var icon_container: PanelContainer = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader/IconContainer
+
+@onready var btn_close_top: Button = $CenterContainer/MainPanel/VBox/Header/CloseTopBtn
+@onready var btn_close_bottom: Button = $CenterContainer/MainPanel/VBox/BottomBar/BottomCloseBtn
+
+@onready var btn_tab_upgrades: Button = $CenterContainer/MainPanel/VBox/TabsBar/BtnTabUpgrades
+@onready var btn_tab_tanks: Button = $CenterContainer/MainPanel/VBox/TabsBar/BtnTabTanks
+@onready var btn_tab_items: Button = $CenterContainer/MainPanel/VBox/TabsBar/BtnTabItems
+@onready var btn_tab_buildings: Button = $CenterContainer/MainPanel/VBox/TabsBar/BtnTabBuildings
+@onready var btn_tab_terrain: Button = $CenterContainer/MainPanel/VBox/TabsBar/BtnTabTerrain
+
+@onready var item_list_vbox: VBoxContainer = $CenterContainer/MainPanel/VBox/ContentSplit/LeftListPanel/Margin/ScrollList/ItemListVBox
+@onready var icon_texture: TextureRect = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader/IconContainer/IconTexture
+@onready var detail_name: Label = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader/TitleBox/DetailName
+@onready var detail_tag: Label = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DetailHeader/TitleBox/DetailTag
+@onready var stats_vbox: VBoxContainer = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/StatsSection/Margin/StatsVBox
+@onready var desc_text: Label = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/DescText
+@onready var tactics_text: Label = $CenterContainer/MainPanel/VBox/ContentSplit/RightDetailPanel/Margin/ScrollDetail/DetailVBox/TacticsText
+
+var current_category: String = "UPGRADES"
+var active_item_buttons: Array[Button] = []
+
+func _ready() -> void:
+	UIThemeHelper.apply_clay_panel(main_panel, Color(0.16, 0.13, 0.18, 0.98), 16)
+	UIThemeHelper.apply_clay_subpanel(left_list_panel)
+	UIThemeHelper.apply_clay_subpanel(right_detail_panel)
+	UIThemeHelper.apply_clay_subpanel(stats_section)
+	UIThemeHelper.apply_clay_subpanel(icon_container)
+
+	# 为 5 个分类 Tab 绑定实体黏土图标
+	btn_tab_upgrades.icon = TextureHelper.get_tex("res://assets/sprites/powerups/star.png")
+	btn_tab_upgrades.expand_icon = true
+	btn_tab_tanks.icon = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_tank_p1.png")
+	btn_tab_tanks.expand_icon = true
+	btn_tab_items.icon = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_gift.png")
+	btn_tab_items.expand_icon = true
+	btn_tab_buildings.icon = TextureHelper.get_tex("res://assets/sprites/buildings/turret_gun.png")
+	btn_tab_buildings.expand_icon = true
+	btn_tab_terrain.icon = TextureHelper.get_tex("res://assets/sprites/ui/ui_icon_terrain.png")
+	btn_tab_terrain.expand_icon = true
+
+	UIThemeHelper.apply_clay_button(btn_close_top, false)
+	UIThemeHelper.apply_icon_button(btn_close_top, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(18, 18), false)
+	UIThemeHelper.apply_clay_button(btn_close_bottom, true)
+	UIThemeHelper.apply_icon_button(btn_close_bottom, "res://assets/sprites/ui/ui_icon_mode_exit.png", Vector2(24, 24))
+
+	btn_close_top.pressed.connect(close_dialog)
+	btn_close_bottom.pressed.connect(close_dialog)
+
+	btn_tab_upgrades.pressed.connect(func(): switch_category("UPGRADES"))
+	btn_tab_tanks.pressed.connect(func(): switch_category("TANKS"))
+	btn_tab_items.pressed.connect(func(): switch_category("ITEMS"))
+	btn_tab_buildings.pressed.connect(func(): switch_category("BUILDINGS"))
+	btn_tab_terrain.pressed.connect(func(): switch_category("TERRAIN"))
+
+	# call_deferred: switch_category() 会播一声点击音, 而 SoundManager 是靠
+	# add_child() 挂一个一次性 AudioStreamPlayer 到场景根上的。在 _ready() 里
+	# 直接调等于"父节点还在建子节点的时候又往里加子节点", Godot 会拒绝并打
+	# "Parent node is busy setting up children, add_child() failed", 紧跟着
+	# 再来一条 "Playback can only happen when a node is inside the scene tree"
+	# —— 每次进标题屏都会刷这两条错误, 而且那一声音效根本没播出来。
+	# 延到本帧调用栈退完再切分类, 此时父节点已经完成建树。
+	switch_category.call_deferred("UPGRADES")
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
+		close_dialog()
+
+func switch_category(cat: String) -> void:
+	current_category = cat
+	SoundManager.play_shot(get_tree())
+
+	# Update tab button highlights
+	_update_tab_buttons_appearance()
+
+	# Rebuild item list for this category
+	_rebuild_item_list()
+
+	# Focus first item in new category
+	if active_item_buttons.size() > 0:
+		active_item_buttons[0].grab_focus()
+
+func _update_tab_buttons_appearance() -> void:
+	var tabs = [
+		{"btn": btn_tab_upgrades, "id": "UPGRADES"},
+		{"btn": btn_tab_tanks, "id": "TANKS"},
+		{"btn": btn_tab_items, "id": "ITEMS"},
+		{"btn": btn_tab_buildings, "id": "BUILDINGS"},
+		{"btn": btn_tab_terrain, "id": "TERRAIN"}
+	]
+
+	for tab in tabs:
+		var btn: Button = tab["btn"]
+		var is_selected: bool = (tab["id"] == current_category)
+		UIThemeHelper.apply_clay_tab_button(btn, is_selected)
+
+func _is_locked(entry: Dictionary) -> bool:
+	var id := str(entry.get("id", ""))
+	var gated := false
+	for prefix in LOCKABLE_PREFIXES:
+		if id.begins_with(prefix):
+			gated = true
+			break
+	if not gated:
+		return false
+	return not GameState.discovered_encyclopedia.has(id)
+
+func _rebuild_item_list() -> void:
+	# Clear old list buttons
+	for child in item_list_vbox.get_children():
+		child.queue_free()
+	active_item_buttons.clear()
+
+	var entries = EncyclopediaData.get_entries_by_category(current_category)
+	if entries.is_empty():
+		return
+
+	for i in range(entries.size()):
+		var entry = entries[i]
+		var locked = _is_locked(entry)
+		var item_btn = Button.new()
+		item_btn.custom_minimum_size = Vector2(0, 46)
+		item_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		item_btn.text = "  " + (LOCKED_NAME if locked else entry.get("name", "Unknown"))
+		item_btn.clip_text = true
+
+		# Add small icon if available (locked entries always show the lock icon)
+		var icon_path = LOCKED_ICON if locked else str(entry.get("icon", ""))
+		if not icon_path.is_empty():
+			var tex = TextureHelper.get_tex(icon_path)
+			if tex:
+				item_btn.icon = tex
+				item_btn.expand_icon = true
+				item_btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+
+		UIThemeHelper.apply_clay_list_item(item_btn, i == 0)
+		item_btn.pressed.connect(func(): _select_entry(entry, item_btn))
+		item_btn.focus_entered.connect(func(): _select_entry(entry, item_btn))
+
+		item_list_vbox.add_child(item_btn)
+		active_item_buttons.append(item_btn)
+
+	# Auto display first entry
+	if entries.size() > 0 and active_item_buttons.size() > 0:
+		_select_entry(entries[0], active_item_buttons[0])
+
+func _select_entry(entry: Dictionary, selected_btn: Button = null) -> void:
+	# Highlight selected button
+	for btn in active_item_buttons:
+		var is_sel = (btn == selected_btn)
+		UIThemeHelper.apply_clay_list_item(btn, is_sel)
+
+	if _is_locked(entry):
+		_show_locked_detail()
+		return
+
+	# Update Icon
+	var icon_path = str(entry.get("icon", ""))
+	if not icon_path.is_empty():
+		var tex = TextureHelper.get_tex(icon_path)
+		icon_texture.texture = tex
+	else:
+		icon_texture.texture = null
+
+	# Update Name & Tag
+	detail_name.text = str(entry.get("name", "UNKNOWN"))
+	detail_tag.text = "【 " + str(entry.get("tag", "GENERAL")) + " 】"
+
+	# Update Stats Grid
+	for child in stats_vbox.get_children():
+		child.queue_free()
+
+	var stats: Dictionary = entry.get("stats", {})
+	for k in stats.keys():
+		var row = HBoxContainer.new()
+		# add_theme_constant_override() 而不是 row.theme_override_constants.separation。
+		# 后者是 .tscn 里的伪属性路径 (theme_override_constants/separation), 代码里
+		# 访问不到 —— 每建一行属性都会抛
+		# "Invalid access to property or key 'theme_override_constants'",
+		# 而且间距压根没生效。图鉴每显示一条词条就刷一串这种错误。
+		row.add_theme_constant_override("separation", 8)
+
+		var lbl_k = Label.new()
+		lbl_k.text = "• " + str(k) + ":"
+		lbl_k.custom_minimum_size = Vector2(90, 0)
+		lbl_k.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45, 1.0))
+		lbl_k.add_theme_font_size_override("font_size", 12)
+		row.add_child(lbl_k)
+
+		var lbl_v = Label.new()
+		lbl_v.text = str(stats[k])
+		lbl_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl_v.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl_v.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0, 1.0))
+		lbl_v.add_theme_font_size_override("font_size", 12)
+		row.add_child(lbl_v)
+
+		stats_vbox.add_child(row)
+
+	# Update Descriptions & Tactical Tips
+	desc_text.text = str(entry.get("desc", "No archive records available."))
+	tactics_text.text = str(entry.get("tactics", "No tactical notes recorded."))
+
+func _show_locked_detail() -> void:
+	icon_texture.texture = TextureHelper.get_tex(LOCKED_ICON)
+	detail_name.text = LOCKED_NAME
+	detail_tag.text = "【 " + LOCKED_TAG + " 】"
+
+	for child in stats_vbox.get_children():
+		child.queue_free()
+
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+
+	var lbl_k = Label.new()
+	lbl_k.text = "• 遭遇状态:"
+	lbl_k.custom_minimum_size = Vector2(90, 0)
+	lbl_k.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45, 1.0))
+	lbl_k.add_theme_font_size_override("font_size", 12)
+	row.add_child(lbl_k)
+
+	var lbl_v = Label.new()
+	lbl_v.text = "尚未遇到"
+	lbl_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl_v.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl_v.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0, 1.0))
+	lbl_v.add_theme_font_size_override("font_size", 12)
+	row.add_child(lbl_v)
+
+	stats_vbox.add_child(row)
+
+	desc_text.text = LOCKED_DESC
+	tactics_text.text = LOCKED_TACTICS
+
+func open_dialog() -> void:
+	visible = true
+	SoundManager.play_shot(get_tree())
+	switch_category("TANKS")
+	UIThemeHelper.focus_first(self)
+
+func close_dialog() -> void:
+	SoundManager.play_shot(get_tree())
+	visible = false
+	emit_signal("closed")

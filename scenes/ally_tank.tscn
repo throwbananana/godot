@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ally_tank.gd" id="1_ally"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ally"]
+size = Vector2(38, 38)
+
+[node name="AllyTank" type="CharacterBody2D" groups=["player", "ally_tank"]]
+motion_mode = 1
+script = ExtResource("1_ally")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.196, 0.196)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_ally")

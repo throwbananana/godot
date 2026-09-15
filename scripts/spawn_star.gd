@@ -12,7 +12,7 @@ var duration: float = 0.85
 var timer: float = 0.0
 
 func _ready() -> void:
-	for i in range(4):
+	for i in range(6):
 		var tex = TextureHelper.get_tex("res://assets/sprites/effects/spawn_star_%d.png" % i)
 		if tex:
 			frames.append(tex)

@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://bld102bsw01"]
+
+[ext_resource type="Script" path="res://scripts/buildings/bomb_switch.gd" id="1_bsw"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_bsw"]
+size = Vector2(40, 40)
+
+[node name="BombSwitch" type="StaticBody2D" groups=["building", "buildings", "bomb_switch"]]
+script = ExtResource("1_bsw")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_bsw")

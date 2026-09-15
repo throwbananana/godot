@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://bldfirewall001hazard"]
+
+[ext_resource type="Script" path="res://scripts/buildings/firewall_hazard.gd" id="1_firewall"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_firewall"]
+size = Vector2(38, 38)
+
+[node name="FirewallHazard" type="Area2D" groups=["firewall", "hazard"]]
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("1_firewall")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_firewall")

@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3 uid="uid://b8d6f5w3m7q2k"]
+
+[ext_resource type="Script" path="res://scripts/train_carriage.gd" id="1_carriage"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wagon"]
+size = Vector2(34, 34)
+
+[node name="TrainCarriage" type="CharacterBody2D"]
+motion_mode = 1
+script = ExtResource("1_carriage")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_wagon")

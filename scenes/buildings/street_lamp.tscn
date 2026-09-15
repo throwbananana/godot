@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3 uid="uid://streetlamp001"]
+
+[ext_resource type="Script" path="res://scripts/buildings/street_lamp.gd" id="1_lamp"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_lamp"]
+radius = 16.0
+
+[node name="StreetLamp" type="StaticBody2D" groups=["building", "destructible", "street_lamp"]]
+z_index = 10
+script = ExtResource("1_lamp")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_lamp")

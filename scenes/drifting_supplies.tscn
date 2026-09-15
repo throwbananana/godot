@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://item201drift01"]
+
+[ext_resource type="Script" path="res://scripts/drifting_supplies.gd" id="1_drift"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_drift"]
+size = Vector2(40, 40)
+
+[node name="DriftingSupplies" type="Area2D" groups=["drifting_supplies"]]
+script = ExtResource("1_drift")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_drift")

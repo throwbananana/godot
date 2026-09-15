@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3 uid="uid://darknessdev001"]
+
+[ext_resource type="Script" path="res://scripts/buildings/darkness_device.gd" id="1_darkness"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_darkness"]
+size = Vector2(36, 36)
+
+[node name="DarknessDevice" type="StaticBody2D" groups=["building", "buildings", "darkness_device", "destructible"]]
+z_index = 10
+script = ExtResource("1_darkness")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_darkness")

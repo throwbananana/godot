@@ -1,15 +1,7 @@
-[gd_scene load_steps=3 format=3 uid="uid://bld101wall01"]
+[gd_scene load_steps=2 format=3 uid="uid://bld101wall01"]
 
 [ext_resource type="Script" path="res://scripts/buildings/fortified_wall.gd" id="1_wal"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_wal"]
-size = Vector2(46, 46)
-
-[node name="FortifiedWall" type="StaticBody2D" groups=["building", "steel", "wall"]]
+[node name="FortifiedWall" type="Node2D"]
 script = ExtResource("1_wal")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
-scale = Vector2(0.1875, 0.1875)
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
-shape = SubResource("RectangleShape2D_wal")

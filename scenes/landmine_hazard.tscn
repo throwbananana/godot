@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://xmuv64d8nii"]
+
+[ext_resource type="Script" path="res://scripts/landmine_hazard.gd" id="1_mne"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_mne"]
+radius = 13.0
+
+[node name="LandmineHazard" type="Area2D" groups=["hazards", "landmines"]]
+script = ExtResource("1_mne")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.13, 0.13)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_mne")

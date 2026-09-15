@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://bldpipe001conduit"]
+
+[ext_resource type="Script" path="res://scripts/buildings/pipe_conduit.gd" id="1_pipe"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_pipe"]
+size = Vector2(42, 42)
+
+[node name="PipeConduit" type="StaticBody2D" groups=["building", "buildings", "destructible", "pipe_conduit"]]
+script = ExtResource("1_pipe")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_pipe")

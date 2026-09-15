@@ -1,0 +1,29 @@
+[gd_scene load_steps=5 format=3 uid="uid://bld402shdtwr01"]
+
+[ext_resource type="Script" path="res://scripts/buildings/enemy_shield_tower.gd" id="1_shdtower"]
+[ext_resource type="Script" path="res://scripts/buildings/shield_field_visual.gd" id="2_fieldvis"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(44, 44)
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_area"]
+radius = 180.0
+
+[node name="EnemyShieldTower" type="StaticBody2D" groups=["building", "buildings", "enemy_building", "enemy_shield_tower"]]
+z_index = 10
+script = ExtResource("1_shdtower")
+
+[node name="FieldVisual" type="Node2D" parent="."]
+z_index = -2
+script = ExtResource("2_fieldvis")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(0.1875, 0.1875)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="ShieldArea" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ShieldArea"]
+shape = SubResource("CircleShape2D_area")

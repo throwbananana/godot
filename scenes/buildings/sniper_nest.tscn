@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://bldsniper001nest"]
+
+[ext_resource type="Script" path="res://scripts/buildings/sniper_nest.gd" id="1_sniper"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_sniper"]
+size = Vector2(44, 44)
+
+[node name="SniperNest" type="StaticBody2D" groups=["building", "buildings", "destructible", "sniper_nest"]]
+script = ExtResource("1_sniper")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_sniper")

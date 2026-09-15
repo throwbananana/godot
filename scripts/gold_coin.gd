@@ -3,34 +3,50 @@ extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const TrainFollowHelper = preload("res://scripts/train_follow_helper.gd")
+const SpriteIdleAnim = preload("res://scripts/sprite_idle_anim.gd")
 
 @export var value: int = 25
 @onready var sprite: Sprite2D = $Sprite2D
 
 var lifetime: float = 25.0
-var magnet_range: float = 120.0
+## 没有 magnetic_salvage 战术芯片时基础磁吸为 0 —— 该芯片的描述就是
+## "战车自动牵引回收战备物资", 磁吸应该是它给的能力, 不是每个人白送的。
+## 之前这里是 120.0 恒定生效, 芯片只是在这基础上加成, 于是"开局就有磁铁"
+## 和"买了资源芯片"在手感上几乎没区别, 拾取判定形同虚设。
+var magnet_range: float = 0.0
 var move_speed: float = 0.0
 
 func _ready() -> void:
 	add_to_group("collectibles")
 	var tex = TextureHelper.get_tex("res://assets/sprites/powerups/gold_coin.png")
 	if tex: sprite.texture = tex
+	# 倾角自转的待机循环 (tools/build_pickup_idle_anims.py::build_gold_coin_idle)。
+	# 取代下面 _physics_process 里原来那句 `sprite.rotation += delta * 4.0` ——
+	# 一枚正对镜头的圆盘绕画面法线转, 轮廓完全不变, 读起来是"转的盘子"而不是
+	# 一枚有厚度的硬币。厚度和边圈只能在 3D 里渲出来。
+	SpriteIdleAnim.attach(self, sprite,
+		"res://assets/sprites/powerups/gold_coin.png",
+		func() -> bool: return is_inside_tree())
 	body_entered.connect(_on_body_entered)
 
 func _physics_process(delta: float) -> void:
 	lifetime -= delta
-	sprite.rotation += delta * 4.0
 	
-	# 磁吸追踪玩家
+	# 磁吸追踪玩家 (结合 magnetic_salvage 战术芯片)
+	var main = get_tree().current_scene
 	var players = get_tree().get_nodes_in_group("player")
-	if players.size() > 0:
-		var p = players[0]
-		if is_instance_valid(p):
+	for p in players:
+		if is_instance_valid(p) and p is Node2D:
+			var effective_range = magnet_range
+			if main and main.rpg_mgr and ("player_id" in p):
+				effective_range += main.rpg_mgr.get_perk_value("magnetic_salvage", 130.0, p.player_id)
 			var dist = global_position.distance_to(p.global_position)
-			if dist < magnet_range:
-				move_speed = move_toward(move_speed, 420.0, 1200.0 * delta)
+			if dist < effective_range:
+				move_speed = move_toward(move_speed, 540.0, 1600.0 * delta)
 				var dir = (p.global_position - global_position).normalized()
 				position += dir * move_speed * delta
+				break
 
 	if lifetime < 4.0:
 		modulate.a = 0.4 if int(lifetime * 8.0) % 2 == 0 else 1.0
@@ -40,7 +56,13 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node2D) -> void:
 	if body.is_in_group("player"):
 		var main = get_tree().current_scene
+		var final_val = value
+		# 车厢也在"player"组里但没有 player_id, 直接读会让 magnetic_salvage
+		# 的加成在"金币被尾巴捡到"时静默消失。先解析回车头那辆坦克。
+		var picker := TrainFollowHelper.resolve_train_owner(body)
+		if main and main.rpg_mgr and picker and ("player_id" in picker):
+			final_val = int(float(value) * (1.0 + main.rpg_mgr.get_perk_value("magnetic_salvage", 0.35, picker.player_id)))
 		if main and main.has_method("add_gold"):
-			main.add_gold(value)
-		SoundManager.play_hit_steel(get_tree())
+			main.add_gold(final_val)
+		SoundManager.play_pickup(get_tree())
 		queue_free()

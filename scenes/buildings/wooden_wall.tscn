@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3 uid="uid://bld104woodw01"]
+
+[ext_resource type="Script" path="res://scripts/buildings/wooden_wall.gd" id="1_woodw"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_wood"]
+size = Vector2(44, 44)
+
+[node name="WoodenWall" type="StaticBody2D" groups=["building", "buildings", "destructible", "wood", "wooden_wall"]]
+script = ExtResource("1_woodw")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_wood")

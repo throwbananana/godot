@@ -2,6 +2,7 @@ class_name RepairStation
 extends Area2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
+const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 
 @onready var sprite: Sprite2D = $Sprite2D
 var heal_timer: float = 0.0
@@ -9,6 +10,7 @@ var heal_interval: float = 1.4
 var heal_radius: float = 160.0
 
 func _ready() -> void:
+	GameState.discover_encyclopedia_entry("bld_repair_station")
 	add_to_group("buildings")
 	var tex = TextureHelper.get_tex("res://assets/sprites/buildings/repair_station.png")
 	if tex: sprite.texture = tex
@@ -27,6 +29,9 @@ func _pulse_heal() -> void:
 		if is_instance_valid(p) and global_position.distance_to(p.global_position) < heal_radius:
 			if p.has_method("heal"):
 				p.heal(1)
+				# 上飘的绿色光点, 不是扬尘 —— 增益一律走上行运动, 伤害一律
+				# 走向外放射, 这样玩家不用读数字就知道刚才是好事还是坏事。
+				VFXAnimator.spawn_heal_pulse(get_parent(), p.global_position)
 
 	var blds = get_tree().get_nodes_in_group("buildings")
 	for b in blds:

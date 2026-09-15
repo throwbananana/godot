@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://missilestrike01"]
+
+[ext_resource type="Script" path="res://scripts/missile_strike.gd" id="1_msl"]
+
+[node name="MissileStrike" type="Node2D"]
+z_index = 50
+script = ExtResource("1_msl")
