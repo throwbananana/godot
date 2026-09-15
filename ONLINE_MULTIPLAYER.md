@@ -90,6 +90,6 @@ Direct internet hosting requires UDP `24567` to reach the host (normally router 
 - replicated VFX/audio are best-effort visuals; authoritative gameplay state is prioritized
 - this branch still needs a two-instance Godot 4.5 runtime test before merging to `main`
 
-The RPC annotation/channel layout was checked against the Godot 4.5 high-level multiplayer API documentation, but this environment does not contain a Godot 4.5 executable, so engine parse/runtime validation must still be performed on a development machine.
+The RPC layout was checked against the Godot 4.5 multiplayer API documentation. This environment does not contain the project's Godot 4.5 executable, so engine parse/runtime validation still needs to be performed on the development machine.
 
 A later Steam release can replace the connection/lobby transport with Steam Networking while keeping the same host-authoritative gameplay model.
