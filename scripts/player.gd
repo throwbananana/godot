@@ -111,6 +111,10 @@ func apply_powerup(type: PowerUp.Type) -> void:
 		PowerUp.Type.STAR:
 			upgrade_tier = mini(upgrade_tier + 1, 3)
 			_update_tier_appearance()
+			# Campaign tier must be saved immediately so a death/respawn in the same
+			# battle does not discard a STAR upgrade.
+			if main and main.has_method("persist_player_tier"):
+				main.persist_player_tier(player_id, upgrade_tier)
 			VFXAnimator.spawn_shockwave(get_parent(), global_position)
 			var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
 			powerup_collected.emit("[%s] STAR UPGRADE: %s!" % [p_name, rank_name])
