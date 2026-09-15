@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://main101scene00"]
+[gd_scene load_steps=4 format=3 uid="uid://main101scene00"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/builder_controller.gd" id="2_bld"]
+[ext_resource type="Script" path="res://scripts/network_battle_sync.gd" id="3_net"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -26,6 +27,9 @@ script = ExtResource("2_bld")
 [node name="PreviewSprite" type="Sprite2D" parent="GameArea/BuilderController"]
 scale = Vector2(0.1875, 0.1875)
 z_index = 20
+
+[node name="NetworkBattleSync" type="Node" parent="."]
+script = ExtResource("3_net")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
@@ -158,4 +162,3 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 20
 text = "PLAY AGAIN"
-
