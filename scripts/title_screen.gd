@@ -7,7 +7,7 @@ const GameState = preload("res://scripts/game_state.gd")
 const UIThemeHelper = preload("res://scripts/ui_theme_helper.gd")
 
 const DEFAULT_PORT := 24567
-const MAX_CLIENTS := 2
+const MAX_REMOTE_CLIENTS := 1
 
 @onready var banner_sprite: Sprite2D = $CenterContainer/VBox/BannerContainer/BannerSprite
 @onready var btn_1p_campaign: Button = $CenterContainer/VBox/ButtonsBox/Campaign1PButton
@@ -80,7 +80,7 @@ func _bind_multiplayer_signals() -> void:
 func _host_online_game() -> void:
 	_disconnect_existing_peer()
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(DEFAULT_PORT, MAX_CLIENTS)
+	var err := peer.create_server(DEFAULT_PORT, MAX_REMOTE_CLIENTS)
 	if err != OK:
 		_set_network_status("HOST FAILED: %s" % error_string(err), true)
 		return
