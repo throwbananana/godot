@@ -25,6 +25,12 @@ var is_invulnerable: bool = false
 var invulnerable_timer: float = 0.0
 var regen_accumulator: float = 0.0
 
+# In online play the host still runs the complete PlayerTank simulation, but P2's
+# input is supplied by NetworkBattleSync instead of reading the host's keyboard.
+var network_input_enabled: bool = false
+var network_input_vector: Vector2 = Vector2.ZERO
+var network_fire_pressed: bool = false
+
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shield_sprite: Sprite2D = $ShieldSprite
 
@@ -63,6 +69,16 @@ func _ready() -> void:
 	_apply_rpg_stats()
 	_update_tier_appearance()
 	set_invulnerable(3.5)
+
+func set_network_input_mode(enabled: bool) -> void:
+	network_input_enabled = enabled
+	if not enabled:
+		network_input_vector = Vector2.ZERO
+		network_fire_pressed = false
+
+func set_network_input(input_vec: Vector2, firing: bool) -> void:
+	network_input_vector = input_vec
+	network_fire_pressed = firing
 
 func _apply_rpg_stats() -> void:
 	var main = get_tree().current_scene
@@ -157,14 +173,20 @@ func _physics_process(delta: float) -> void:
 	var act_fire = "p1_fire" if player_id == 1 else "p2_fire"
 
 	var input_vec = Vector2.ZERO
-	if Input.is_action_pressed(act_up):
-		input_vec = Vector2.UP
-	elif Input.is_action_pressed(act_down):
-		input_vec = Vector2.DOWN
-	elif Input.is_action_pressed(act_left):
-		input_vec = Vector2.LEFT
-	elif Input.is_action_pressed(act_right):
-		input_vec = Vector2.RIGHT
+	var fire_pressed := false
+	if network_input_enabled:
+		input_vec = network_input_vector
+		fire_pressed = network_fire_pressed
+	else:
+		if Input.is_action_pressed(act_up):
+			input_vec = Vector2.UP
+		elif Input.is_action_pressed(act_down):
+			input_vec = Vector2.DOWN
+		elif Input.is_action_pressed(act_left):
+			input_vec = Vector2.LEFT
+		elif Input.is_action_pressed(act_right):
+			input_vec = Vector2.RIGHT
+		fire_pressed = Input.is_action_pressed(act_fire)
 	
 	var speed_mult = (1.0 + float(upgrade_tier) * 0.12)
 	if main and main.rpg_mgr:
@@ -185,7 +207,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	if Input.is_action_pressed(act_fire) and can_fire:
+	if fire_pressed and can_fire:
 		_shoot()
 
 func _shoot() -> void:
