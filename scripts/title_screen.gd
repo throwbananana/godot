@@ -87,6 +87,7 @@ func _host_online_game() -> void:
 
 	multiplayer.multiplayer_peer = peer
 	GameState.configure_online(true, "0.0.0.0", DEFAULT_PORT)
+	GameState.network_peer_id = multiplayer.get_unique_id()
 	GameState.mode = GameState.GameMode.ARCADE
 	GameState.player_count = 2
 	_set_network_status("HOSTING UDP %d — WAITING FOR PLAYER..." % DEFAULT_PORT)
@@ -117,6 +118,7 @@ func _on_peer_connected(peer_id: int) -> void:
 	if peer_id <= 1:
 		return
 	GameState.network_peer_id = multiplayer.get_unique_id()
+	GameState.network_remote_peer_id = peer_id
 	_set_network_status("PLAYER CONNECTED — STARTING ONLINE ARCADE")
 	_start_online_arcade()
 
@@ -124,6 +126,7 @@ func _on_connected_to_server() -> void:
 	if not GameState.online_mode or GameState.is_network_host:
 		return
 	GameState.network_peer_id = multiplayer.get_unique_id()
+	GameState.network_remote_peer_id = 1
 	_set_network_status("CONNECTED — STARTING ONLINE ARCADE")
 	_start_online_arcade()
 
