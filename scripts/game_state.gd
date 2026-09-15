@@ -13,6 +13,7 @@ static var is_network_host: bool = false
 static var network_address: String = "127.0.0.1"
 static var network_port: int = 24567
 static var network_peer_id: int = 0
+static var network_remote_peer_id: int = 0
 
 static var current_floor: int = 0
 static var max_floors: int = 6
@@ -47,6 +48,8 @@ static func configure_online(host: bool, address: String = "127.0.0.1", port: in
 	is_network_host = host
 	network_address = address.strip_edges() if not address.strip_edges().is_empty() else "127.0.0.1"
 	network_port = port
+	network_peer_id = 0
+	network_remote_peer_id = 0
 	player_count = 2
 
 static func reset_network() -> void:
@@ -55,6 +58,7 @@ static func reset_network() -> void:
 	network_address = "127.0.0.1"
 	network_port = 24567
 	network_peer_id = 0
+	network_remote_peer_id = 0
 
 static func reset_campaign(p_count: int = 1) -> void:
 	mode = GameMode.CAMPAIGN
