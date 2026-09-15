@@ -35,23 +35,23 @@ func setup(type: String) -> void:
 		icon_path = "res://assets/sprites/map/node_rest.png"
 		title_label.text = "FORWARD REPAIR OUTPOST (CAMPFIRE)"
 		desc_label.text = "You reached a secured allied outpost. Choose your preparation for the battles ahead:"
-		btn_1.text = "1. 🛠 Full Vehicle Overhaul (Restore HP & Fortify)"
+		btn_1.text = "1. 🛠 Reinforce Armor (+1 Max HP)"
 		btn_2.text = "2. ⚡ Gunsmith Calibration (+1 ATK Bonus)"
 		btn_3.text = "3. ❤️ Request Reinforcements (+1 Extra Life)"
 	elif type == "shop":
 		icon_path = "res://assets/sprites/map/node_shop.png"
 		title_label.text = "BLACK MARKET ARMS DEALER"
 		desc_label.text = "The arms dealer offers military-grade prototypes. (Current Gold: %dG)" % GameState.gold
-		btn_1.text = "1. ⭐ Star Weapon Module (100G) -> Tier Up!"
+		btn_1.text = "1. 💥 High-Velocity Ammo (100G) -> +1 ATK"
 		btn_2.text = "2. 🛡 Forcefield Generator (60G) -> +2 Max HP"
 		btn_3.text = "3. ❤️ Heavy Supply Crate (80G) -> +2 Extra Lives"
 	elif type == "event":
 		icon_path = "res://assets/sprites/map/node_event.png"
 		title_label.text = "UNEXPLORED COMBAT ZONE (MYSTERY)"
 		desc_label.text = "You discovered an abandoned enemy munitions depot in the ruins:"
-		btn_1.text = "1. 📦 Scavenge Munitions (+80 Gold, +50 XP)"
+		btn_1.text = "1. 📦 Scavenge Munitions (+80 Gold)"
 		btn_2.text = "2. 🧪 Overclock Engine Reactor (+15% SPD Permanent)"
-		btn_3.text = "3. ⏩ Scout Ahead and Secure Perimeter (+1 Star Upgrade)"
+		btn_3.text = "3. 🛡 Salvage Armor Plating (+1 Max HP)"
 
 	var tex = TextureHelper.get_tex(icon_path)
 	if tex and icon_sprite:
@@ -69,7 +69,7 @@ func _on_choice(idx: int) -> void:
 			1:
 				if GameState.gold >= 100:
 					GameState.gold -= 100
-					GameState.player_tier = mini(GameState.player_tier + 1, 3)
+					GameState.atk_bonus += 1
 			2:
 				if GameState.gold >= 60:
 					GameState.gold -= 60
@@ -82,11 +82,10 @@ func _on_choice(idx: int) -> void:
 		match idx:
 			1:
 				GameState.gold += 80
-				GameState.player_xp += 50
 			2:
 				GameState.speed_bonus += 1
 			3:
-				GameState.player_tier = mini(GameState.player_tier + 1, 3)
+				GameState.max_hp += 1
 
 	visible = false
 	closed.emit()
