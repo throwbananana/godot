@@ -88,7 +88,6 @@ func _ready() -> void:
 	tex_trees = TextureHelper.get_tex("res://assets/sprites/tiles/tile_trees.png")
 	tex_ice = TextureHelper.get_tex("res://assets/sprites/tiles/tile_ice.png")
 
-	rpg_mgr.leveled_up.connect(_on_rpg_level_up)
 	rpg_mgr.stats_changed.connect(_update_rpg_hud)
 	rpg_mgr.gold_changed.connect(func(_g): _update_rpg_hud())
 
@@ -96,6 +95,9 @@ func _ready() -> void:
 	btn_restart.pressed.connect(_on_button_action)
 	btn_restart.visible = false
 	hud_status.visible = false
+	# XP leveling was removed. Keep the legacy node hidden so existing scenes and
+	# network HUD replication remain compatible without displaying a dead meter.
+	hud_rpg_xp.visible = false
 
 	var origin_x = 48.0
 	var origin_y = 48.0
@@ -126,7 +128,6 @@ func start_game() -> void:
 		p1_lives = GameState.player_lives
 		p2_lives = GameState.p2_lives
 		rpg_mgr.gold = GameState.gold
-		rpg_mgr.level = GameState.player_level
 		rpg_mgr.atk_bonus = GameState.atk_bonus
 		rpg_mgr.max_hp_lvl = max(0, GameState.max_hp - 1)
 		rpg_mgr.speed_lvl = GameState.speed_bonus
@@ -169,16 +170,15 @@ func add_gold(amount: int) -> void:
 		GameState.gold = rpg_mgr.gold
 	show_toast("+%d GOLD!" % amount)
 
-func _on_rpg_level_up(new_lvl: int) -> void:
-	SoundManager.play_hit_steel(get_tree())
-	show_toast("★ LEVEL UP! LV.%d REACHED! ★" % new_lvl)
+func persist_player_tier(pid: int, tier: int) -> void:
+	# STAR pickups are the only in-battle tank tier upgrade. Persist immediately
+	# in campaign so a death/respawn cannot roll the player back to an older tier.
 	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		GameState.player_level = new_lvl
-		GameState.atk_bonus = rpg_mgr.atk_bonus
-	if p1_instance and is_instance_valid(p1_instance):
-		p1_instance._apply_rpg_stats()
-	if p2_instance and is_instance_valid(p2_instance):
-		p2_instance._apply_rpg_stats()
+		if pid == 1:
+			GameState.player_tier = clampi(tier, 0, 3)
+		elif pid == 2:
+			GameState.p2_tier = clampi(tier, 0, 3)
+	_update_rpg_hud()
 
 func _clear_all() -> void:
 	water_sprites.clear()
@@ -554,10 +554,18 @@ func _update_hud() -> void:
 
 func _update_rpg_hud() -> void:
 	if hud_rpg_level:
-		hud_rpg_level.text = "LEVEL: LV.%d" % rpg_mgr.level
+		var p1_tier := GameState.player_tier if GameState.mode == GameState.GameMode.CAMPAIGN else 0
+		var p2_tier := GameState.p2_tier if GameState.mode == GameState.GameMode.CAMPAIGN else 0
+		if p1_instance and is_instance_valid(p1_instance):
+			p1_tier = p1_instance.upgrade_tier
+		if p2_instance and is_instance_valid(p2_instance):
+			p2_tier = p2_instance.upgrade_tier
+		if GameState.player_count == 1:
+			hud_rpg_level.text = "TANK TIER: %d / 3" % p1_tier
+		else:
+			hud_rpg_level.text = "TIER: P1 %d | P2 %d" % [p1_tier, p2_tier]
 	if hud_rpg_xp:
-		hud_rpg_xp.max_value = rpg_mgr.xp_to_next
-		hud_rpg_xp.value = rpg_mgr.current_xp
+		hud_rpg_xp.visible = false
 	if hud_gold:
 		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
 	if hud_p1_hp and p1_instance and is_instance_valid(p1_instance):
@@ -570,5 +578,3 @@ func _update_rpg_hud() -> void:
 			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
 			rpg_mgr.get_regen_rate()
 		]
-
-
