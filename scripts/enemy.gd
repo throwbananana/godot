@@ -198,7 +198,7 @@ func _die() -> void:
 	if coin_scene and randf() < 0.4:
 		var coin = coin_scene.instantiate()
 		coin.global_position = global_position
-		coin.gold_amount = gold_value
+		coin.value = gold_value
 		get_parent().call_deferred("add_child", coin)
 
 	enemy_destroyed.emit(score_value, is_bonus, global_position)

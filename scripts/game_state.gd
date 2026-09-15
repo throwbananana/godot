@@ -4,7 +4,17 @@ extends RefCounted
 enum GameMode { CAMPAIGN, ARCADE }
 
 static var mode: GameMode = GameMode.CAMPAIGN
-static var player_count: int = 1 # 1=单人, 2=本地双人
+static var player_count: int = 1 # 1=单人, 2=双人（本地或联机）
+
+# Network session state. The ENet peer itself lives on SceneTree.multiplayer so it
+# survives scene changes; these flags describe how the current run should behave.
+static var online_mode: bool = false
+static var is_network_host: bool = false
+static var network_address: String = "127.0.0.1"
+static var network_port: int = 24567
+static var network_peer_id: int = 0
+static var network_remote_peer_id: int = 0
+
 static var current_floor: int = 0
 static var max_floors: int = 6
 static var current_node_id: String = ""
@@ -32,6 +42,23 @@ static var boss_enabled: bool = false
 # Map Grid Data
 static var spire_nodes: Dictionary = {}
 static var spire_connections: Array = []
+
+static func configure_online(host: bool, address: String = "127.0.0.1", port: int = 24567) -> void:
+	online_mode = true
+	is_network_host = host
+	network_address = address.strip_edges() if not address.strip_edges().is_empty() else "127.0.0.1"
+	network_port = port
+	network_peer_id = 0
+	network_remote_peer_id = 0
+	player_count = 2
+
+static func reset_network() -> void:
+	online_mode = false
+	is_network_host = false
+	network_address = "127.0.0.1"
+	network_port = 24567
+	network_peer_id = 0
+	network_remote_peer_id = 0
 
 static func reset_campaign(p_count: int = 1) -> void:
 	mode = GameMode.CAMPAIGN
