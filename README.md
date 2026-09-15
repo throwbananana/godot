@@ -1,7 +1,5 @@
-# Godot Project
+# Tank Battle
 
-A new Godot 4 game project.
+Godot 4.5 tank battle / roguelite prototype with single-player, local 2-player co-op, and an ENet online co-op implementation under active testing.
 
-## Development
-- **Engine**: Godot Engine 4.5
-- **Main Scene**: `res://scenes/main.tscn`
+See `ONLINE_MULTIPLAYER.md` for the online host/join flow, synchronization model, connectivity requirements, and current limitations.
