@@ -20,10 +20,9 @@ static var max_floors: int = 6
 static var current_node_id: String = ""
 static var visited_node_ids: Array[String] = []
 
-# RPG Persistent Stats
+# Campaign persistent state. Tank tier is upgraded only by STAR pickups during
+# battle; permanent stat bonuses come from map choices/shop rewards.
 static var gold: int = 150
-static var player_level: int = 1
-static var player_xp: int = 0
 static var player_tier: int = 0
 static var player_lives: int = 3
 static var max_hp: int = 1
@@ -67,8 +66,6 @@ static func reset_campaign(p_count: int = 1) -> void:
 	current_node_id = ""
 	visited_node_ids.clear()
 	gold = 150
-	player_level = 1
-	player_xp = 0
 	player_tier = 0
 	player_lives = 3
 	p2_tier = 0

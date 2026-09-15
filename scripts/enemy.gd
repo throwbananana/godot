@@ -16,7 +16,6 @@ var speed: float = 100.0
 var max_health: int = 1
 var health: int = 1
 var score_value: int = 100
-var xp_value: int = 35
 var gold_value: int = 20
 var fire_interval: float = 1.2
 var fire_timer: float = 0.0
@@ -55,7 +54,6 @@ func _setup_tank_type() -> void:
 			speed = 110.0
 			max_health = 1
 			score_value = 100
-			xp_value = 25
 			gold_value = 15
 			fire_interval = 1.4
 		EnemyType.FAST:
@@ -63,7 +61,6 @@ func _setup_tank_type() -> void:
 			speed = 185.0
 			max_health = 1
 			score_value = 200
-			xp_value = 40
 			gold_value = 25
 			fire_interval = 1.1
 		EnemyType.POWER:
@@ -71,7 +68,6 @@ func _setup_tank_type() -> void:
 			speed = 120.0
 			max_health = 2
 			score_value = 300
-			xp_value = 55
 			gold_value = 35
 			fire_interval = 0.75
 		EnemyType.ARMOR:
@@ -79,7 +75,6 @@ func _setup_tank_type() -> void:
 			speed = 90.0
 			max_health = 4
 			score_value = 400
-			xp_value = 80
 			gold_value = 50
 			fire_interval = 1.0
 
@@ -206,9 +201,6 @@ func _die() -> void:
 
 func get_points() -> int:
 	return score_value
-
-func get_xp() -> int:
-	return xp_value
 
 func get_gold() -> int:
 	return gold_value
