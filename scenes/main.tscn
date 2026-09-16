@@ -126,10 +126,9 @@ theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 14
-text = "TANK TIER: 0 / 3"
+text = "LEVEL: LV.1"
 
 [node name="XPBar" type="ProgressBar" parent="HUD/SidePanel/VBox"]
-visible = false
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2
 show_percentage = false
@@ -147,6 +146,9 @@ stretch_mode = 5
 [node name="GoldLabel" type="Label" parent="HUD/SidePanel/VBox/GoldBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.35, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 14
 text = "GOLD: 100 G"
 
@@ -225,7 +227,10 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.82, 0.78, 0.74, 1)
 theme_override_font_sizes/font_size = 10
-text = "P1: W/A/S/D + Space (Shoot)\n道具/建造: [Q/E] 切换, [F] 放置\n地图缩放: [M] 键全屏大地图\nP2: 方向键 + [U/O] 切换, [K] 放置"
+text = "P1: W/A/S/D + Space (Shoot)
+道具/建造: [Q/E] 切换, [F] 放置
+地图缩放: [M] 键全屏大地图
+P2: 方向键 + [U/O] 切换, [K] 放置"
 
 [node name="HSeparator3" type="HSeparator" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
@@ -331,3 +336,4 @@ text = "RETURN TO MENU (返回菜单)"
 process_mode = 2
 visible = false
 layout_mode = 1
+

@@ -1,12 +1,5 @@
 # Tank Battle
 
-<<<<<<< HEAD
-Godot 4.5 tank battle / roguelite prototype with single-player, local 2-player co-op, and ENet online co-op.
-
-Tank weapon tiers are upgraded by collecting **STAR power-ups dropped during battle**. The previous RPG XP/level chain has been removed; campaign map rewards now provide economy or persistent stat bonuses instead of XP or direct tank-tier grants.
-
-See `ONLINE_MULTIPLAYER.md` for host/join setup, synchronization architecture, connectivity requirements, testing steps, and current limitations.
-=======
 A Battle City / Tank 1990 remake in **Godot 4.5** (GDScript, Forward+), extended
 with an Isaac-style room-graph campaign, RPG progression, in-battle
 structure building, and 2-player co-op (local or LAN).
@@ -98,4 +91,3 @@ python tools/launch_3d_clay_studio.py    # Launches Three.js 3D Studio on http:/
 - `docs/vfx_and_explosion_physics_architecture.md` — 6-stage multi-layer clay explosion dynamics and synthesized Web Audio specs.
 - `docs/webgl_3d_interactive_studio_guide.md` — Three.js WebGL 3D Studio and 2.5D normal mapping comparison guide.
 - `CLAUDE.md` — In-depth architecture, state layers, tile dispatch, test suite, and render invariants.
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53

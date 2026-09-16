@@ -62,34 +62,16 @@ func setup(type: String, forced_event_id: String = "") -> void:
 		icon_path = "res://assets/sprites/ui/diorama_rest.png"
 		title_label.text = "FORWARD REPAIR OUTPOST (CAMPFIRE)"
 		desc_label.text = "You reached a secured allied outpost. Choose your preparation for the battles ahead:"
-<<<<<<< HEAD
-		btn_1.text = "1. 🛠 Reinforce Armor (+1 Max HP)"
-		btn_2.text = "2. ⚡ Gunsmith Calibration (+1 ATK Bonus)"
-		btn_3.text = "3. ❤️ Request Reinforcements (+1 Extra Life)"
-=======
 		btn_1.text = "1. Full Vehicle Overhaul (+1 Max HP & Fortify)"
 		btn_2.text = "2. Gunsmith Calibration (+1 ATK Bonus)"
 		btn_3.text = "3. Request Reinforcements (+1 Extra Life)"
 		UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/perk_armor.png", Vector2(22, 22))
 		UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_atk.png", Vector2(22, 22))
 		UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/hp_heart_full.png", Vector2(22, 22))
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 	elif type == "shop":
 		icon_path = "res://assets/sprites/ui/diorama_shop.png"
 		title_label.text = "BLACK MARKET ARMS DEALER (黑市军火商)"
 		desc_label.text = "The arms dealer offers military-grade prototypes. (Current Gold: %dG)" % GameState.gold
-<<<<<<< HEAD
-		btn_1.text = "1. 💥 High-Velocity Ammo (100G) -> +1 ATK"
-		btn_2.text = "2. 🛡 Forcefield Generator (60G) -> +2 Max HP"
-		btn_3.text = "3. ❤️ Heavy Supply Crate (80G) -> +2 Extra Lives"
-	elif type == "event":
-		icon_path = "res://assets/sprites/map/node_event.png"
-		title_label.text = "UNEXPLORED COMBAT ZONE (MYSTERY)"
-		desc_label.text = "You discovered an abandoned enemy munitions depot in the ruins:"
-		btn_1.text = "1. 📦 Scavenge Munitions (+80 Gold)"
-		btn_2.text = "2. 🧪 Overclock Engine Reactor (+15% SPD Permanent)"
-		btn_3.text = "3. 🛡 Salvage Armor Plating (+1 Max HP)"
-=======
 		btn_1.text = "1. Star Weapon Module (100G) -> Tier Up!"
 		btn_2.text = "2. Forcefield Generator (60G) -> +2 Max HP"
 		btn_3.text = "3. Heavy Supply Crate (80G) -> +2 Extra Lives"
@@ -151,7 +133,6 @@ func setup(type: String, forced_event_id: String = "") -> void:
 				UIThemeHelper.apply_icon_button(btn_1, "res://assets/sprites/ui/ui_badge_gold.png", Vector2(22, 22))
 				UIThemeHelper.apply_icon_button(btn_2, "res://assets/sprites/ui/perk_gold.png", Vector2(22, 22))
 				UIThemeHelper.apply_icon_button(btn_3, "res://assets/sprites/ui/perk_atk.png", Vector2(22, 22))
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 	var tex = TextureHelper.get_tex(icon_path)
 	if tex and icon_sprite:
@@ -203,11 +184,7 @@ func _on_choice(idx: int) -> void:
 			1:
 				if GameState.gold >= 100 and _tier_up_would_help():
 					GameState.gold -= 100
-<<<<<<< HEAD
-					GameState.atk_bonus += 1
-=======
 					_grant_tier_up()
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 			2:
 				if GameState.gold >= 60:
 					GameState.gold -= 60
@@ -217,15 +194,6 @@ func _on_choice(idx: int) -> void:
 					GameState.gold -= 80
 					_grant_life(2)
 	elif dialog_type == "event":
-<<<<<<< HEAD
-		match idx:
-			1:
-				GameState.gold += 80
-			2:
-				GameState.speed_bonus += 1
-			3:
-				GameState.max_hp += 1
-=======
 		match current_event_id:
 			"depot":
 				match idx:
@@ -276,7 +244,6 @@ func _on_choice(idx: int) -> void:
 					1: GameState.gold += 80
 					2: GameState.speed_lvl += 1
 					3: _grant_tier_up()
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 	visible = false
 	closed.emit()

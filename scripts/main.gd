@@ -650,6 +650,7 @@ func _ready() -> void:
 		if w_tex:
 			tex_water_frames.append(w_tex)
 
+	rpg_mgr.leveled_up.connect(_on_rpg_level_up)
 	rpg_mgr.stats_changed.connect(_update_rpg_hud)
 	rpg_mgr.gold_changed.connect(func(_g): _update_rpg_hud())
 
@@ -729,14 +730,6 @@ func _ready() -> void:
 
 	UIThemeHelper.apply_clay_button(btn_restart)
 	btn_restart.pressed.connect(_on_button_action)
-<<<<<<< HEAD
-	btn_restart.visible = false
-	hud_status.visible = false
-	# XP leveling was removed. Keep the legacy node hidden so existing scenes and
-	# network HUD replication remain compatible without displaying a dead meter.
-	hud_rpg_xp.visible = false
-=======
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 	UIThemeHelper.apply_icon_button(btn_resume, "res://assets/sprites/ui/ui_icon_mode_continue.png", Vector2(22, 22))
 	UIThemeHelper.apply_icon_button(btn_settings_pause, "res://assets/sprites/ui/ui_icon_wrench.png", Vector2(22, 22))
@@ -1337,22 +1330,6 @@ func start_game() -> void:
 		# 镜像变量全程保持相等 (_lives_shared() 的所有改动点都维持这个不变式)。
 		# 单人战役下 p2_lives 没人用, 赋成同一个值也无所谓。
 		p1_lives = GameState.player_lives
-<<<<<<< HEAD
-		p2_lives = GameState.p2_lives
-		rpg_mgr.gold = GameState.gold
-		rpg_mgr.atk_bonus = GameState.atk_bonus
-		rpg_mgr.max_hp_lvl = max(0, GameState.max_hp - 1)
-		rpg_mgr.speed_lvl = GameState.speed_bonus
-		
-		if GameState.battle_type == "elite":
-			total_enemies = 18
-			spawn_interval = 2.0
-			show_toast("⚠️ ELITE BATTLE: HEAVY ARMORED CORPS!")
-		elif GameState.battle_type == "boss":
-			total_enemies = 24
-			spawn_interval = 1.6
-			show_toast("👑 BOSS BATTLE: REGIONAL COMMANDER FORTRESS!")
-=======
 		p2_lives = GameState.player_lives
 		rpg_mgr.sync_from_game_state()
 		max_alive_cap = max_alive_for(GameState.get_difficulty_cycle(), GameState.difficulty)
@@ -1384,7 +1361,6 @@ func start_game() -> void:
 		var today_best = GameState.get_daily_best_score()
 		if today_best > 0:
 			show_toast("☠️ 每日挑战：只有一条命！今日最高分 %06d" % today_best)
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 		else:
 			show_toast("☠️ 每日挑战：只有一条命，随机地图与随机敌人，尽力而为！")
 	else:
@@ -1426,17 +1402,6 @@ func add_gold(amount: int) -> void:
 		rpg_mgr.sync_to_game_state()
 	show_toast("+%d GOLD!" % amount)
 
-<<<<<<< HEAD
-func persist_player_tier(pid: int, tier: int) -> void:
-	# STAR pickups are the only in-battle tank tier upgrade. Persist immediately
-	# in campaign so a death/respawn cannot roll the player back to an older tier.
-	if GameState.mode == GameState.GameMode.CAMPAIGN:
-		if pid == 1:
-			GameState.player_tier = clampi(tier, 0, 3)
-		elif pid == 2:
-			GameState.p2_tier = clampi(tier, 0, 3)
-	_update_rpg_hud()
-=======
 func _on_rpg_level_up(new_lvl: int) -> void:
 	SoundManager.play_level_up(get_tree())
 	add_trauma(0.30)
@@ -1447,7 +1412,6 @@ func _on_rpg_level_up(new_lvl: int) -> void:
 		p1_instance._apply_rpg_stats()
 	if p2_instance and is_instance_valid(p2_instance):
 		p2_instance._apply_rpg_stats()
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 	if upgrade_dialog and is_instance_valid(upgrade_dialog):
 		var was_empty = pending_upgrade_players.is_empty()
@@ -4652,22 +4616,7 @@ func _branch_tag(player_id: int) -> String:
 
 func _update_rpg_hud() -> void:
 	if hud_rpg_level:
-<<<<<<< HEAD
-		var p1_tier := GameState.player_tier if GameState.mode == GameState.GameMode.CAMPAIGN else 0
-		var p2_tier := GameState.p2_tier if GameState.mode == GameState.GameMode.CAMPAIGN else 0
-		if p1_instance and is_instance_valid(p1_instance):
-			p1_tier = p1_instance.upgrade_tier
-		if p2_instance and is_instance_valid(p2_instance):
-			p2_tier = p2_instance.upgrade_tier
-		if GameState.player_count == 1:
-			hud_rpg_level.text = "TANK TIER: %d / 3" % p1_tier
-		else:
-			hud_rpg_level.text = "TIER: P1 %d | P2 %d" % [p1_tier, p2_tier]
-	if hud_rpg_xp:
-		hud_rpg_xp.visible = false
-=======
 		hud_rpg_level.text = "LV.%d [%s]" % [rpg_mgr.level, _branch_tag(1)]
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 	if hud_gold:
 		hud_gold.text = "GOLD: %d G" % rpg_mgr.gold
 	if p1_instance and is_instance_valid(p1_instance):
@@ -4681,13 +4630,6 @@ func _update_rpg_hud() -> void:
 		if hud_p2_hearts:
 			_update_hearts_container(hud_p2_hearts, p2_instance.current_health, p2_instance.max_health)
 	if hud_stats:
-<<<<<<< HEAD
-		hud_stats.text = "ATK: +%d | SPD: +%d%%\nREGEN: +%.1f/s" % [
-			rpg_mgr.atk_bonus,
-			int((rpg_mgr.get_speed_multiplier() - 1.0) * 100),
-			rpg_mgr.get_regen_rate()
-		]
-=======
 		if GameState.player_count == 2:
 			hud_stats.text = "P1 ATK:%d SPD:+%d%% | P2 ATK:%d SPD:+%d%%" % [
 				rpg_mgr.get_atk_damage(1), int((rpg_mgr.get_speed_multiplier(1) - 1.0) * 100),
@@ -4699,4 +4641,3 @@ func _update_rpg_hud() -> void:
 				int((rpg_mgr.get_speed_multiplier(1) - 1.0) * 100),
 				rpg_mgr.get_regen_rate(1)
 			]
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53

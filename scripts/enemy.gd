@@ -105,6 +105,7 @@ var max_health: int = 1
 var health: int = 1
 var is_dying: bool = false
 var score_value: int = 100
+var xp_value: int = 35
 var gold_value: int = 20
 var fire_interval: float = 1.2
 var fire_timer: float = 0.0
@@ -415,6 +416,7 @@ func _setup_tank_type() -> void:
 			speed = 75.0
 			max_health = 1
 			score_value = 100
+			xp_value = 25
 			gold_value = 15
 			fire_interval = 2.8
 		EnemyType.FAST:
@@ -422,6 +424,7 @@ func _setup_tank_type() -> void:
 			speed = 120.0
 			max_health = 1
 			score_value = 200
+			xp_value = 40
 			gold_value = 25
 			fire_interval = 2.2
 		EnemyType.POWER:
@@ -429,6 +432,7 @@ func _setup_tank_type() -> void:
 			speed = 85.0
 			max_health = 2
 			score_value = 300
+			xp_value = 55
 			gold_value = 35
 			fire_interval = 1.6
 		EnemyType.ARMOR:
@@ -436,6 +440,7 @@ func _setup_tank_type() -> void:
 			speed = 60.0
 			max_health = 4
 			score_value = 400
+			xp_value = 80
 			gold_value = 50
 			fire_interval = 2.2
 		EnemyType.FLAMETHROWER:
@@ -1844,13 +1849,6 @@ func _spawn_mirage_shimmer() -> void:
 		tw.tween_property(shim_spr, "modulate:a", 0.0, 0.20)
 		tw.tween_callback(shim_spr.queue_free)
 
-<<<<<<< HEAD
-	if coin_scene and randf() < 0.4:
-		var coin = coin_scene.instantiate()
-		coin.global_position = global_position
-		coin.value = gold_value
-		get_parent().call_deferred("add_child", coin)
-=======
 func _suicide_detonate() -> void:
 	if is_suicide_detonated:
 		return
@@ -1901,7 +1899,6 @@ func _suicide_detonate() -> void:
 			if main and main.has_method("check_key_drop"):
 				main.check_key_drop(b, b.global_position)
 			b.queue_free()
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 	enemy_destroyed.emit(score_value, is_bonus, global_position)
 	queue_free()
@@ -2031,6 +2028,9 @@ func _split_into_mini_tanks() -> void:
 
 func get_points() -> int:
 	return score_value
+
+func get_xp() -> int:
+	return xp_value
 
 func get_gold() -> int:
 	return gold_value

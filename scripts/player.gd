@@ -34,13 +34,6 @@ var is_invulnerable: bool = false
 var invulnerable_timer: float = 0.0
 var regen_accumulator: float = 0.0
 
-<<<<<<< HEAD
-# In online play the host still runs the complete PlayerTank simulation, but P2's
-# input is supplied by NetworkBattleSync instead of reading the host's keyboard.
-var network_input_enabled: bool = false
-var network_input_vector: Vector2 = Vector2.ZERO
-var network_fire_pressed: bool = false
-=======
 ## 受击之后多久内不回血。
 ##
 ## 纳米自愈原来是无条件每秒结算的, 于是它不是"回血", 而是一层看不见的额外
@@ -84,7 +77,6 @@ var parry_total_duration: float = 0.34
 var parry_perfect_window: float = 0.14
 var has_charged_counter_shot: bool = false
 var parry_shield_sprite: Sprite2D = null
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var shield_sprite: Sprite2D = $ShieldSprite
@@ -171,16 +163,6 @@ func _on_branch_changed(changed_player_id: int, _branch: String, _tier: int) -> 
 		return
 	_apply_rpg_stats()
 	_update_tier_appearance()
-
-func set_network_input_mode(enabled: bool) -> void:
-	network_input_enabled = enabled
-	if not enabled:
-		network_input_vector = Vector2.ZERO
-		network_fire_pressed = false
-
-func set_network_input(input_vec: Vector2, firing: bool) -> void:
-	network_input_vector = input_vec
-	network_fire_pressed = firing
 
 func _apply_rpg_stats() -> void:
 	var main = get_tree().current_scene
@@ -345,17 +327,6 @@ func apply_powerup(type: PowerUp.Type) -> void:
 	var p_name = "P1" if player_id == 1 else "P2"
 	match type:
 		PowerUp.Type.STAR:
-<<<<<<< HEAD
-			upgrade_tier = mini(upgrade_tier + 1, 3)
-			_update_tier_appearance()
-			# Campaign tier must be saved immediately so a death/respawn in the same
-			# battle does not discard a STAR upgrade.
-			if main and main.has_method("persist_player_tier"):
-				main.persist_player_tier(player_id, upgrade_tier)
-			VFXAnimator.spawn_shockwave(get_parent(), global_position)
-			var rank_name = ["BASIC", "SCOUT+", "TWIN-CANNON", "PLASMA DREADNOUGHT"][upgrade_tier]
-			powerup_collected.emit("[%s] STAR UPGRADE: %s!" % [p_name, rank_name])
-=======
 			# upgrade_tier only does anything in the "default" branch weapon
 			# path (_shoot()'s default match arm) -- once a branch is picked
 			# (which happens at the player's very first level-up, no skip
@@ -405,7 +376,6 @@ func apply_powerup(type: PowerUp.Type) -> void:
 			# 这一份是队伍共享的 (rpg_mgr.level 本来就不分玩家), 谁捡到都一样。
 			if main and main.rpg_mgr:
 				main.rpg_mgr.add_level(1)
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 		PowerUp.Type.HELMET:
 			# 硬核化调整: 10.0 -> 7.0 秒。头盔本来就是稀有度和 STAR/BOMB 同级的
 			# 道具, 10 秒无敌在敌人 2.2 秒一发的节奏下相当于白吃 4-5 发, 分量
@@ -752,26 +722,6 @@ func _physics_process(delta: float) -> void:
 	var speed_mult = 1.0
 	var is_speed_branch = (main and main.rpg_mgr and main.rpg_mgr.get_branch(player_id) == "speed")
 
-<<<<<<< HEAD
-	var input_vec = Vector2.ZERO
-	var fire_pressed := false
-	if network_input_enabled:
-		input_vec = network_input_vector
-		fire_pressed = network_fire_pressed
-	else:
-		if Input.is_action_pressed(act_up):
-			input_vec = Vector2.UP
-		elif Input.is_action_pressed(act_down):
-			input_vec = Vector2.DOWN
-		elif Input.is_action_pressed(act_left):
-			input_vec = Vector2.LEFT
-		elif Input.is_action_pressed(act_right):
-			input_vec = Vector2.RIGHT
-		fire_pressed = Input.is_action_pressed(act_fire)
-	
-	var speed_mult = (1.0 + float(upgrade_tier) * 0.12)
-=======
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 	if main and main.rpg_mgr:
 		speed_mult *= main.rpg_mgr.get_speed_multiplier(player_id)
 	else:
@@ -843,9 +793,6 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	TrainFollowHelper.record_history(history_positions, history_rotations, global_position, rotation)
 
-<<<<<<< HEAD
-	if fire_pressed and can_fire:
-=======
 	# Handle pushing physical contact structures (e.g. Wooden Wall)
 	if input_vec != Vector2.ZERO:
 		for i in range(get_slide_collision_count()):
@@ -865,7 +812,6 @@ func _physics_process(delta: float) -> void:
 		or (player_id == NetSession.local_player_id and not NetSession.is_client() \
 			and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT))
 	if wants_fire and can_fire:
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 		_shoot()
 
 func _shoot() -> void:

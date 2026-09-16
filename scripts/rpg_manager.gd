@@ -2,24 +2,20 @@ class_name RPGManager
 extends RefCounted
 
 signal stats_changed
+signal leveled_up(new_level: int)
 signal gold_changed(new_gold: int)
 signal branch_changed(player_id: int, new_branch: String, new_tier: int)
 
-<<<<<<< HEAD
-# Battle economy and persistent-stat view. Tank weapon tier is intentionally
-# NOT managed here: STAR pickups are the only source of tank tier upgrades.
-=======
 var level: int = 1
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 var gold: int = 100
 
-# Persistent stat bonuses loaded from GameState when entering a campaign battle.
-var atk_bonus: int = 0
-var fire_rate_lvl: int = 0
-var speed_lvl: int = 0
-var max_hp_lvl: int = 0
-var regen_lvl: int = 0
-var builder_lvl: int = 0
+# 属性点加成
+var atk_bonus: int = 0      # 攻击力加成
+var fire_rate_lvl: int = 0  # 攻速强化等级
+var speed_lvl: int = 0      # 移速强化等级
+var max_hp_lvl: int = 0     # 最大装甲等级
+var regen_lvl: int = 0      # 纳米自愈等级
+var builder_lvl: int = 0    # 防御工程强化
 
 # RPG 分支流派与特性 (P1)
 
@@ -80,10 +76,7 @@ func get_branch_tier(player_id: int = 1) -> int:
 	return branch_tier if player_id == 1 else p2_branch_tier
 
 func reset() -> void:
-<<<<<<< HEAD
-=======
 	level = 1
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 	gold = 100
 	atk_bonus = 0
 	fire_rate_lvl = 0
@@ -200,14 +193,6 @@ func spend_gold(amount: int) -> bool:
 		return true
 	return false
 
-<<<<<<< HEAD
-func get_player_max_hp() -> int:
-	return 1 + max_hp_lvl
-
-func get_speed_multiplier() -> float:
-	# One campaign speed bonus corresponds to the advertised +15% reward.
-	return 1.0 + float(speed_lvl) * 0.15
-=======
 ## 唯一的升级入口。以撒式经验条已经取消 —— 击杀/道具/事件/商店都不再暗中
 ## 攒经验, 战车只能靠吃到 ⭐ STAR 道具升级 (player.gd::apply_powerup()),
 ## 一颗星 = 一级, 不设门槛。amount > 1 用于一次性补发多级 (调试菜单、
@@ -318,7 +303,6 @@ func get_speed_multiplier(player_id: int = 1) -> float:
 		mult -= 0.10 # 重装型较重，稍显沉稳
 	mult += get_perk_value("nitro_booster", 0.18, player_id)
 	return maxf(0.5, mult)
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 func get_fire_cooldown_mult(player_id: int = 1) -> float:
 	var branch = get_branch(player_id)
@@ -340,10 +324,6 @@ func get_fire_cooldown_mult(player_id: int = 1) -> float:
 	rate += get_perk_value("rapid_loader", 0.30, player_id)
 	return 1.0 / rate
 
-<<<<<<< HEAD
-func get_regen_rate() -> float:
-	return float(regen_lvl) * 0.25
-=======
 const BASE_FIRE_COOLDOWN := 0.65
 const FIRE_CD_FLOOR_SPEED := 0.18
 const FIRE_CD_FLOOR_OTHER := 0.32
@@ -385,7 +365,6 @@ func get_regen_rate(player_id: int = 1) -> float:
 	var rate = float(regen_lvl) * 0.25
 	rate += get_perk_value("nano_repair", 0.50, player_id)
 	return rate
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 func get_building_hp_mult() -> float:
 	return 1.0 + float(builder_lvl) * 0.25
