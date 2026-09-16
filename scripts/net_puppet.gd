@@ -31,6 +31,15 @@ const NetSession = preload("res://scripts/net_session.gd")
 const CONVERGE_BULLET := 60.0
 const CONVERGE_DEFAULT := NetSession.PUPPET_CONVERGE
 
+## 最多拿最后一份速度向前推多久。
+##
+## 正常 30Hz 快照每 33ms 就会把 age 清零, 所以这个上限在健康连接下完全不参与。
+## 它只处理连续丢包/主线程卡顿: 旧实现会拿最后一次 velocity 无限外推, 500ms
+## 没包时一发 720px/s 的针弹能在客户端凭空多飞 360px，敌人也会穿过墙继续走。
+## 200ms 允许跨过约 6 个快照周期，足够吸收 LAN 抖动；再久就宁可停在最后一个
+## 合理预测点，等权威快照回来纠正，也不要继续编造未来。
+const MAX_EXTRAPOLATION_TIME := 0.20
+
 
 ## 把一个刚实例化 (但还没 add_child) 的节点变成傀儡。
 ##
@@ -43,6 +52,7 @@ static func make_puppet(node: Node, kind: int) -> void:
 	node.set_meta("net_trot", 0.0)
 	node.set_meta("net_vel", Vector2.ZERO)
 	node.set_meta("net_primed", false)
+	node.set_meta("net_snapshot_age", 0.0)
 
 	# player.gd / enemy.gd / bullet.gd 里有 net_puppet 早退分支, 让它们
 	# 继续跑 _physics_process (履带动画、闪烁这些还要靠它); 其余类型没有
@@ -117,11 +127,20 @@ static func is_predicted(node: Node) -> bool:
 ##
 ## 插值 (update) 和预测 (reconcile) 都要做这件事, 但只能做一次 —— 同一帧
 ## 推两遍等于把速度算成两倍。
+##
+## 连续收不到快照时只外推 MAX_EXTRAPOLATION_TIME。之后目标点冻结，避免拿一份
+## 已经过期几百毫秒的 velocity 无限编造未来。新快照一到 set_target() 会把 age
+## 清零并从新的权威位置继续。
 static func _advance_target(node: Node2D, delta: float) -> Vector2:
 	var vel: Vector2 = node.get_meta("net_vel", Vector2.ZERO)
 	var tpos: Vector2 = node.get_meta("net_tpos", node.position)
-	tpos += vel * delta
+	var age := float(node.get_meta("net_snapshot_age", 0.0))
+	var remaining := maxf(0.0, MAX_EXTRAPOLATION_TIME - age)
+	var advance_dt := minf(delta, remaining)
+	if advance_dt > 0.0:
+		tpos += vel * advance_dt
 	node.set_meta("net_tpos", tpos)
+	node.set_meta("net_snapshot_age", age + delta)
 	return tpos
 
 
@@ -133,7 +152,12 @@ static func reconcile(node: Node, delta: float) -> void:
 	if node == null or not is_instance_valid(node) or not (node is Node2D):
 		return
 	var n2 := node as Node2D
+	# 快照已经过期时不要拿旧目标把本地玩家往回拽。网络短暂停顿期间继续保留
+	# 本地输入手感；下一份权威快照到达后 set_target() 清 age，再正常软/硬对账。
+	var stale := float(n2.get_meta("net_snapshot_age", 0.0)) >= MAX_EXTRAPOLATION_TIME
 	var tpos := _advance_target(n2, delta)
+	if stale:
+		return
 	var err := tpos - n2.position
 	if err.length() > NetSession.PREDICT_SNAP_DIST:
 		# 分岔了 (被眩晕/被推/撞上了本地判定不到的东西), 直接认账。
@@ -155,6 +179,7 @@ static func set_target(node: Node, pos: Vector2, rot: float, vel: Vector2, extra
 	node.set_meta("net_tpos", pos)
 	node.set_meta("net_trot", rot)
 	node.set_meta("net_vel", vel)
+	node.set_meta("net_snapshot_age", 0.0)
 	# PLAYER 的 extra 是主机算出来的有效移动速度, 本地预测拿它当速度用
 	# (见 NetSession.SNAP_STRIDE 的注释)。其余类型是 0, 没人读。
 	node.set_meta("net_speed", extra)
