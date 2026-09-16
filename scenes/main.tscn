@@ -2,11 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/builder_controller.gd" id="2_bld"]
-<<<<<<< HEAD
-[ext_resource type="Script" path="res://scripts/network_battle_sync.gd" id="3_net"]
-=======
 [ext_resource type="PackedScene" path="res://scenes/settings_dialog.tscn" id="3_set"]
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -33,15 +29,10 @@ script = ExtResource("2_bld")
 scale = Vector2(0.1875, 0.1875)
 z_index = 20
 
-<<<<<<< HEAD
-[node name="NetworkBattleSync" type="Node" parent="."]
-script = ExtResource("3_net")
-=======
 [node name="RoomCamera" type="Camera2D" parent="GameArea"]
 position = Vector2(312, 312)
 zoom = Vector2(1, 1)
 current = true
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
@@ -156,9 +147,6 @@ stretch_mode = 5
 [node name="GoldLabel" type="Label" parent="HUD/SidePanel/VBox/GoldBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.85, 0.35, 1)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
-theme_override_constants/shadow_offset_x = 1
-theme_override_constants/shadow_offset_y = 1
 theme_override_font_sizes/font_size = 14
 text = "GOLD: 100 G"
 
@@ -237,10 +225,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.82, 0.78, 0.74, 1)
 theme_override_font_sizes/font_size = 10
-text = "P1: W/A/S/D + Space (Shoot)
-道具/建造: [Q/E] 切换, [F] 放置
-地图缩放: [M] 键全屏大地图
-P2: 方向键 + [U/O] 切换, [K] 放置"
+text = "P1: W/A/S/D + Space (Shoot)\n道具/建造: [Q/E] 切换, [F] 放置\n地图缩放: [M] 键全屏大地图\nP2: 方向键 + [U/O] 切换, [K] 放置"
 
 [node name="HSeparator3" type="HSeparator" parent="HUD/SidePanel/VBox"]
 layout_mode = 2
@@ -285,9 +270,6 @@ offset_bottom = 110.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 20
-<<<<<<< HEAD
-text = "PLAY AGAIN"
-=======
 text = "PLAY AGAIN"
 
 [node name="PauseMenu" type="PanelContainer" parent="HUD"]
@@ -349,5 +331,3 @@ text = "RETURN TO MENU (返回菜单)"
 process_mode = 2
 visible = false
 layout_mode = 1
-
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
