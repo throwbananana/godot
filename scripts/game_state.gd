@@ -4,19 +4,6 @@ extends RefCounted
 enum GameMode { CAMPAIGN, ARCADE, DAILY_CHALLENGE }
 
 static var mode: GameMode = GameMode.CAMPAIGN
-<<<<<<< HEAD
-static var player_count: int = 1 # 1=单人, 2=双人（本地或联机）
-
-# Network session state. The ENet peer itself lives on SceneTree.multiplayer so it
-# survives scene changes; these flags describe how the current run should behave.
-static var online_mode: bool = false
-static var is_network_host: bool = false
-static var network_address: String = "127.0.0.1"
-static var network_port: int = 24567
-static var network_peer_id: int = 0
-static var network_remote_peer_id: int = 0
-
-=======
 static var player_count: int = 1 # 1=单人, 2=本地双人
 
 ## 难度：影响战斗中的敌人数量 (main.gd::encounter_size()/max_alive_for()/
@@ -97,7 +84,6 @@ static var max_acts: int = 12
 ## 顺带说明为什么不用"房间到起点的 BFS 深度": 深度最多只到 6-8, 同样够不到
 ## 后段门槛; 而且玩家回头走已清房间时深度会**倒退**, 难度忽上忽下。
 ## 已清房间数是单调的。
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 static var current_floor: int = 0
 static var max_floors: int = 15
 
@@ -114,13 +100,9 @@ static func _recompute_current_floor() -> void:
 	var base := (current_act - 1) * ACT_DIFFICULTY_STRIDE
 	current_floor = mini(max_floors - 1, base + rooms_cleared / 2)
 
-# Campaign persistent state. Tank tier is upgraded only by STAR pickups during
-# battle; permanent stat bonuses come from map choices/shop rewards.
+# RPG Persistent Stats
 static var gold: int = 150
-<<<<<<< HEAD
-=======
 static var player_level: int = 1
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 static var player_tier: int = 0
 static var player_lives: int = 3
 static var max_hp_lvl: int = 0
@@ -476,33 +458,13 @@ static func get_player_max_hp() -> int:
 		bonus_hp += RPGManager.TRENCH_HP_BONUS[branch_tier]
 	return 1 + max_hp_lvl + bonus_hp
 
-static func configure_online(host: bool, address: String = "127.0.0.1", port: int = 24567) -> void:
-	online_mode = true
-	is_network_host = host
-	network_address = address.strip_edges() if not address.strip_edges().is_empty() else "127.0.0.1"
-	network_port = port
-	network_peer_id = 0
-	network_remote_peer_id = 0
-	player_count = 2
-
-static func reset_network() -> void:
-	online_mode = false
-	is_network_host = false
-	network_address = "127.0.0.1"
-	network_port = 24567
-	network_peer_id = 0
-	network_remote_peer_id = 0
-
 static func reset_campaign(p_count: int = 1) -> void:
 	mode = GameMode.CAMPAIGN
 	player_count = p_count
 	current_act = 1
 	current_floor = 0
 	gold = 150
-<<<<<<< HEAD
-=======
 	player_level = 1
->>>>>>> 40ecab131c2c1d9bf09059e237a0eb1c0d8c8c53
 	player_tier = 0
 	player_lives = 3
 	tank_branch = "default"
