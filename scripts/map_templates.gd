@@ -79,6 +79,32 @@ const CustomMapStore = preload("res://scripts/custom_map_store.gd")
 #     实现上复用 border 组的免疫语义, 不挂 buildings 组。
 #     见 scripts/buildings/energy_wall.gd。)
 # 55 = Energy Wall BLUE (同 54, 蓝色电路。)
+# 56 = Piston Switch GREEN (同 46/47, 绿色电路——第三条独立通道, 不跟红/蓝
+#     互相影响。)
+# 57 = Bomb Switch GREEN (同 52/53, 绿色电路。)
+# 58 = Circuit-Gated Electric Wall GREEN (同 48/49, 绿色电路。)
+# 59 = Circuit-Gated Shield Station GREEN (同 50/51, 绿色电路。)
+# 60 = Energy Wall GREEN (同 54/55, 绿色电路。)
+# 61 = AND-Gated Electric Wall RED+BLUE (跟 48/49 用同一个 electric_wall
+#     场景, 但红蓝两条电路必须**都**接通才会断电——任意一色单独触发只登记
+#     进度, 不生效。逻辑全在 main.gd::circuit_and_pending / _apply_circuit_solved()
+#     里记账, 场景和 electric_wall.gd 本身不知道自己是被单色还是双色控制。
+#     没有独立的绿色 AND 变体——2 色 AND 只有"两个都要"这一种有意义的组合,
+#     3 选 2 的 AND 组合意义不大, 故意没做。)
+# 62 = AND-Gated Shield Station RED+BLUE (同 61, 场景是 50/51 的 shield_station。)
+# 63 = AND-Gated Energy Wall RED+BLUE (同 61, 场景是 54/55 的 energy_wall。)
+# 64 = Hold Switch RED (保持型压力板: 跟 46 的活塞开关是同一块地板形状, 但
+#     语义相反——有坦克站着才通电, 全部离开就断电, 可以反复触发。控制的是
+#     67/68/69 的 CircuitGateDoor, 不控制 48/49/50/51/54/55 那些一次性受控物
+#     (那些的 set_circuit_solved() 全是不可逆实现)。见 scripts/buildings/hold_switch.gd。)
+# 65 = Hold Switch BLUE (同 64, 蓝色电路。)
+# 66 = Hold Switch GREEN (同 64, 绿色电路。)
+# 67 = Circuit Gate Door RED (保持型压力板控制的可逆闸门: 关闭时对一切火力
+#     免疫 (跟 54/55 同一个 steel+border 技巧), 打开时碰撞体直接失效, 子弹
+#     和坦克都照常穿过——不是"假装免疫", 是真的没有碰撞体了。见
+#     scripts/buildings/circuit_gate_door.gd。)
+# 68 = Circuit Gate Door BLUE (同 67, 蓝色电路。)
+# 69 = Circuit Gate Door GREEN (同 67, 绿色电路。)
 
 # 1. 经典十字交叉防线 (Classic Crossroad - with Reinforced Hard Clay Chokepoints)
 const TEMPLATE_CLASSIC = [
@@ -1694,8 +1720,8 @@ static func validate_layout(grid: Array) -> Array[String]:
 	for r in range(13):
 		for c in range(13):
 			var v := int(grid[r][c])
-			if v < 0 or v > 55:
-				errs.append("(%d,%d) 地形号 %d 越界 (合法 0-55)" % [r, c, v])
+			if v < 0 or v > 69:
+				errs.append("(%d,%d) 地形号 %d 越界 (合法 0-69)" % [r, c, v])
 	for c in [5, 6, 7]:
 		if int(grid[12][c]) != 0:
 			errs.append("鹰巢格 (12,%d) 必须为空" % c)

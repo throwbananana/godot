@@ -22,6 +22,7 @@ const SoundManager = preload("res://scripts/sound_manager.gd")
 const GATE_COLORS := {
 	"red": Color(1.0, 0.35, 0.3, 1.0),
 	"blue": Color(0.35, 0.55, 1.0, 1.0),
+	"green": Color(0.4, 0.9, 0.45, 1.0),
 }
 
 @export var gate_color: String = "red"

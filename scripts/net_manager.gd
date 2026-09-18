@@ -879,6 +879,24 @@ func _rpc_circuit(color: String) -> void:
 		game.net_apply_circuit(color)
 
 
+# 保持型压力板 (瓦片 64-69): 跟上面的一次性 broadcast_circuit 不一样, 这个
+# 通道要能反复触发 (踩上去开, 离开就关), 所以没有"已经处理过就早退"的
+# 一次性守卫——幂等交给 CircuitGateDoor.set_gate_open() 自己的
+# `if is_open == open: return`, 这里只管转发主机的最新判定。
+func broadcast_hold_gate(color: String, powered: bool) -> void:
+	if not NetSession.is_host() or NetSession.remote_peer_id == 0:
+		return
+	_rpc_hold_gate.rpc(color, powered)
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_hold_gate(color: String, powered: bool) -> void:
+	if not NetSession.is_client() or game == null or not is_instance_valid(game):
+		return
+	if game.has_method("net_apply_hold_gate"):
+		game.net_apply_hold_gate(color, powered)
+
+
 func request_event_choice(idx: int) -> void:
 	if NetSession.is_client():
 		_rpc_event_choice.rpc_id(1, idx)

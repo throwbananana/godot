@@ -88,6 +88,8 @@ var command_post_scene: PackedScene
 var sniper_nest_scene: PackedScene
 var emp_tower_scene: PackedScene
 var piston_switch_scene: PackedScene
+var hold_switch_scene: PackedScene
+var circuit_gate_door_scene: PackedScene
 var factory_instances: Array[Node] = [] # tracked for the battle-end gold reward multiplier
 var battle_gold_earned: int = 0 # reset in start_game(), read by the Factory reward multiplier at _game_over()
 var battle_start_msec: int = 0 # reset in start_game(), read by the balance log at _game_over()
@@ -142,6 +144,20 @@ var escort_ally_original_count: int = 0
 ## 里跟着清空, 否则会把上一间房已经按过的开关误判成"这间房也解开了"。
 var circuit_solved: Dictionary = {}
 var circuit_gated_buildings: Dictionary = {}
+
+## 双色 AND 受控物: building 实例 -> 还差哪些颜色没触发 (Array[String])。
+## circuit_gated_buildings 原本假设 set_circuit_solved(true) 这辈子只会被
+## 调用一次 (OR 逻辑, 任意一色触发即生效) —— AND 受控物在两个颜色的数组里
+## 都登记了自己, 第一个颜色触发时必须先不生效, 只把这里的剩余需求减一,
+## 减到空了才真的调 set_circuit_solved(true)。见 _apply_circuit_solved()。
+var circuit_and_pending: Dictionary = {}
+
+## 保持型压力板系统: color -> 该颜色下所有 HoldSwitch / CircuitGateDoor 实例。
+## 跟 circuit_solved 那套"一次性永久锁存"完全独立——受控闸门可以反复开合,
+## 混进 circuit_gated_buildings 会让 circuit_solved[color] 提前被判定为
+## "已解开", 而实际上闸门随时可能因为坦克离开而重新关闭。见 _recompute_hold_gate()。
+var circuit_hold_switches: Dictionary = {}
+var circuit_hold_doors: Dictionary = {}
 
 var score: int = 0
 var p1_lives: int = 3
@@ -1592,6 +1608,9 @@ func _clear_all(keep_players: bool = false) -> void:
 	# 房残留的记录污染 (例如误判"红色电路已经解开过了")。
 	circuit_solved.clear()
 	circuit_gated_buildings.clear()
+	circuit_and_pending.clear()
+	circuit_hold_switches.clear()
+	circuit_hold_doors.clear()
 	for child in actors_container.get_children():
 		if keep_players and (child == p1_instance or child == p2_instance or child.is_in_group("player_carriage")):
 			continue
@@ -2494,6 +2513,34 @@ func _build_map() -> void:
 				_spawn_energy_wall(pos, "red")
 			elif tile_type == 55:
 				_spawn_energy_wall(pos, "blue")
+			elif tile_type == 56:
+				_spawn_piston_switch(pos, "green")
+			elif tile_type == 57:
+				_spawn_bomb_switch(pos, "green")
+			elif tile_type == 58:
+				_spawn_gated_electric_wall(pos, "green")
+			elif tile_type == 59:
+				_spawn_gated_shield_station(pos, "green")
+			elif tile_type == 60:
+				_spawn_energy_wall(pos, "green")
+			elif tile_type == 61:
+				_spawn_and_electric_wall(pos)
+			elif tile_type == 62:
+				_spawn_and_shield_station(pos)
+			elif tile_type == 63:
+				_spawn_and_energy_wall(pos)
+			elif tile_type == 64:
+				_spawn_hold_switch(pos, "red")
+			elif tile_type == 65:
+				_spawn_hold_switch(pos, "blue")
+			elif tile_type == 66:
+				_spawn_hold_switch(pos, "green")
+			elif tile_type == 67:
+				_spawn_circuit_gate_door(pos, "red")
+			elif tile_type == 68:
+				_spawn_circuit_gate_door(pos, "blue")
+			elif tile_type == 69:
+				_spawn_circuit_gate_door(pos, "green")
 
 	# Dynamic terrain hazards (Minefields on higher floors / elite encounters).
 	# 只在战斗房加 —— 这段是在 _build_map() 尾部无条件跑的, 跟房间类型无关;
@@ -2977,10 +3024,21 @@ func net_apply_circuit(color: String) -> void:
 func _apply_circuit_solved(color: String) -> void:
 	circuit_solved[color] = true
 	for building in circuit_gated_buildings.get(color, []):
-		if is_instance_valid(building) and building.has_method("set_circuit_solved"):
+		if not is_instance_valid(building):
+			continue
+		# 双色 AND 受控物先登记在 circuit_and_pending 里: 减掉这个颜色的需求,
+		# 减到空了才真的调用 set_circuit_solved(true) —— 普通 OR 受控物压根
+		# 不在这本字典里, 走 else 分支保持原来"任意一色触发即生效"的行为。
+		if circuit_and_pending.has(building):
+			var remaining: Array = circuit_and_pending[building]
+			remaining.erase(color)
+			if not remaining.is_empty():
+				continue
+			circuit_and_pending.erase(building)
+		if building.has_method("set_circuit_solved"):
 			building.set_circuit_solved(true)
 	SoundManager.play_pickup(get_tree())
-	var color_label: String = {"red": "红色", "blue": "蓝色"}.get(color, color)
+	var color_label: String = {"red": "红色", "blue": "蓝色", "green": "绿色"}.get(color, color)
 	show_toast("🔌 %s电路已接通！" % color_label)
 
 ## 可摧毁开关: 跟 _spawn_piston_switch 接同一个 switch_pressed 信号 ->
@@ -3008,6 +3066,123 @@ func _spawn_energy_wall(pos: Vector2, color: String) -> void:
 		if not circuit_gated_buildings.has(color):
 			circuit_gated_buildings[color] = []
 		circuit_gated_buildings[color].append(ew)
+
+## 把一个受控建筑同时登记进多个颜色的 circuit_gated_buildings (每个颜色触发
+## 都会走一遍 _apply_circuit_solved 的遍历), 并在 circuit_and_pending 记下
+## "还差哪些颜色" —— 两个颜色都到齐前, _apply_circuit_solved 只会做登记,
+## 不会真的调用 set_circuit_solved(true)。
+func _register_and_gate(building: Node, colors: Array) -> void:
+	circuit_and_pending[building] = colors.duplicate()
+	for c in colors:
+		if not circuit_gated_buildings.has(c):
+			circuit_gated_buildings[c] = []
+		circuit_gated_buildings[c].append(building)
+
+## 双色 AND 受控物 (瓦片 61/62/63): 红蓝电路都接通才生效, 复用
+## electric_wall.tscn / shield_station.tscn / energy_wall.tscn 原封不动的
+## 场景和 set_circuit_solved() 实现——AND 逻辑完全是 _apply_circuit_solved()
+## 那边的记账, 三个受控建筑脚本自己并不知道 (也不需要知道) 自己是被单色
+## 还是双色控制的。
+func _spawn_and_electric_wall(pos: Vector2) -> void:
+	if not electric_wall_scene:
+		electric_wall_scene = load("res://scenes/buildings/electric_wall.tscn")
+	if electric_wall_scene:
+		var ew = electric_wall_scene.instantiate()
+		ew.position = pos
+		map_container.add_child(ew)
+		_register_and_gate(ew, ["red", "blue"])
+
+func _spawn_and_shield_station(pos: Vector2) -> void:
+	if not shield_station_scene:
+		shield_station_scene = load("res://scenes/buildings/shield_station.tscn")
+	if shield_station_scene:
+		var st = shield_station_scene.instantiate()
+		st.is_powered = false
+		st.position = pos
+		_add_map_furniture(st)
+		_register_and_gate(st, ["red", "blue"])
+
+func _spawn_and_energy_wall(pos: Vector2) -> void:
+	if not energy_wall_scene:
+		energy_wall_scene = load("res://scenes/buildings/energy_wall.tscn")
+	if energy_wall_scene:
+		var ew = energy_wall_scene.instantiate()
+		ew.gate_color = "red" # 纯视觉占位 (红蓝双拼贴图还没做), 逻辑上不看这个字段
+		ew.position = pos
+		map_container.add_child(ew)
+		_register_and_gate(ew, ["red", "blue"])
+
+
+## 保持型压力板 (瓦片 64/65/66): 跟 piston_switch 用同一个 switch_pressed
+## 广播接口的永久锁存不一样, 这里接的是 HoldSwitch.hold_state_changed ——
+## 有人站着就 held=true, 全部离开就 held=false, 可以反复触发。
+func _spawn_hold_switch(pos: Vector2, color: String) -> void:
+	if not hold_switch_scene:
+		hold_switch_scene = load("res://scenes/buildings/hold_switch.tscn")
+	if hold_switch_scene:
+		var sw = hold_switch_scene.instantiate()
+		sw.gate_color = color
+		sw.position = pos
+		_add_map_furniture(sw)
+		if not circuit_hold_switches.has(color):
+			circuit_hold_switches[color] = []
+		circuit_hold_switches[color].append(sw)
+		sw.hold_state_changed.connect(_on_hold_switch_changed)
+
+## 保持型压力板控制的闸门 (瓦片 67/68/69): 关闭时靠 steel+border 两个组免疫
+## 一切火力 (跟 energy_wall 同一个技巧), 打开时靠 CollisionShape2D.disabled
+## 真的失效, 子弹和坦克都直接穿过——不是"假装免疫", 因为已经没有碰撞体了。
+func _spawn_circuit_gate_door(pos: Vector2, color: String) -> void:
+	if not circuit_gate_door_scene:
+		circuit_gate_door_scene = load("res://scenes/buildings/circuit_gate_door.tscn")
+	if circuit_gate_door_scene:
+		var door = circuit_gate_door_scene.instantiate()
+		door.gate_color = color
+		door.position = pos
+		map_container.add_child(door)
+		if not circuit_hold_doors.has(color):
+			circuit_hold_doors[color] = []
+		circuit_hold_doors[color].append(door)
+
+## 某个颜色下任意一块保持型压力板的占用状态变化了 (不管是哪一块) ——
+## 重新扫一遍该颜色下所有压力板, 只要还有一块被占用就判定"通电", 一块都没有
+## 才判定"断电"。这是故意的 OR: 两块红色压力板任意一块有人站着, 红色闸门
+## 就该开着, 跟活塞开关"多个同色开关任意一个触发即算解开"是同一种语义,
+## 只是这里可以反复翻转。
+##
+## 联机: 结算权收归主机——跟 _on_circuit_switch_pressed() 同一个理由,
+## 压力板是地图家具, 客户端的预测坦克会压中它自己本地那块。客户端要等
+## net_apply_hold_gate() 下发。
+func _on_hold_switch_changed(_color: String, _held: bool) -> void:
+	if not NetSession.is_authority():
+		return
+	_recompute_hold_gate(_color)
+
+func _recompute_hold_gate(color: String) -> void:
+	var any_held := false
+	for sw in circuit_hold_switches.get(color, []):
+		if is_instance_valid(sw) and sw.is_held:
+			any_held = true
+			break
+	_apply_hold_gate_state(color, any_held)
+	var net := get_node_or_null("/root/Net")
+	if net:
+		net.broadcast_hold_gate(color, any_held)
+
+## 主客两侧共用的结算体, 跟 _apply_circuit_solved() 同一个理由抽出来——
+## 两份手抄的开合逻辑迟早会分叉。
+func _apply_hold_gate_state(color: String, powered: bool) -> void:
+	for door in circuit_hold_doors.get(color, []):
+		if is_instance_valid(door) and door.has_method("set_gate_open"):
+			door.set_gate_open(powered)
+
+## 客户端侧: 主机说某个颜色的保持型闸门现在是开是关。跟 net_apply_circuit()
+## 不一样, 这里没有"已经解开就不重复处理"的早退——闸门状态本来就要能反复
+## 覆盖 (开->关->开), 幂等交给 CircuitGateDoor.set_gate_open() 自己的
+## `if is_open == open: return` 处理。
+func net_apply_hold_gate(color: String, powered: bool) -> void:
+	_apply_hold_gate_state(color, powered)
+
 
 func _spawn_oil_barrel(pos: Vector2) -> void:
 	if not oil_barrel_scene:

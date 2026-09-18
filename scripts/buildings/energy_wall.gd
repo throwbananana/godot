@@ -31,6 +31,7 @@ const VFXAnimator = preload("res://scripts/vfx_animator.gd")
 const GATE_TINTS := {
 	"red": Color(1.6, 0.55, 0.5, 1.0),
 	"blue": Color(0.55, 0.85, 1.6, 1.0),
+	"green": Color(0.6, 1.6, 0.65, 1.0),
 }
 
 @export var gate_color: String = "red"
