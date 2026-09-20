@@ -1003,7 +1003,36 @@ func _rpc_vfx(paths: Array, pos: Vector2, scale_factor: float, fps_val: float, r
 	# NetSession.should_skip_muzzle_echo() —— 不去重的话同一枪会闪两次。
 	if NetSession.should_skip_muzzle_echo(typed, world_pos):
 		return
-	VFX.create_anim(container, world_pos, typed, scale_factor, fps_val, rot)
+	# apply_jitter = false: 主机发来的 rot/scale 已经含了它那一次的随播抖动,
+	# 客户端再抖一次两边就长得不一样了 (纯表现, 不会报错, 只会看着对不上)。
+	VFX.create_anim(container, world_pos, typed, scale_factor, fps_val, rot, false)
+
+
+## 粒子回声。和 echo_vfx 并列的第四个表现回声收口点。
+##
+## 发的是"发射参数 + 种子"而不是逐颗粒子的状态: 两端跑同一份
+## VFXParticles.PRESETS, 用同一个种子喂同一个 RandomNumberGenerator,
+## 重放出来逐颗一致。一发粒子一个小包, 而不是每帧几百颗的位置流。
+func echo_particles(preset: String, pos: Vector2, dir: Vector2, scale_mult: float, use_seed: int) -> void:
+	if not NetSession.is_host() or NetSession.remote_peer_id == 0:
+		return
+	_rpc_particles.rpc(preset, pos, dir, scale_mult, use_seed)
+
+
+@rpc("authority", "call_remote", "unreliable", 2)
+func _rpc_particles(preset: String, pos: Vector2, dir: Vector2, scale_mult: float, use_seed: int) -> void:
+	if not NetSession.is_client() or game == null or not is_instance_valid(game):
+		return
+	var container := _actors()
+	if container == null:
+		return
+	var world_pos: Vector2 = pos
+	if container is Node2D:
+		world_pos = (container as Node2D).to_global(pos)
+	var VP = load("res://scripts/vfx_particles.gd")
+	# 带着主机的种子重放。**不能让客户端自取种子** —— 那样两边的碎片会朝
+	# 不同方向飞, 而这种分叉没有任何东西会报错, 只是"你那边看到的和我不一样"。
+	VP.emit(preset, container, world_pos, dir, scale_mult, use_seed)
 
 
 func echo_sound(kind: String, args: Array) -> void:

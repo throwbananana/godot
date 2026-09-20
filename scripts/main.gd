@@ -858,6 +858,11 @@ func _exit_tree() -> void:
 	# TrainLink 还记着"P2 挂在 P1 后面", 而那两个节点已经不存在了。
 	# enter_room() 也会清, 但那是进房间的路径; 这里管的是退出这一条。
 	TrainLink.reset()
+
+	# 把这一局真正用过的贴图清单落盘, 下次启动照着它在后台预热 ——
+	# 手写清单一定会漏 (见 texture_warm_store.gd), 用实际使用记录不会。
+	TextureWarmStore.save_list(TextureHelper.loaded_paths())
+
 	var net := get_node_or_null("/root/Net")
 	if net:
 		net.detach_game(self)
@@ -1304,6 +1309,10 @@ static func spawn_interval_for(battle_type: String, cycle: int, difficulty: Stri
 
 
 func start_game() -> void:
+	# 音效波形预热。标题界面已经预热过一次, 这里再来一次是为了直接启动
+	# main.tscn 的路径 (调试、tools/test_*.gd、探针) —— 缓存命中时整个调用
+	# 只是 14 次字典查找, 重复调用没有代价。
+	SoundManager.prewarm(get_tree())
 	score = 0
 	enemies_spawned = 0
 	enemies_alive = 0
@@ -3814,11 +3823,19 @@ func _update_tree_transparency(delta: float) -> void:
 			continue
 		var target: float = TREE_REVEAL_ALPHA if occupied.has(cell) else 1.0
 		if absf(spr.modulate.a - target) < 0.004:
-			spr.modulate.a = target
+			# **已经到位就什么都别写。** 给 modulate 赋值会把这个 CanvasItem 标脏,
+			# 哪怕赋的是同一个值; 稳态下绝大多数树都停在 alpha=1.0 上没人碰,
+			# 原来仍然每帧给每棵树写一次, 等于白白脏掉几十个节点。
+			if spr.modulate.a != target:
+				spr.modulate.a = target
 			continue
 		spr.modulate.a = move_toward(spr.modulate.a, target, TREE_FADE_SPEED * delta)
 
 func _process(delta: float) -> void:
+	# 贴图后台预热: 队列空时只是一次布尔判断。放在最前面是因为它和游戏状态
+	# 无关, 客户端也该跑 —— 客户端一样会第一次见到某个特效然后卡一下。
+	TextureHelper.warm_pump()
+
 	_update_camera_position()
 
 	# Trauma Screen Shake -- 现在抖动叠加在 RoomCamera.offset 上而不是

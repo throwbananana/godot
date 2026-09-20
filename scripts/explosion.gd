@@ -3,6 +3,7 @@ extends Node2D
 
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
+const VFXParticles = preload("res://scripts/vfx_particles.gd")
 
 @onready var sprite: Sprite2D = $Sprite2D
 
@@ -56,6 +57,24 @@ func _ready() -> void:
 	# 正好抵消, 于是每一次爆炸都在地图左上角那格点灯, 而不是爆点。
 	# call_deferred 排到当前调用栈退完之后, 那时坐标已经赋好了。
 	call_deferred("_flash_darkness")
+	# 余烬和余烟也要等坐标赋好 —— 和上面的夜战闪光是同一个理由 (_ready() 跑在
+	# add_child() 期间, 比调用方赋 global_position 早一步), 在这里直接发射的话
+	# 每一团烟都会飘在地图左上角那一格。
+	call_deferred("_emit_particles")
+
+## 爆炸的粒子尾: 向上飘的余烬 + 留在原地的余烟。
+##
+## 翻书那六帧本身已经"消散"了 (见 CLAUDE.md 的 explosion 消散断言), 但它消散得
+## 很干净 —— 火球一收就什么都不剩。余烬和余烟补的是火球熄灭之后那一段,
+## 让爆点在画面上留一会儿, 而不是啪地消失。
+func _emit_particles() -> void:
+	if not is_inside_tree():
+		return
+	var host := get_parent()
+	if host == null or not is_instance_valid(host):
+		return
+	VFXParticles.emit("ember", host, global_position)
+	VFXParticles.emit("smoke", host, global_position)
 
 func _setup_dynamic_light() -> void:
 	light = PointLight2D.new()

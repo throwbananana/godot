@@ -65,6 +65,15 @@ var _secret_pad_buffer: Array[int] = []
 func _ready() -> void:
 	SettingsStore.load_and_apply()
 
+	# 把全部音效波形提前合成进缓存。这些波形是现场逐采样算出来的 (项目里没有
+	# 音频文件), 一次合成 0.6~4.7ms —— 摊在标题画面上没人感觉得到, 留到战斗里
+	# 第一次开炮/第一次爆炸才算, 就是一次实打实的掉帧。见 sound_manager.gd 顶部。
+	SoundManager.prewarm(get_tree())
+
+	# 按上一局的实际使用记录在后台预热贴图。首次运行没有记录, 行为跟以前一样,
+	# 之后每一局都更准。见 texture_warm_store.gd。
+	TextureHelper.warm_async(TextureWarmStore.load_list())
+
 	# 1. 加载 3D 黏土主界面背景
 	if bg_texture:
 		var bg_tex = TextureHelper.get_tex("res://assets/sprites/ui/title_background_clay.png")
@@ -159,8 +168,11 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# 标题界面是预热贴图最合适的地方: 这里没有任何东西赶时间。
+	TextureHelper.warm_pump()
+
 	var t = Time.get_ticks_msec() * 0.001
-	
+
 	# 1. Logo Halo 光环慢速旋转与呼吸
 	if halo_sprite:
 		halo_sprite.rotation += delta * 0.35

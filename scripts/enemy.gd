@@ -132,6 +132,13 @@ var is_camouflaged: bool = false
 var still_timer: float = 0.0
 var tree_tex: Texture2D = null
 var is_suicide_detonated: bool = false
+
+# 自爆车绕行状态, 见 _suicide_steer()。
+# SUICIDE_PROBE_DIST 是前向探测距离: 车身半宽 19px, 时速 155px/s 下每物理帧
+# 走 2.6px, 18px 约等于"七帧之后会撞上", 既够早到能转向, 又远小于半格 (24px)
+# 所以一条正常的单格走廊不会被误判成死路。
+const SUICIDE_PROBE_DIST: float = 18.0
+var suicide_detour_dir: Vector2 = Vector2.ZERO
 var plane_shadow: Sprite2D = null
 var wake_timer: float = 0.0
 var warp_blink_timer: float = 0.0
@@ -857,12 +864,11 @@ func _physics_process(delta: float) -> void:
 				return
 
 			if enemy_type == EnemyType.DRONE_MINI:
+				# 无人机走自由矢量, 而且撞上任何东西都会引爆 (见下面的碰撞分支),
+				# 所以它不需要绕行 —— 它没有"卡住"这个状态。
 				facing_direction = to_target.normalized()
 			else:
-				if abs(to_target.x) > abs(to_target.y):
-					facing_direction = Vector2.RIGHT if to_target.x > 0 else Vector2.LEFT
-				else:
-					facing_direction = Vector2.DOWN if to_target.y > 0 else Vector2.UP
+				facing_direction = _suicide_steer(to_target)
 			rotation = facing_direction.angle() + PI / 2.0
 
 			var flash_spd = clampf(600.0 / max(40.0, dist), 8.0, 36.0)
@@ -1084,9 +1090,21 @@ func _physics_process(delta: float) -> void:
 	if collision:
 		var col_node = collision.get_collider()
 		if enemy_type == EnemyType.SUICIDE or enemy_type == EnemyType.DRONE_MINI:
-			if col_node and (col_node.is_in_group("player") or col_node.is_in_group("base_eagle") or col_node.is_in_group("buildings") or enemy_type == EnemyType.DRONE_MINI):
+			# 自家阵营的建筑不是引爆目标。"buildings" 是把玩家建筑、中立杂物和
+			# 敌方护盾塔一锅端的伞形组 (CLAUDE.md "enemy_building" 一节: 加
+			# faction 敏感的行为时必须显式分叉, 不能假设 buildings 就是"玩家那边的"),
+			# 所以自爆车会一头撞死在给自己队友加盾的塔上 —— 塔毫发无伤, 车白送一辆。
+			# 无人机维持原样: "撞到任何东西都炸"本来就是它写死的定位。
+			var own_structure = col_node != null and col_node.is_in_group("enemy_building") and enemy_type == EnemyType.SUICIDE
+			if col_node and not own_structure and (col_node.is_in_group("player") or col_node.is_in_group("base_eagle") or col_node.is_in_group("buildings") or enemy_type == EnemyType.DRONE_MINI):
 				_suicide_detonate()
 				return
+			elif enemy_type == EnemyType.SUICIDE:
+				# 撞到不该炸的东西 (砖/钢/边界/同伴): 作废当前的绕行承诺, 下一帧
+				# 重新选路。这个 elif 以前是不存在的 —— 整个分支只处理"撞到目标就
+				# 引爆", 撞墙时什么都不做, 而贪心主轴每帧都会重新算出同一条被挡死
+				# 的方向, 于是自爆车贴着墙一动不动直到被打死, 全程没有任何报错。
+				suicide_detour_dir = Vector2.ZERO
 		elif enemy_type == EnemyType.CRUSHER:
 			if col_node:
 				var crushed = _crush_target(col_node)
@@ -1106,6 +1124,70 @@ func _physics_process(delta: float) -> void:
 		if f_idx != current_frame:
 			current_frame = f_idx
 			sprite.texture = tank_frames[current_frame]
+
+## 探测 dir 方向 SUICIDE_PROBE_DIST 距离内有没有"不该撞的东西"。
+##
+## 玩家 / 鹰巢 / 建筑一律不算障碍 —— 撞上去正是自爆车的目的。这条不是锦上添花:
+## 车身半宽 19px + 探测 18px = 37px, 再加玩家半宽 20px, 也就是说两车相距 57px
+## 起探测就会打到玩家, 而引爆判定的半径是 42px。把玩家算成障碍的话, 自爆车会
+## 在最后那 15px 拐开, 表现成"它怎么都撞不到人", 而且离得越近躲得越急。
+func _suicide_dir_blocked(dir: Vector2) -> bool:
+	var hit := KinematicCollision2D.new()
+	if not test_move(global_transform, dir * SUICIDE_PROBE_DIST, hit):
+		return false
+	var node = hit.get_collider()
+	if node == null:
+		return true
+	if node.is_in_group("enemy_building"):
+		return true # 自家阵营的建筑要绕开, 不是目标 —— 见下面碰撞分支里同一条判定
+	if node.is_in_group("player") or node.is_in_group("base_eagle") or node.is_in_group("buildings"):
+		return false
+	return true
+
+## 自爆车的四方向转向: 优先直冲主轴, 主轴被挡就绕开。
+##
+## 刻意不上 A*: 全项目没有任何导航图, 而战场是 _build_map() 每次进房间现搭的
+## (56 套手写模板 + 程序生成 + 一路被打碎的可破坏地形), 一张导航网格得跟着重建;
+## 13x13 的场地上挡路的通常就是一两块砖, 贪心主轴加一次前向探测已经够用。
+##
+## 候选顺序固定为 [主轴, 次轴, 次轴反向, 主轴反向], 全程不摇 randf(): 这里每帧
+## 都要选一次方向, 掺随机一来会让联机两端各走各的轨迹, 二来会动到每日挑战依赖的
+## 那条全局 RNG 流 (同一条理由见 explosion.gd 用静态计数器轮换爆炸变体那段)。
+##
+## 绕行方向一旦选定, 就一直走到"主轴通了"或者"这个方向自己也被挡住"为止 ——
+## 绕行的终止条件必须是几何上真的绕过去了, 不能是一个固定的计时器。这一点是
+## 实测出来的: 第一版给绕行加了 0.35 秒的锁存, 到期后重新按"朝目标的次轴"选一次,
+## 而那条规则选出来的恰恰是刚刚失败的那个方向 —— 车绕到目标那一行上方时次轴
+## 指向下, 绕到下方时次轴指向上, 于是它以锁存周期为节拍在目标那一行两侧来回
+## 横跳, 永远贴着墙面磨。追踪日志里是 y=251→295→241→261→295 这样的往返,
+## x 一直钉在 190 不动。
+##
+## 反过来, 长期锁存不会让它一头扎进死路: 绕行方向被挡住 (比如顶到地图边界)
+## 时会重新选, 而这时候"朝目标的次轴"已经翻了号, 自然改走另一侧。
+##
+## 仍然会被"开口朝外的 U 形凹坑"困住, 贪心寻路都会; 四面全堵时退化成顶着主轴,
+## 等别人把地形打开。这是可接受的: 自爆车的定位是高速拦截, 不是拆迁队。
+func _suicide_steer(to_target: Vector2) -> Vector2:
+	var ax := Vector2.RIGHT if to_target.x > 0.0 else Vector2.LEFT
+	var ay := Vector2.DOWN if to_target.y > 0.0 else Vector2.UP
+	var prefer_x := absf(to_target.x) > absf(to_target.y)
+	var primary := ax if prefer_x else ay
+	var secondary := ay if prefer_x else ax
+
+	if not _suicide_dir_blocked(primary):
+		suicide_detour_dir = Vector2.ZERO
+		return primary
+
+	if suicide_detour_dir != Vector2.ZERO and not _suicide_dir_blocked(suicide_detour_dir):
+		return suicide_detour_dir
+
+	for cand in [secondary, -secondary, -primary]:
+		if not _suicide_dir_blocked(cand):
+			suicide_detour_dir = cand
+			return cand
+
+	suicide_detour_dir = Vector2.ZERO
+	return primary
 
 func _crush_sweep(_delta: float) -> void:
 	if not is_inside_tree() or get_world_2d() == null:

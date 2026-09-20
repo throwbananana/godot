@@ -38,19 +38,65 @@ func _process(delta: float) -> void:
 
 const SelfScript = preload("res://scripts/vfx_animator.gd")
 
-static func create_anim(tree_parent: Node, pos: Vector2, paths: Array[String], scale_factor: float = 0.1875, fps_val: float = 16.0, rot: float = 0.0) -> Node2D:
+## 每次播放的朝向/大小微抖, 让同一个效果连着出现时不像同一枚图章。
+##
+## 之前除 spawn_muzzle_flash 外的**全部**效果都是轴对齐、固定尺寸播放的, 所以
+## 同一种反馈每次都逐像素相同 —— 连打一堵砖墙, 碎屑团一帧不差地重复。
+## explosion.gd 早就为这件事准备了三套差分贴图并轮着用, 但那个办法只覆盖了爆炸,
+## 剩下二十个效果都还是单一图章。这里用的是更便宜的一招: 不换图, 只把同一张图
+## 随播随转一点、缩一点, 视觉上足够打破重复感, 且一张新图都不用渲。
+##
+## **用轮换游标而不是 randf()**: 每日挑战在 start_game() 里 seed() 了全局 RNG
+## 流并全程依赖它确定, 而特效是战斗中触发最频繁的东西之一 —— 在这里抽数会让
+## 所有人的当日局面错位, 且不报任何错。同一条规矩见 explosion.gd 的变体游标、
+## SoundManager 的噪声变体, 以及 VFXParticles 的发射种子。
+const JITTER_ROT := [0.0, 0.21, -0.14, 0.33, -0.27, 0.09, -0.35, 0.17]
+const JITTER_SCALE := [1.0, 0.93, 1.08, 0.96, 1.05, 0.90, 1.11, 0.98]
+static var _jitter_cursor: int = 0
+
+## 取下一组抖动。返回 [额外旋转, 缩放系数]。
+static func _next_jitter() -> Array:
+	var i := _jitter_cursor
+	_jitter_cursor += 1
+	# 两张表长度不同 (8 和 8 会同步循环), 所以错开取: 旋转走 i, 缩放走 i*3,
+	# 于是组合周期是 8 而不是"每 8 次完全重复同一对"。
+	return [JITTER_ROT[i % JITTER_ROT.size()], JITTER_SCALE[(i * 3) % JITTER_SCALE.size()]]
+
+static func create_anim(tree_parent: Node, pos: Vector2, paths: Array[String], scale_factor: float = 0.1875, fps_val: float = 16.0, rot: float = 0.0, apply_jitter: bool = true) -> Node2D:
+	# 抖动在回声**之前**施加, 所以发给客户端的是已经抖好的 rot/scale ——
+	# 两端看到的是同一枚。客户端重放时必须传 apply_jitter = false, 否则它会在
+	# 主机抖过的值上再抖一次, 两边的同一个特效长得不一样 (而且没有任何报错)。
+	var use_rot := rot
+	var use_scale := scale_factor
+	if apply_jitter:
+		var j := _next_jitter()
+		use_rot += float(j[0])
+		use_scale *= float(j[1])
+
 	var node = SelfScript.new()
-	node.rotation = rot
+	node.rotation = use_rot
 	node.fps = fps_val
-	node.scale = Vector2(scale_factor, scale_factor)
+	node.scale = Vector2(use_scale, use_scale)
 	for p in paths:
 		var tex = TextureHelper.get_tex(p)
 		if tex:
 			node.frame_textures.append(tex)
 	tree_parent.add_child(node)
 	node.global_position = pos
-	_net_echo(tree_parent, pos, paths, scale_factor, fps_val, rot)
+	_net_echo(tree_parent, pos, paths, use_scale, fps_val, use_rot)
 	return node
+
+## 把一个方向向量转成贴图朝向。
+##
+## 传 Vector2.ZERO 表示"没有方向", 返回 0 —— 调用方不需要自己判空。
+## 这是 spawn_hit_spall / spawn_ricochet_spark 这类**撞击**特效需要的:
+## 它们的美术本来就是偏心构图 (见 CLAUDE.md 里 vfx_hit_spall 的"崩落团偏向
+## 一侧 + 同侧冲击弧"), 设计意图就是指示撞击来向 —— 但在此之前 spawn 接口
+## 根本没有方向参数, 那份不对称永远指着屏幕的同一边。
+static func dir_to_rot(dir: Vector2) -> float:
+	if dir.length_squared() < 0.0001:
+		return 0.0
+	return dir.angle()
 
 
 ## 联机: 把这一次特效回声给客户端。
@@ -331,7 +377,7 @@ static func spawn_sand_burst(parent: Node, pos: Vector2, scale_mult: float = 1.0
 ## 冲击波说"它被打没了"。玩家看到之后的下一步动作完全相反 (换目标 vs 继续推进),
 ## 所以这两件事不能共用一张图。拆分前 spawn_shockwave 的 82 处调用里, 命中
 ## border/steel/buildings 占 17 处、建筑被摧毁占 10 处, 全是同一个灰环。
-static func spawn_ricochet_spark(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+static func spawn_ricochet_spark(parent: Node, pos: Vector2, scale_mult: float = 1.0, dir: Vector2 = Vector2.ZERO) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/vfx_ricochet_spark_f0.png",
 		"res://assets/sprites/effects/vfx_ricochet_spark_f1.png",
@@ -341,14 +387,17 @@ static func spawn_ricochet_spark(parent: Node, pos: Vector2, scale_mult: float =
 		"res://assets/sprites/effects/vfx_ricochet_spark_f5.png"
 	]
 	# 比别的组快: 火星是瞬时事件, 拖长了会读成"持续燃烧"。
-	create_anim(parent, pos, paths, 0.17 * scale_mult, 18.0)
+	create_anim(parent, pos, paths, 0.17 * scale_mult, 18.0, dir_to_rot(dir))
 
 ## 受伤未死。偏心的崩落团 —— 目标掉血但还站着时用。
 ##
 ## 和 spawn_clay_debris 的分工同上: 那个现在专表"被摧毁"。"还能打"和"已经没了"
 ## 是玩家最需要区分的一对反馈, 拆分前它们是同一张图 (clay_debris 的 74 处调用里
 ## take_damage 占 14 处、destroy 占 13 处)。
-static func spawn_hit_spall(parent: Node, pos: Vector2, scale_mult: float = 1.0) -> void:
+## dir 传"撞击来向的反方向"时, 那团偏心的崩落就朝着子弹飞来的反侧崩 ——
+## 这张图本来就是为此画的 (构图刻意偏向一侧并配同侧冲击弧), 只是以前没有
+## 参数能把方向送进来。不传就退回原来的固定朝向, 老调用点不受影响。
+static func spawn_hit_spall(parent: Node, pos: Vector2, scale_mult: float = 1.0, dir: Vector2 = Vector2.ZERO) -> void:
 	var paths: Array[String] = [
 		"res://assets/sprites/effects/vfx_hit_spall_f0.png",
 		"res://assets/sprites/effects/vfx_hit_spall_f1.png",
@@ -357,7 +406,7 @@ static func spawn_hit_spall(parent: Node, pos: Vector2, scale_mult: float = 1.0)
 		"res://assets/sprites/effects/vfx_hit_spall_f4.png",
 		"res://assets/sprites/effects/vfx_hit_spall_f5.png"
 	]
-	create_anim(parent, pos, paths, 0.20 * scale_mult, 15.0)
+	create_anim(parent, pos, paths, 0.20 * scale_mult, 15.0, dir_to_rot(dir))
 
 ## 建筑落成。**唯一向内收敛的一组** —— 别的都向外扩散并消散, 它末帧最实,
 ## 因为"东西被造出来了"这件事要靠收束感传达。别拿爆炸那条消散断言套它。

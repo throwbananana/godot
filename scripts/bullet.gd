@@ -4,6 +4,7 @@ extends Area2D
 const TextureHelper = preload("res://scripts/texture_helper.gd")
 const SoundManager = preload("res://scripts/sound_manager.gd")
 const VFXAnimator = preload("res://scripts/vfx_animator.gd")
+const VFXParticles = preload("res://scripts/vfx_particles.gd")
 const KineticPushHelper = preload("res://scripts/kinetic_push_helper.gd")
 const NetPuppet = preload("res://scripts/net_puppet.gd")
 
@@ -333,8 +334,13 @@ func _on_body_entered(body: Node2D) -> void:
 			var will_break_this := can_destroy_steel and not body.is_in_group("border") and not body.is_in_group("reinforced_steel")
 			if will_break_this:
 				VFXAnimator.spawn_clay_debris(get_parent(), global_position)
+				VFXParticles.emit("debris", get_parent(), global_position, -direction)
 			else:
 				VFXAnimator.spawn_ricochet_spark(get_parent(), global_position)
+				# 火星朝**入射的反方向**喷。这是整个粒子层最主要的价值: 翻书那层
+				# 的散布在 Blender 里就烤死了, 子弹从哪边打来都散成同一个样子;
+				# 现在火星是从墙面朝射手那边弹回来的。
+				VFXParticles.emit("impact_spark", get_parent(), global_position, -direction)
 			if pierces_this_steel:
 				pass # keeps flying -- doesn't consume a ricochet bounce
 			elif _try_ricochet():
@@ -357,6 +363,7 @@ func _on_body_entered(body: Node2D) -> void:
 			# 地图边界**永远**打不穿 —— 这是全游戏最该被一眼读懂的"打不动",
 			# 所以无条件走冷钢火星。
 			VFXAnimator.spawn_ricochet_spark(get_parent(), global_position)
+			VFXParticles.emit("impact_spark", get_parent(), global_position, -direction)
 			# The map boundary always stops a bullet outright, even a piercing
 			# one -- ricochet can still save it from dying here, armor-piercing
 			# cannot (it only pierces destructible/steel walls, not the edge).

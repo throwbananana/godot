@@ -190,6 +190,19 @@ func _test_client_builds_only_furniture() -> void:
 	m.free()
 
 
+## 客户端 actors_container 里合法出现的**第三类**: 表现层回声产物。
+##
+## 这条规则原本写的是"只有家具和傀儡两类", 那句话不完整 —— 客户端确实不跑
+## 战斗逻辑, 但主机会把特效**回声**过来 (VFXAnimator.create_anim 和
+## VFXParticles.emit 两个收口点, 见 net_manager.gd 的表现回声一节), 而它们
+## 落在 actors_container 下。它们不是本地逻辑生成的, 不带 net_id, 也没有
+## 家具标记, 所以会被下面的判定当成"漏到客户端的主机侧路径"。
+##
+## 之所以以前没红过, 只是因为特效寿命很短 (0.3 秒上下), 抽查的那一瞬间通常
+## 一个都不活着 —— 也就是说这本来就是个潜伏的偶发红, 只是概率低。粒子层的
+## 余烟能活 1.25 秒, 命中抽查窗口的概率高得多, 所以这里把这一类显式写出来。
+const PRESENTATION_SCRIPTS := ["vfx_animator.gd", "vfx_particles.gd"]
+
 func _assert_only_furniture_or_puppets(m: Node, phase: String) -> void:
 	var bad: Array = []
 	for ch in m.actors_container.get_children():
@@ -198,6 +211,8 @@ func _assert_only_furniture_or_puppets(m: Node, phase: String) -> void:
 		if ch.has_meta("net_id") or ch.has_meta("net_puppet"):
 			continue
 		var scr = ch.get_script()
+		if scr and PRESENTATION_SCRIPTS.has(scr.resource_path.get_file()):
+			continue
 		bad.append(scr.resource_path.get_file() if scr else ch.get_class())
 	if bad.is_empty():
 		ok("%s: 没有本地生成的非家具节点" % phase)
